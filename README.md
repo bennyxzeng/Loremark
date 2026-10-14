@@ -150,7 +150,51 @@ Have feedback? [Open an issue](https://github.com/bennyxzeng/Loremark/issues) wi
 
 ## Meet your reading companion
 
-Loremark’s mascot gives the project a warm, curious presence: a companion who enjoys a good story, remembers your notes, and leaves tomorrow’s discoveries for tomorrow. Parchment tones, forest-green ribbons, and small gold stars carry that feeling into the visual design.
+<p align="center">
+  <strong>✦ Loremark · ロアマーク ✦</strong><br>
+  <em>The bookmark spirit who reads beside you.</em>
+</p>
+
+<table>
+  <tr>
+    <td width="48%" valign="top">
+      <img src="docs/assets/loremark-companion-portrait-clean.png" alt="Loremark offering a gold leaf bookmark against a soft cream background, holding her book beside a sleeping calico cat." width="100%">
+    </td>
+    <td width="52%" valign="top">
+      <h3>Character profile</h3>
+      <p><strong>Name</strong> · Loremark / ロアマーク<br>
+      <strong>Role</strong> · Your spoiler-free reading companion<br>
+      <strong>Personality</strong> · Gentle, clever, curious, and attentive</p>
+      <p><strong>Loves</strong><br>
+      Good stories, the notes in your margins, untangling character relationships, and thinking through a theory together.</p>
+      <p><strong>Signature look</strong><br>
+      Ash-brown hair, amber eyes, forest-green ribbons, a gold star brooch, and an embroidered cloak.</p>
+      <p><strong>Her promise</strong><br>
+      <em>“I only see as far as you’ve read.”</em></p>
+    </td>
+  </tr>
+</table>
+
+Think of her as the little spirit tucked between your pages: ready with a reminder when a name slips your mind, curious about the theory you scribbled down, and happy to wait while you discover the next chapter yourself. Her warmth, bookish curiosity, and gentle promise come from the original character design.
+
+<p align="center"><strong>✧ Little moments between chapters ✧</strong></p>
+
+<p align="center">
+  <img src="docs/assets/loremark-chibi-moments.png" alt="Three chibi illustrations of Loremark: reading beside a calico cat, pondering a notebook through round glasses, and making a playful hush gesture while holding a closed book." width="100%">
+</p>
+
+<table>
+  <tr>
+    <td align="center" width="33%"><strong>One more page</strong><br><sub>A good book. A sleepy cat. No hurry.</sub></td>
+    <td align="center" width="34%"><strong>Wait… a theory!</strong><br><sub>Glasses on. Let’s look at the clues.</sub></td>
+    <td align="center" width="33%"><strong>Shh… no spoilers</strong><br><sub>The next discovery belongs to you.</sub></td>
+  </tr>
+</table>
+
+<p align="center">
+  <em>“Let’s pause here, and remember all the good things that have happened.”</em><br>
+  <sub>— Loremark · adapted from the original character sheet</sub>
+</p>
 
 <details>
 <summary><strong>View the original character design sheet</strong></summary>
@@ -161,7 +205,7 @@ Loremark’s mascot gives the project a warm, curious presence: a companion who 
 
 </details>
 
-<sub>The character sheet was supplied by the project team. The README banner is AI-generated artwork based on that reference. See the <a href="docs/assets/README.md">asset notes and generation prompt</a>.</sub>
+<sub>The character sheet was supplied by the project team. The banner, companion portrait, and chibi illustrations are AI-generated from that reference. See the <a href="docs/assets/README.md">asset notes and generation prompts</a>.</sub>
 
 ## The team
 
