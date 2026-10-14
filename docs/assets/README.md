@@ -9,11 +9,21 @@
 | `loremark-companion-portrait-square.png` | Vertically expanded with the built-in image generation tool from the simplified portrait. | Cream-background square portrait, retained as an alternate. |
 | `loremark-companion-portrait-soft-library.png` | Edited with the built-in image generation tool from the square portrait. | Soft library background with a cream foreground, retained as an alternate. |
 | `loremark-companion-portrait-desk.png` | Edited with the built-in image generation tool from the soft library portrait. | Wooden-desk portrait, retained as an alternate. |
-| `loremark-companion-front-view.png` | High-resolution redraw with the built-in image generation tool, based on the leftmost front view in the original turnaround panel. | Current full-body character profile illustration; a generative redraw, not a pixel-exact upscale. |
+| `loremark-companion-front-view.png` | High-resolution redraw with the built-in image generation tool, based on the leftmost front view in the original turnaround panel. | Original full-body redraw, retained as an alternate; not a pixel-exact upscale. |
+| `loremark-companion-front-view-v2.png` | Edited with the built-in image generation tool from the front-view redraw. | Current full-body character profile with thinner boot soles. |
 | `loremark-chibi-moments.png` | Generated with the built-in image generation tool from the original character sheet. | Original three-moment illustration, retained as an alternate. |
 | `loremark-chibi-moments-v2.png` | Generated with the built-in image generation tool using the character sheet's bottom-row chibi proportions. | Current three-moment strip with exaggerated big-head, tiny-body chibi proportions. |
 
 The generated images are illustrations, not application screenshots. All assets are stored in this repository so the README does not depend on temporary image URLs. The character profile draws on the supplied sheet; English dialogue is translated or adapted from its Chinese character notes. The chibi captions are new editorial copy.
+
+## Thin boot soles edit prompt
+
+```text
+Use case: precise-object-edit
+Edit target: supplied Loremark full-body front-view illustration.
+Make a very localized edit to BOTH BOOT SOLES ONLY. The current chunky platform soles are too thick. Replace them with slim conventional ankle-boot soles, about one third of the current visible sole thickness under the toes, a delicate thin black outsole with a fine gold welt and modest low heel. No platform, no chunky blocks. Keep elegant lightweight footwear proportions. Preserve the black leather boot uppers, gold star ornaments, buckles, straps, ankle height, toe direction, and positions of both feet. Adjust ground contact shadows minimally as needed.
+Everything above the outsole must remain unchanged: character face, hair, identity, clothing, legs, stockings, pose, original silhouette, colors, lighting and background. Preserve exact full-body framing and 2:3 portrait aspect ratio. High-resolution faithful anime illustration. No text, no other changes.
+```
 
 ## Front-view character redraw prompt
 

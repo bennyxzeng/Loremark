@@ -158,7 +158,7 @@ Have feedback? [Open an issue](https://github.com/bennyxzeng/Loremark/issues) wi
 <table>
   <tr>
     <td width="38%" valign="middle" align="center">
-      <img src="docs/assets/loremark-companion-front-view.png" alt="Full-body front view of Loremark with long ash-brown hair, green ribbons, a cream blouse, gold-embroidered dark cloak, pleated skirt, and black boots." width="100%">
+      <img src="docs/assets/loremark-companion-front-view-v2.png" alt="Full-body front view of Loremark with long ash-brown hair, green ribbons, a cream blouse, gold-embroidered dark cloak, pleated skirt, and slim-soled black boots." width="100%">
     </td>
     <td width="62%" valign="middle">
       <h3>Character profile</h3>
