@@ -5,10 +5,41 @@
 | `loremark-hero.png` | Generated with the built-in image generation tool, using the supplied character sheet as a reference. | README banner. |
 | `loremark-character-sheet.png` | Original character sheet supplied by the project team, copied without changes. | Expandable mascot reference. |
 | `loremark-companion-portrait.png` | Generated with the built-in image generation tool from the original character sheet. | Original library portrait, retained as an alternate. |
-| `loremark-companion-portrait-clean.png` | Edited with the built-in image generation tool from the original portrait. | Current character profile illustration with a simplified cream background. |
+| `loremark-companion-portrait-clean.png` | Edited with the built-in image generation tool from the original portrait. | Simplified landscape portrait, retained as an alternate. |
+| `loremark-companion-portrait-square.png` | Vertically expanded with the built-in image generation tool from the simplified portrait. | Cream-background square portrait, retained as an alternate. |
+| `loremark-companion-portrait-soft-library.png` | Edited with the built-in image generation tool from the square portrait. | Soft library background with a cream foreground, retained as an alternate. |
+| `loremark-companion-portrait-desk.png` | Edited with the built-in image generation tool from the soft library portrait. | Current character profile with a wooden reading desk. |
 | `loremark-chibi-moments.png` | Generated with the built-in image generation tool from the original character sheet. | Three illustrated reading-companion moments. |
 
 The generated images are illustrations, not application screenshots. All assets are stored in this repository so the README does not depend on temporary image URLs. The character profile draws on the supplied sheet; English dialogue is translated or adapted from its Chinese character notes. The chibi captions are new editorial copy.
+
+## Wooden desk foreground edit prompt
+
+```text
+Use case: precise-object-edit
+Edit target: supplied square anime Loremark portrait.
+Change ONLY the cream fabric-covered foreground surface to an uncovered wooden reading desk. Replace all visible cream cloth below the character with a flat warm medium-walnut tabletop, restrained natural wood grain receding in correct perspective, softly polished matte finish and gentle window-light reflections. No cloth, no folds, no tablecloth. Keep the desk clean with no added objects.
+Preserve exactly the square composition and framing, character identity, face, eyes, expression, hair, costume, hands, gold leaf bookmark and ribbon, held book, sleeping calico cat and its book. They rest naturally on the wooden surface with appropriate contact shadows. Preserve the existing softly blurred library background, window and warm afternoon lighting. Keep the character sharp and dominant. No changes to pose or scale, no extra props, no text, no watermark. High-quality anime illustration matching the original.
+```
+
+## Soft library background edit prompt
+
+```text
+Use case: precise-object-edit
+Edit target: supplied square Loremark portrait.
+Primary request: restore a cozy library background, but keep it simplified and subordinate to the character.
+Preserve the square 1:1 canvas, framing, character size and position, entire visible hair, facial identity, amber eyes, smile, forest-green ribbons, cream blouse, olive and gold embroidered cloak, gold star brooch, both hands, offered gold leaf bookmark, held ornate book, sleeping calico cat and its book. Preserve the polished anime style and the simple cream tabletop foreground.
+Replace only the plain cream backdrop with a tasteful softly defocused reading room: muted walnut bookshelves with a few broad groups of books on the left, a simple window with soft warm late-afternoon light on the right, quiet warm plaster wall around the head. Background has low contrast, reduced saturation, soft edges, shallow depth of field, large calm shapes. It is recognizable as a library but not filled with individually detailed objects. Keep the face, eyes, hands and bookmark sharply rendered and visually dominant. Harmonize lighting with warm gentle highlights and atmospheric background shadows. Maintain space above the head from the square composition. No additional foreground props, no hanging foliage, no intricate architecture, no candles, no large lamps, no clockwork, no magical particle clutter, no text or borders. Remove the isolated floating star accents if they compete with the scene. Elegant restrained background, richly detailed character. Do not revert to a landscape crop.
+```
+
+## Square companion portrait expansion prompt
+
+```text
+Use case: precise-object-edit
+Edit target: supplied landscape Loremark character portrait.
+Task: OUTPAINT vertically above and below to create a SQUARE 1:1 image, ideally 1536x1536, for a README two-column character profile. The original landscape composition should occupy the middle two thirds of the new square. Keep original horizontal field of view and subject scale; do not crop left or right, do not stretch or distort.
+Preserve the same character identity, face, pose, amber eyes, ash-brown hair, ribbons, modest cream blouse, olive embroidered cape, gold star brooch, hands offering the leaf bookmark, held book, sleeping calico cat and its book. Extend the top to show the complete crown of her hair with comfortable headroom, seamlessly continuing the warm ivory background. Extend the bottom with a natural continuation of the cream tabletop, soft shadows, and the end of the ribbon/bookmark where appropriate. Redistribute added space tastefully, about half above and half below. Background must stay simple cream with the existing restrained gold stars; no library, no new decorations, no clutter. Preserve polished anime illustration quality, colors and gentle lighting. No text, no borders, no watermark. Opaque background. The critical change is increased image HEIGHT, square aspect ratio, NOT another landscape image.
+```
 
 ## Simplified companion portrait edit prompt
 

@@ -151,18 +151,18 @@ Have feedback? [Open an issue](https://github.com/bennyxzeng/Loremark/issues) wi
 ## Meet your reading companion
 
 <p align="center">
-  <strong>✦ Loremark · ロアマーク ✦</strong><br>
+  <strong>✦ Loremark ✦</strong><br>
   <em>The bookmark spirit who reads beside you.</em>
 </p>
 
 <table>
   <tr>
     <td width="48%" valign="middle" align="center">
-      <img src="docs/assets/loremark-companion-portrait-clean.png" alt="Loremark offering a gold leaf bookmark against a soft cream background, holding her book beside a sleeping calico cat." width="100%">
+      <img src="docs/assets/loremark-companion-portrait-desk.png" alt="Loremark offering a gold leaf bookmark over a wooden desk beside a sleeping calico cat, framed by softly blurred bookshelves and warm window light." width="100%">
     </td>
     <td width="52%" valign="top">
       <h3>Character profile</h3>
-      <p><strong>Name</strong> · Loremark / ロアマーク<br>
+      <p><strong>Name</strong> · Loremark<br>
       <strong>Role</strong> · Your spoiler-free reading companion<br>
       <strong>Personality</strong> · Gentle, clever, curious, and attentive</p>
       <p><strong>Loves</strong><br>
