@@ -9,9 +9,24 @@
 | `loremark-companion-portrait-square.png` | Vertically expanded with the built-in image generation tool from the simplified portrait. | Cream-background square portrait, retained as an alternate. |
 | `loremark-companion-portrait-soft-library.png` | Edited with the built-in image generation tool from the square portrait. | Soft library background with a cream foreground, retained as an alternate. |
 | `loremark-companion-portrait-desk.png` | Edited with the built-in image generation tool from the soft library portrait. | Current character profile with a wooden reading desk. |
-| `loremark-chibi-moments.png` | Generated with the built-in image generation tool from the original character sheet. | Three illustrated reading-companion moments. |
+| `loremark-chibi-moments.png` | Generated with the built-in image generation tool from the original character sheet. | Original three-moment illustration, retained as an alternate. |
+| `loremark-chibi-moments-v2.png` | Generated with the built-in image generation tool using the character sheet's bottom-row chibi proportions. | Current three-moment strip with exaggerated big-head, tiny-body chibi proportions. |
 
 The generated images are illustrations, not application screenshots. All assets are stored in this repository so the README does not depend on temporary image URLs. The character profile draws on the supplied sheet; English dialogue is translated or adapted from its Chinese character notes. The chibi captions are new editorial copy.
+
+## Chibi moments v2 prompt
+
+```text
+Use case: illustration-story
+Asset type: wide 3:1 chibi mascot triptych for README.
+Reference image: mascot identity and clothing reference, especially the TINY SUPER-DEFORMED CHIBIS along the BOTTOM ROW. Match those bottom-row proportions, NOT the tall anime illustrations.
+Generate three equally sized, extremely cute super-deformed chibi Loremark figures centered at exactly 1/6, 1/2, 5/6 of the canvas width. Each figure and its props must fit entirely within its own equal-width third with generous matching margins. All three share the same ground baseline.
+TRUE CHIBI: approximately TWO HEADS TALL total standing height, enormous round head roughly half the entire height, tiny compact body, very short stubby arms and legs, mitten-like tiny hands, huge expressive amber eyes, simplified chunky locks of ash-brown hair, forest-green ribbons, tiny gold star brooch, cream blouse and modest dark olive cape dress. No realistic anatomy or long legs. Clean polished anime sticker illustration with confident delicate outlines, soft cel shading and restrained watercolor accents. Simple warm ivory background, no scenes, no ornate decorative clutter.
+LEFT: seated chibi happily reading a large open dark-green book, eyes joyfully curved, tiny sleeping calico cat beside her.
+CENTER: seated chibi wearing round spectacles, pondering a small notebook with a tiny pencil, one simple question mark above her.
+RIGHT: seated chibi hugging a closed dark-green book, winking and making a playful hush gesture with a tiny finger near her lips, one small gold sparkle.
+All full figures visible, consistent character size and art style, warm cream/sage/antique gold colors. No text captions, no panel borders, no lettering except the single question mark, no watermark. Distinctively adorable mascot sticker proportions, not merely a smaller normal anime girl.
+```
 
 ## Wooden desk foreground edit prompt
 

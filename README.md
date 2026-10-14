@@ -179,15 +179,21 @@ Think of her as the little spirit tucked between your pages: ready with a remind
 
 <p align="center"><strong>✧ Little moments between chapters ✧</strong></p>
 
-<p align="center">
-  <img src="docs/assets/loremark-chibi-moments.png" alt="Three chibi illustrations of Loremark: reading beside a calico cat, pondering a notebook through round glasses, and making a playful hush gesture while holding a closed book." width="100%">
-</p>
-
-<table>
+<table width="100%">
   <tr>
-    <td align="center" width="33%"><strong>One more page</strong><br><sub>A good book. A sleepy cat. No hurry.</sub></td>
-    <td align="center" width="34%"><strong>Wait… a theory!</strong><br><sub>Glasses on. Let’s look at the clues.</sub></td>
-    <td align="center" width="33%"><strong>Shh… no spoilers</strong><br><sub>The next discovery belongs to you.</sub></td>
+    <td colspan="3" align="center">
+      <img src="docs/assets/loremark-chibi-moments-v2.png" alt="Three tiny, big-headed chibi Loremark mascots: happily reading with a cat, pondering a theory in round glasses, and winking with a no-spoilers hush gesture." width="100%">
+    </td>
+  </tr>
+  <tr>
+    <th align="center" width="33%">One more page</th>
+    <th align="center" width="34%">Wait… a theory!</th>
+    <th align="center" width="33%">Shh… no spoilers</th>
+  </tr>
+  <tr>
+    <td align="center" valign="top"><sub>A good book. A sleepy cat.<br>No hurry.</sub></td>
+    <td align="center" valign="top"><sub>Glasses on.<br>Let’s look at the clues.</sub></td>
+    <td align="center" valign="top"><sub>The next discovery<br>belongs to you.</sub></td>
   </tr>
 </table>
 
