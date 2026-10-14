@@ -8,11 +8,22 @@
 | `loremark-companion-portrait-clean.png` | Edited with the built-in image generation tool from the original portrait. | Simplified landscape portrait, retained as an alternate. |
 | `loremark-companion-portrait-square.png` | Vertically expanded with the built-in image generation tool from the simplified portrait. | Cream-background square portrait, retained as an alternate. |
 | `loremark-companion-portrait-soft-library.png` | Edited with the built-in image generation tool from the square portrait. | Soft library background with a cream foreground, retained as an alternate. |
-| `loremark-companion-portrait-desk.png` | Edited with the built-in image generation tool from the soft library portrait. | Current character profile with a wooden reading desk. |
+| `loremark-companion-portrait-desk.png` | Edited with the built-in image generation tool from the soft library portrait. | Wooden-desk portrait, retained as an alternate. |
+| `loremark-companion-front-view.png` | High-resolution redraw with the built-in image generation tool, based on the leftmost front view in the original turnaround panel. | Current full-body character profile illustration; a generative redraw, not a pixel-exact upscale. |
 | `loremark-chibi-moments.png` | Generated with the built-in image generation tool from the original character sheet. | Original three-moment illustration, retained as an alternate. |
 | `loremark-chibi-moments-v2.png` | Generated with the built-in image generation tool using the character sheet's bottom-row chibi proportions. | Current three-moment strip with exaggerated big-head, tiny-body chibi proportions. |
 
 The generated images are illustrations, not application screenshots. All assets are stored in this repository so the README does not depend on temporary image URLs. The character profile draws on the supplied sheet; English dialogue is translated or adapted from its Chinese character notes. The chibi captions are new editorial copy.
+
+## Front-view character redraw prompt
+
+```text
+Use case: identity-preserve
+Asset type: high-resolution full-body FRONT VIEW character illustration for a README profile.
+Input: Loremark original character design sheet. The EXACT target is the LEFTMOST standing figure in the panel labeled "Turnaround" in the lower left, above the chibi row. Recreate ONLY this front-view figure at high resolution. All other figures in the sheet are reference for details, NOT output subjects.
+Faithfully preserve the front figure's design: long ash-brown hair and side braids, amber eyes, dark forest-green bows, cream high-collar blouse with frilled cuffs, green neck bow and gold star brooch, fitted dark waist/bodice with gold fastenings, short pleated dark skirt with cream lace hem, long open dark olive cloak with gold embroidery and pointed hanging panels, black thigh-high stockings with original garter details, black heeled ankle boots with gold hardware. Standing straight facing camera, both hands relaxed naturally at sides, feet visible, gentle neutral smile, same original normal anime proportions (not chibi). Preserve original silhouette and clothing; do not redesign, add props, or change pose.
+Create a crisp premium high-definition restoration/redraw with delicate precise linework and soft polished painterly shading. Output one single character, full body from crown to soles with modest even margins. Tall portrait aspect ratio 2:3, at least 1024x1536, preferably 1536x2304 if possible. Plain warm ivory parchment backdrop and a very subtle ground shadow. No library, no cat, no books, no text, no labels, no Japanese name, no panel borders, no side/back views, no watermark. Character fills height; use restrained quiet space on sides.
+```
 
 ## Chibi moments v2 prompt
 

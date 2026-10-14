@@ -157,10 +157,10 @@ Have feedback? [Open an issue](https://github.com/bennyxzeng/Loremark/issues) wi
 
 <table>
   <tr>
-    <td width="48%" valign="middle" align="center">
-      <img src="docs/assets/loremark-companion-portrait-desk.png" alt="Loremark offering a gold leaf bookmark over a wooden desk beside a sleeping calico cat, framed by softly blurred bookshelves and warm window light." width="100%">
+    <td width="38%" valign="middle" align="center">
+      <img src="docs/assets/loremark-companion-front-view.png" alt="Full-body front view of Loremark with long ash-brown hair, green ribbons, a cream blouse, gold-embroidered dark cloak, pleated skirt, and black boots." width="100%">
     </td>
-    <td width="52%" valign="top">
+    <td width="62%" valign="middle">
       <h3>Character profile</h3>
       <p><strong>Name</strong> · Loremark<br>
       <strong>Role</strong> · Your spoiler-free reading companion<br>
@@ -211,7 +211,7 @@ Think of her as the little spirit tucked between your pages: ready with a remind
 
 </details>
 
-<sub>The character sheet was supplied by the project team. The banner, companion portrait, and chibi illustrations are AI-generated from that reference. See the <a href="docs/assets/README.md">asset notes and generation prompts</a>.</sub>
+<sub>The character sheet was supplied by the project team. The banner, front-view character illustration, and chibi illustrations are AI-generated from that reference. See the <a href="docs/assets/README.md">asset notes and generation prompts</a>.</sub>
 
 ## The team
 
