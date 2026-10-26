@@ -1,0 +1,196 @@
+{
+  "characters": [
+    {
+      "id": "c001",
+      "name": {
+        "text": "Mira Okonkwo",
+        "evidence": [{"paragraph_id": "p0002", "quote": "Captain Mira Okonkwo"}]
+      },
+      "aliases": [],
+      "attributes": [
+        {
+          "label": "occupation",
+          "value": "ferry captain",
+          "assertion": "explicit",
+          "attributed_to_id": null,
+          "evidence": [{"paragraph_id": "p0002", "quote": "Captain Mira Okonkwo steered the lantern ferry Heron"}]
+        }
+      ]
+    },
+    {
+      "id": "c002",
+      "name": {
+        "text": "Tomas",
+        "evidence": [{"paragraph_id": "p0003", "quote": "said Tomas, her first mate"}]
+      },
+      "aliases": [],
+      "attributes": [
+        {
+          "label": "role",
+          "value": "first mate",
+          "assertion": "explicit",
+          "attributed_to_id": null,
+          "evidence": [{"paragraph_id": "p0003", "quote": "her first mate"}]
+        }
+      ]
+    },
+    {
+      "id": "c003",
+      "name": {
+        "text": "Ilya",
+        "evidence": [{"paragraph_id": "p0004", "quote": "her brother Ilya"}]
+      },
+      "aliases": [],
+      "attributes": []
+    },
+    {
+      "id": "c004",
+      "name": {
+        "text": "courier in a grey hood",
+        "evidence": [{"paragraph_id": "p0005", "quote": "A courier in a grey hood"}]
+      },
+      "aliases": [
+        {
+          "text": "The courier",
+          "evidence": [{"paragraph_id": "p0006", "quote": "The courier whispered"}]
+        }
+      ],
+      "attributes": []
+    }
+  ],
+  "locations": [
+    {
+      "id": "l001",
+      "name": {
+        "text": "valley of Esk",
+        "evidence": [{"paragraph_id": "p0002", "quote": "the flooded valley of Esk"}]
+      },
+      "aliases": [],
+      "attributes": [
+        {
+          "label": "condition",
+          "value": "flooded",
+          "assertion": "explicit",
+          "attributed_to_id": null,
+          "evidence": [{"paragraph_id": "p0002", "quote": "flooded valley of Esk"}]
+        }
+      ]
+    },
+    {
+      "id": "l002",
+      "name": {
+        "text": "Saltgate pier",
+        "evidence": [{"paragraph_id": "p0005", "quote": "the Saltgate pier"}]
+      },
+      "aliases": [],
+      "attributes": []
+    }
+  ],
+  "organizations": [
+    {
+      "id": "g001",
+      "name": {
+        "text": "Harbor Guild",
+        "evidence": [{"paragraph_id": "p0003", "quote": "The Harbor Guild"}]
+      },
+      "aliases": [],
+      "attributes": []
+    }
+  ],
+  "relationships": [
+    {
+      "id": "r001",
+      "source_id": "c003",
+      "target_id": "c001",
+      "label": "sibling_of",
+      "description": "Ilya is Mira's brother.",
+      "assertion": "explicit",
+      "attributed_to_id": null,
+      "temporal_context": "current",
+      "evidence": [{"paragraph_id": "p0004", "quote": "her brother Ilya"}]
+    },
+    {
+      "id": "r002",
+      "source_id": "c002",
+      "target_id": "c001",
+      "label": "serves_under",
+      "description": "Tomas is the first mate on Mira's ferry.",
+      "assertion": "explicit",
+      "attributed_to_id": null,
+      "temporal_context": "current",
+      "evidence": [{"paragraph_id": "p0003", "quote": "said Tomas, her first mate"}]
+    }
+  ],
+  "events": [
+    {
+      "id": "e001",
+      "description": "Mira steers the ferry Heron across the flooded valley.",
+      "participant_ids": ["c001"],
+      "location_id": "l001",
+      "narrative_order": 1,
+      "temporal_context": "current",
+      "story_time": null,
+      "assertion": "explicit",
+      "attributed_to_id": null,
+      "evidence": [{"paragraph_id": "p0002", "quote": "steered the lantern ferry Heron across the flooded valley of Esk"}]
+    },
+    {
+      "id": "e002",
+      "description": "The Harbor Guild claims the dam will hold until winter.",
+      "participant_ids": ["g001"],
+      "location_id": null,
+      "narrative_order": 2,
+      "temporal_context": "future",
+      "story_time": "until winter",
+      "assertion": "reported",
+      "attributed_to_id": "g001",
+      "evidence": [{"paragraph_id": "p0003", "quote": "The Harbor Guild says the dam will hold until winter"}]
+    },
+    {
+      "id": "e003",
+      "description": "Ilya vanished from the ferry docks.",
+      "participant_ids": ["c003"],
+      "location_id": null,
+      "narrative_order": 3,
+      "temporal_context": "past",
+      "story_time": "twelve years earlier",
+      "assertion": "explicit",
+      "attributed_to_id": null,
+      "evidence": [{"paragraph_id": "p0004", "quote": "her brother Ilya had vanished from the ferry docks"}]
+    },
+    {
+      "id": "e004",
+      "description": "A courier boards at the Saltgate pier and hands Mira a sealed letter.",
+      "participant_ids": ["c004", "c001"],
+      "location_id": "l002",
+      "narrative_order": 4,
+      "temporal_context": "current",
+      "story_time": null,
+      "assertion": "explicit",
+      "attributed_to_id": null,
+      "evidence": [{"paragraph_id": "p0005", "quote": "handed Mira a sealed letter"}]
+    },
+    {
+      "id": "e005",
+      "description": "Mira opens the letter, which is signed only with the initial I.",
+      "participant_ids": ["c001"],
+      "location_id": null,
+      "narrative_order": 5,
+      "temporal_context": "current",
+      "story_time": null,
+      "assertion": "explicit",
+      "attributed_to_id": null,
+      "evidence": [
+        {"paragraph_id": "p0007", "quote": "Mira broke the seal."},
+        {"paragraph_id": "p0007", "quote": "signed only with the initial I"}
+      ]
+    }
+  ],
+  "uncertainties": [
+    {
+      "question": "Is the letter's signer \"I\" the same person as Mira's brother Ilya?",
+      "related_entity_ids": ["c003"],
+      "evidence": [{"paragraph_id": "p0007", "quote": "signed only with the initial I"}]
+    }
+  ]
+}

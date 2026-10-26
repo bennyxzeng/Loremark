@@ -2,6 +2,7 @@
 *.class
 *.log
 *.pyc
+.venv/
 *.swp
 .DS_Store
 .atom/
@@ -46,3 +47,14 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Story model lab (tools/story_model_lab)
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+tools/story_model_lab/runs/
+.env
+.env.*
+!.env.example
+sample_epub/*.epub

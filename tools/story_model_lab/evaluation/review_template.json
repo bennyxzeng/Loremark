@@ -1,0 +1,60 @@
+{
+  "run": {
+    "run_id": "",
+    "provider": "",
+    "requested_model": "",
+    "response_model": "",
+    "section_id": "",
+    "text_sha256": "",
+    "prompt_sha256": "",
+    "schema_sha256": ""
+  },
+  "reviewer": "",
+  "reviewed_at": "",
+  "sampling_method": "",
+  "claim_checks": [
+    {
+      "record_id": "",
+      "record_path": "",
+      "claim": "",
+      "kind": "attribute | alias | relationship | event | uncertainty",
+      "chapter_position": "start | middle | end",
+      "paragraph_ids": [],
+      "verdict": "supported | contradicted | unsupported | needs_review",
+      "flags": [],
+      "note": ""
+    }
+  ],
+  "reference_points": [
+    {
+      "id": "R01",
+      "point": "",
+      "paragraph_ids": [],
+      "quote": "",
+      "chapter_position": "start | middle | end",
+      "covered": "yes | partial | no",
+      "matched_record_ids": [],
+      "note": ""
+    }
+  ],
+  "allowed_flags": [
+    "identity_confusion",
+    "time_confusion",
+    "relation_direction",
+    "over_inference",
+    "omission",
+    "outside_chapter_knowledge"
+  ],
+  "summary": {
+    "claims_checked": 0,
+    "supported": 0,
+    "contradicted": 0,
+    "unsupported": 0,
+    "needs_review": 0,
+    "reference_points": 0,
+    "covered_yes": 0,
+    "covered_partial": 0,
+    "covered_no": 0,
+    "notes": ""
+  }
+}

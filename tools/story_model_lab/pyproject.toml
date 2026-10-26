@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "loremark-story-lab"
+version = "0.1.0"
+description = "Terminal experiment: extract a single-chapter story model from an EPUB with the Responses API."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "openai>=3.37,<4",
+    "pydantic>=2.14,<3",
+    "beautifulsoup4>=4.15,<5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.1,<10",
+    "ruff>=0.17,<0.18",
+]
+
+[project.scripts]
+story-model = "loremark_story_lab.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+loremark_story_lab = ["prompts/*.txt"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "live: calls a real model API; needs RUN_LIVE_OPENAI=1 or RUN_LIVE_DEEPSEEK=1 plus credentials",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]

@@ -1,0 +1,3143 @@
+{
+  "validator_version": "1.0",
+  "passed": true,
+  "structure_valid": true,
+  "error_count": 0,
+  "warning_count": 0,
+  "counts": {
+    "characters": 12,
+    "locations": 10,
+    "organizations": 8,
+    "relationships": 21,
+    "events": 20,
+    "uncertainties": 8,
+    "attributes": 108,
+    "aliases": 18,
+    "evidence_items": 240,
+    "evidence_matched": 240
+  },
+  "issues": [],
+  "evidence": [
+    {
+      "path": "characters[0].name.evidence[0]",
+      "record_id": "c001",
+      "paragraph_id": "p0007",
+      "quote": "A young boy passed by Lena",
+      "matched": true,
+      "spans": [
+        [
+          0,
+          26
+        ]
+      ]
+    },
+    {
+      "path": "characters[0].aliases[0].evidence[0]",
+      "record_id": "c001",
+      "paragraph_id": "p0027",
+      "quote": "Major Vladilena Milizé, commanding control officer for the eastern front’s ninth ward, third defensive squadron.",
+      "matched": true,
+      "spans": [
+        [
+          26,
+          138
+        ]
+      ]
+    },
+    {
+      "path": "characters[0].aliases[1].evidence[0]",
+      "record_id": "c001",
+      "paragraph_id": "p0177",
+      "quote": "Handler One to all units in the Spearhead squadron.",
+      "matched": true,
+      "spans": [
+        [
+          1,
+          52
+        ]
+      ]
+    },
+    {
+      "path": "characters[0].attributes[0].evidence[0]",
+      "record_id": "c001",
+      "paragraph_id": "p0008",
+      "quote": "The sixteen-year-old girl",
+      "matched": true,
+      "spans": [
+        [
+          88,
+          113
+        ]
+      ]
+    },
+    {
+      "path": "characters[0].attributes[1].evidence[0]",
+      "record_id": "c001",
+      "paragraph_id": "p0027",
+      "quote": "Major Vladilena Milizé",
+      "matched": true,
+      "spans": [
+        [
+          26,
+          48
+        ]
+      ]
+    },
+    {
+      "path": "characters[0].attributes[2].evidence[0]",
+      "record_id": "c001",
+      "paragraph_id": "p0008",
+      "quote": "She was clad in the Republic military’s dark-blue collared uniform for female officers.",
+      "matched": true,
+      "spans": [
+        [
+          0,
+          87
+        ]
+      ]
+    },
+    {
+      "path": "characters[0].attributes[3].evidence[0]",
+      "record_id": "c001",
+      "paragraph_id": "p0008",
+      "quote": "not only an Alba, a descendant of the race native to this land since ages past, but also a pureblood Celena",
+      "matched": true,
+      "spans": [
+        [
+          395,
+          502
+        ]
+      ]
+    },
+    {
+      "path": "characters[0].attributes[4].evidence[0]",
+      "record_id": "c001",
+      "paragraph_id": "p0008",
+      "quote": "Her softly flowing, silken hair and long eyelashes were a striking silver, and her large, equally silver eyes",
+      "matched": true,
+      "spans": [
+        [
+          256,
+          365
+        ]
+      ]
+    },
+    {
+      "path": "characters[0].attributes[5].evidence[0]",
+      "record_id": "c001",
+      "paragraph_id": "p0027",
+      "quote": "commanding control officer for the eastern front’s ninth ward, third defensive squadron",
+      "matched": true,
+      "spans": [
+        [
+          50,
+          137
+        ]
+      ]
+    },
+    {
+      "path": "characters[0].attributes[6].evidence[0]",
+      "record_id": "c001",
+      "paragraph_id": "p0125",
+      "quote": "I hereby appoint you to the role of commanding officer for the eastern front’s first ward’s first defensive squadron",
+      "matched": true,
+      "spans": [
+        [
+          136,
+          252
+        ]
+      ]
+    },
+    {
+      "path": "characters[0].attributes[7].evidence[0]",
+      "record_id": "c001",
+      "paragraph_id": "p0074",
+      "quote": "daughter of the great Milizé household",
+      "matched": true,
+      "spans": [
+        [
+          54,
+          92
+        ]
+      ]
+    },
+    {
+      "path": "characters[0].attributes[8].evidence[0]",
+      "record_id": "c001",
+      "paragraph_id": "p0074",
+      "quote": "I know your late father was a soldier",
+      "matched": true,
+      "spans": [
+        [
+          122,
+          159
+        ]
+      ]
+    },
+    {
+      "path": "characters[1].name.evidence[0]",
+      "record_id": "c002",
+      "paragraph_id": "p0019",
+      "quote": "she turned to find Annette",
+      "matched": true,
+      "spans": [
+        [
+          147,
+          173
+        ]
+      ]
+    },
+    {
+      "path": "characters[1].attributes[0].evidence[0]",
+      "record_id": "c002",
+      "paragraph_id": "p0019",
+      "quote": "She was a technical lieutenant affiliated with the lab division",
+      "matched": true,
+      "spans": [
+        [
+          236,
+          299
+        ]
+      ]
+    },
+    {
+      "path": "characters[1].attributes[1].evidence[0]",
+      "record_id": "c002",
+      "paragraph_id": "p0019",
+      "quote": "She was a technical lieutenant affiliated with the lab division",
+      "matched": true,
+      "spans": [
+        [
+          236,
+          299
+        ]
+      ]
+    },
+    {
+      "path": "characters[1].attributes[2].evidence[0]",
+      "record_id": "c002",
+      "paragraph_id": "p0019",
+      "quote": "a friend of Lena’s since secondary school",
+      "matched": true,
+      "spans": [
+        [
+          304,
+          345
+        ]
+      ]
+    },
+    {
+      "path": "characters[1].attributes[3].evidence[0]",
+      "record_id": "c002",
+      "paragraph_id": "p0019",
+      "quote": "she was currently Lena’s only friend who was the same age",
+      "matched": true,
+      "spans": [
+        [
+          381,
+          438
+        ]
+      ]
+    },
+    {
+      "path": "characters[1].attributes[4].evidence[0]",
+      "record_id": "c002",
+      "paragraph_id": "p0022",
+      "quote": "Her short hair was an Alba’s silver, and her large, hanging eyes were a similar silvery hue.",
+      "matched": true,
+      "spans": [
+        [
+          35,
+          127
+        ]
+      ]
+    },
+    {
+      "path": "characters[1].attributes[5].evidence[0]",
+      "record_id": "c002",
+      "paragraph_id": "p0127",
+      "quote": "Annette was the officer in charge of the Para-RAID development team",
+      "matched": true,
+      "spans": [
+        [
+          161,
+          228
+        ]
+      ]
+    },
+    {
+      "path": "characters[1].attributes[6].evidence[0]",
+      "record_id": "c002",
+      "paragraph_id": "p0163",
+      "quote": "Annette smiled mischievously.",
+      "matched": true,
+      "spans": [
+        [
+          137,
+          166
+        ]
+      ]
+    },
+    {
+      "path": "characters[1].attributes[6].evidence[1]",
+      "record_id": "c002",
+      "paragraph_id": "p0165",
+      "quote": "only the daughter of the Penrose family, formerly a noble house, could afford",
+      "matched": true,
+      "spans": [
+        [
+          496,
+          573
+        ]
+      ]
+    },
+    {
+      "path": "characters[1].attributes[7].evidence[0]",
+      "record_id": "c002",
+      "paragraph_id": "p0159",
+      "quote": "Annette’s father, Professor Josef von Penrose",
+      "matched": true,
+      "spans": [
+        [
+          4,
+          49
+        ]
+      ]
+    },
+    {
+      "path": "characters[2].name.evidence[0]",
+      "record_id": "c003",
+      "paragraph_id": "p0068",
+      "quote": "Lena’s mother opened her perfectly rouged lips to speak.",
+      "matched": true,
+      "spans": [
+        [
+          56,
+          112
+        ]
+      ]
+    },
+    {
+      "path": "characters[2].aliases[0].evidence[0]",
+      "record_id": "c003",
+      "paragraph_id": "p0076",
+      "quote": "Protecting the motherland is a Republic citizen’s duty and pride, Mother.",
+      "matched": true,
+      "spans": [
+        [
+          1,
+          74
+        ]
+      ]
+    },
+    {
+      "path": "characters[2].attributes[0].evidence[0]",
+      "record_id": "c003",
+      "paragraph_id": "p0068",
+      "quote": "dressed in an antiquated gown, Lena’s mother opened her perfectly rouged lips",
+      "matched": true,
+      "spans": [
+        [
+          25,
+          102
+        ]
+      ]
+    },
+    {
+      "path": "characters[2].attributes[1].evidence[0]",
+      "record_id": "c003",
+      "paragraph_id": "p0072",
+      "quote": "Lena, isn’t it about time you quit the army and find a groom from a good family?",
+      "matched": true,
+      "spans": [
+        [
+          20,
+          100
+        ]
+      ]
+    },
+    {
+      "path": "characters[2].attributes[2].evidence[0]",
+      "record_id": "c003",
+      "paragraph_id": "p0077",
+      "quote": "when they’re stained with those filthy colors?",
+      "matched": true,
+      "spans": [
+        [
+          105,
+          151
+        ]
+      ]
+    },
+    {
+      "path": "characters[2].attributes[2].evidence[1]",
+      "record_id": "c003",
+      "paragraph_id": "p0077",
+      "quote": "letting those animals set foot on Republic soil",
+      "matched": true,
+      "spans": [
+        [
+          255,
+          302
+        ]
+      ]
+    },
+    {
+      "path": "characters[3].name.evidence[0]",
+      "record_id": "c004",
+      "paragraph_id": "p0091",
+      "quote": "Commodore Karlstahl",
+      "matched": true,
+      "spans": [
+        [
+          282,
+          301
+        ]
+      ]
+    },
+    {
+      "path": "characters[3].aliases[0].evidence[0]",
+      "record_id": "c004",
+      "paragraph_id": "p0091",
+      "quote": "Commodore Karlstahl",
+      "matched": true,
+      "spans": [
+        [
+          282,
+          301
+        ]
+      ]
+    },
+    {
+      "path": "characters[3].aliases[1].evidence[0]",
+      "record_id": "c004",
+      "paragraph_id": "p0102",
+      "quote": "I-I’m sorry, Uncle Jérôme.",
+      "matched": true,
+      "spans": [
+        [
+          1,
+          27
+        ]
+      ]
+    },
+    {
+      "path": "characters[3].attributes[0].evidence[0]",
+      "record_id": "c004",
+      "paragraph_id": "p0091",
+      "quote": "Commodore Karlstahl",
+      "matched": true,
+      "spans": [
+        [
+          282,
+          301
+        ]
+      ]
+    },
+    {
+      "path": "characters[3].attributes[1].evidence[0]",
+      "record_id": "c004",
+      "paragraph_id": "p0091",
+      "quote": "division commander seated behind the antiquated desk",
+      "matched": true,
+      "spans": [
+        [
+          228,
+          280
+        ]
+      ]
+    },
+    {
+      "path": "characters[3].attributes[2].evidence[0]",
+      "record_id": "c004",
+      "paragraph_id": "p0096",
+      "quote": "Karlstahl’s scarred cheeks slackened into a smile. His beard gave off a feeling of gentle dignity, and his frame was tall and broad-shouldered.",
+      "matched": true,
+      "spans": [
+        [
+          0,
+          143
+        ]
+      ]
+    },
+    {
+      "path": "characters[3].attributes[3].evidence[0]",
+      "record_id": "c004",
+      "paragraph_id": "p0102",
+      "quote": "who had fought alongside him nine years ago as part of the now demolished Republic Armed Forces. The two were among its sole survivors.",
+      "matched": true,
+      "spans": [
+        [
+          213,
+          348
+        ]
+      ]
+    },
+    {
+      "path": "characters[3].attributes[4].evidence[0]",
+      "record_id": "c004",
+      "paragraph_id": "p0102",
+      "quote": "he helped arrange the funeral, as well as support Lena and her family in various ways",
+      "matched": true,
+      "spans": [
+        [
+          449,
+          534
+        ]
+      ]
+    },
+    {
+      "path": "characters[4].name.evidence[0]",
+      "record_id": "c005",
+      "paragraph_id": "p0053",
+      "quote": "Pleiades’s Processor",
+      "matched": true,
+      "spans": [
+        [
+          96,
+          116
+        ]
+      ]
+    },
+    {
+      "path": "characters[4].aliases[0].evidence[0]",
+      "record_id": "c005",
+      "paragraph_id": "p0033",
+      "quote": "Pleiades to Handler One.",
+      "matched": true,
+      "spans": [
+        [
+          1,
+          25
+        ]
+      ]
+    },
+    {
+      "path": "characters[4].attributes[0].evidence[0]",
+      "record_id": "c005",
+      "paragraph_id": "p0031",
+      "quote": "the third squadron’s captain, the Processor operating Personal Name unit Pleiades",
+      "matched": true,
+      "spans": [
+        [
+          231,
+          312
+        ]
+      ]
+    },
+    {
+      "path": "characters[4].attributes[1].evidence[0]",
+      "record_id": "c005",
+      "paragraph_id": "p0032",
+      "quote": "the “voice” of a young man, presumably a year or two older than she was",
+      "matched": true,
+      "spans": [
+        [
+          109,
+          180
+        ]
+      ]
+    },
+    {
+      "path": "characters[4].attributes[2].evidence[0]",
+      "record_id": "c005",
+      "paragraph_id": "p0037",
+      "quote": "us subhuman Eighty-Six",
+      "matched": true,
+      "spans": [
+        [
+          26,
+          48
+        ]
+      ]
+    },
+    {
+      "path": "characters[4].attributes[3].evidence[0]",
+      "record_id": "c005",
+      "paragraph_id": "p0053",
+      "quote": "the Eighty-Six pilot who agreed to serve on the field of battle for five years in exchange for the restoration of his family’s civil rights",
+      "matched": true,
+      "spans": [
+        [
+          117,
+          256
+        ]
+      ]
+    },
+    {
+      "path": "characters[4].attributes[4].evidence[0]",
+      "record_id": "c005",
+      "paragraph_id": "p0058",
+      "quote": "Hope you enjoyed watching us pigs squabble through your little telescope, Handler One.",
+      "matched": true,
+      "spans": [
+        [
+          25,
+          111
+        ]
+      ]
+    },
+    {
+      "path": "characters[4].attributes[5].evidence[0]",
+      "record_id": "c005",
+      "paragraph_id": "p0064",
+      "quote": "Cold contempt and hatred were sprinkled into those words.",
+      "matched": true,
+      "spans": [
+        [
+          0,
+          57
+        ]
+      ]
+    },
+    {
+      "path": "characters[5].name.evidence[0]",
+      "record_id": "c006",
+      "paragraph_id": "p0106",
+      "quote": "Personal Name: Undertaker",
+      "matched": true,
+      "spans": [
+        [
+          123,
+          148
+        ]
+      ]
+    },
+    {
+      "path": "characters[5].aliases[0].evidence[0]",
+      "record_id": "c006",
+      "paragraph_id": "p0107",
+      "quote": "The Handlers who know him seem to call him the Reaper",
+      "matched": true,
+      "spans": [
+        [
+          31,
+          84
+        ]
+      ]
+    },
+    {
+      "path": "characters[5].attributes[0].evidence[0]",
+      "record_id": "c006",
+      "paragraph_id": "p0106",
+      "quote": "It’s the Spearhead squadron’s captain unit, Personal Name: Undertaker.",
+      "matched": true,
+      "spans": [
+        [
+          79,
+          149
+        ]
+      ]
+    },
+    {
+      "path": "characters[5].attributes[1].evidence[0]",
+      "record_id": "c006",
+      "paragraph_id": "p0107",
+      "quote": "The Handlers who know him seem to call him the Reaper and are all frightened of him",
+      "matched": true,
+      "spans": [
+        [
+          31,
+          114
+        ]
+      ]
+    },
+    {
+      "path": "characters[5].attributes[2].evidence[0]",
+      "record_id": "c006",
+      "paragraph_id": "p0107",
+      "quote": "It seems he has a tendency to…break his Handlers.",
+      "matched": true,
+      "spans": [
+        [
+          116,
+          165
+        ]
+      ]
+    },
+    {
+      "path": "characters[5].attributes[3].evidence[0]",
+      "record_id": "c006",
+      "paragraph_id": "p0110",
+      "quote": "an unusually high number of Handlers who were in charge of Undertaker’s squadrons have put in requests to change their assignments or requested to resign from service altogether",
+      "matched": true,
+      "spans": [
+        [
+          178,
+          355
+        ]
+      ]
+    },
+    {
+      "path": "characters[5].attributes[3].evidence[1]",
+      "record_id": "c006",
+      "paragraph_id": "p0110",
+      "quote": "some have committed suicide after resigning",
+      "matched": true,
+      "spans": [
+        [
+          476,
+          519
+        ]
+      ]
+    },
+    {
+      "path": "characters[5].attributes[4].evidence[0]",
+      "record_id": "c006",
+      "paragraph_id": "p0181",
+      "quote": "his voice was as serene as a deep forest lake",
+      "matched": true,
+      "spans": [
+        [
+          93,
+          138
+        ]
+      ]
+    },
+    {
+      "path": "characters[5].attributes[5].evidence[0]",
+      "record_id": "c006",
+      "paragraph_id": "p0181",
+      "quote": "It was a boy roughly her age, probably originally from a middle-class or higher family.",
+      "matched": true,
+      "spans": [
+        [
+          140,
+          227
+        ]
+      ]
+    },
+    {
+      "path": "characters[5].attributes[6].evidence[0]",
+      "record_id": "c006",
+      "paragraph_id": "p0049",
+      "quote": "The Eighty-Six who served as pilots were designated information-processing units— Processors",
+      "matched": true,
+      "spans": [
+        [
+          262,
+          354
+        ]
+      ]
+    },
+    {
+      "path": "characters[5].attributes[6].evidence[1]",
+      "record_id": "c006",
+      "paragraph_id": "p0180",
+      "quote": "This is the Spearhead squadron’s captain, Personal Name: Undertaker, speaking.",
+      "matched": true,
+      "spans": [
+        [
+          35,
+          113
+        ]
+      ]
+    },
+    {
+      "path": "characters[5].attributes[7].evidence[0]",
+      "record_id": "c006",
+      "paragraph_id": "p0183",
+      "quote": "his detached tone",
+      "matched": true,
+      "spans": [
+        [
+          65,
+          82
+        ]
+      ]
+    },
+    {
+      "path": "characters[6].name.evidence[0]",
+      "record_id": "c007",
+      "paragraph_id": "p0159",
+      "quote": "Professor Josef von Penrose",
+      "matched": true,
+      "spans": [
+        [
+          22,
+          49
+        ]
+      ]
+    },
+    {
+      "path": "characters[6].aliases[0].evidence[0]",
+      "record_id": "c007",
+      "paragraph_id": "p0159",
+      "quote": "Annette’s father, Professor Josef von Penrose",
+      "matched": true,
+      "spans": [
+        [
+          4,
+          49
+        ]
+      ]
+    },
+    {
+      "path": "characters[6].attributes[0].evidence[0]",
+      "record_id": "c007",
+      "paragraph_id": "p0159",
+      "quote": "Professor Josef von Penrose",
+      "matched": true,
+      "spans": [
+        [
+          22,
+          49
+        ]
+      ]
+    },
+    {
+      "path": "characters[6].attributes[1].evidence[0]",
+      "record_id": "c007",
+      "paragraph_id": "p0159",
+      "quote": "Annette’s father, Professor Josef von Penrose",
+      "matched": true,
+      "spans": [
+        [
+          4,
+          49
+        ]
+      ]
+    },
+    {
+      "path": "characters[6].attributes[2].evidence[0]",
+      "record_id": "c007",
+      "paragraph_id": "p0156",
+      "quote": "Dad was just in charge of preparing the lab conditions and replicating the phenomenon with the recruited test subjects.",
+      "matched": true,
+      "spans": [
+        [
+          152,
+          271
+        ]
+      ]
+    },
+    {
+      "path": "characters[6].attributes[3].evidence[0]",
+      "record_id": "c007",
+      "paragraph_id": "p0159",
+      "quote": "was involved in an accident during an experiment that drove him mad and ultimately killed him",
+      "matched": true,
+      "spans": [
+        [
+          51,
+          144
+        ]
+      ]
+    },
+    {
+      "path": "characters[6].attributes[4].evidence[0]",
+      "record_id": "c007",
+      "paragraph_id": "p0159",
+      "quote": "The RAID Device’s synchronization rate was accidently set to the theoretical maximum.",
+      "matched": true,
+      "spans": [
+        [
+          240,
+          325
+        ]
+      ]
+    },
+    {
+      "path": "characters[6].attributes[5].evidence[0]",
+      "record_id": "c007",
+      "paragraph_id": "p0159",
+      "quote": "Some believed he connected to somewhere that lay beyond the human collective unconscious.",
+      "matched": true,
+      "spans": [
+        [
+          326,
+          415
+        ]
+      ]
+    },
+    {
+      "path": "characters[7].name.evidence[0]",
+      "record_id": "c008",
+      "paragraph_id": "p0172",
+      "quote": "‘To my darling Theobald’",
+      "matched": true,
+      "spans": [
+        [
+          167,
+          191
+        ]
+      ]
+    },
+    {
+      "path": "characters[7].attributes[0].evidence[0]",
+      "record_id": "c008",
+      "paragraph_id": "p0169",
+      "quote": "the guy who came over for my arranged marriage",
+      "matched": true,
+      "spans": [
+        [
+          31,
+          77
+        ]
+      ]
+    },
+    {
+      "path": "characters[7].attributes[0].evidence[1]",
+      "record_id": "c008",
+      "paragraph_id": "p0172",
+      "quote": "‘To my darling Theobald’",
+      "matched": true,
+      "spans": [
+        [
+          167,
+          191
+        ]
+      ]
+    },
+    {
+      "path": "characters[7].attributes[1].evidence[0]",
+      "record_id": "c008",
+      "paragraph_id": "p0172",
+      "quote": "apartment he’s renting with his mistress",
+      "matched": true,
+      "spans": [
+        [
+          223,
+          263
+        ]
+      ]
+    },
+    {
+      "path": "characters[7].attributes[2].evidence[0]",
+      "record_id": "c008",
+      "paragraph_id": "p0170",
+      "quote": "he’d fainted, frothing at the mouth after the fifth prototype chocolate",
+      "matched": true,
+      "spans": [
+        [
+          9,
+          80
+        ]
+      ]
+    },
+    {
+      "path": "characters[8].name.evidence[0]",
+      "record_id": "c009",
+      "paragraph_id": "p0125",
+      "quote": "You really do take after Václav",
+      "matched": true,
+      "spans": [
+        [
+          69,
+          100
+        ]
+      ]
+    },
+    {
+      "path": "characters[8].attributes[0].evidence[0]",
+      "record_id": "c009",
+      "paragraph_id": "p0102",
+      "quote": "best friends with Lena’s late father",
+      "matched": true,
+      "spans": [
+        [
+          175,
+          211
+        ]
+      ]
+    },
+    {
+      "path": "characters[8].attributes[0].evidence[1]",
+      "record_id": "c009",
+      "paragraph_id": "p0125",
+      "quote": "You really do take after Václav",
+      "matched": true,
+      "spans": [
+        [
+          69,
+          100
+        ]
+      ]
+    },
+    {
+      "path": "characters[9].name.evidence[0]",
+      "record_id": "c010",
+      "paragraph_id": "p0006",
+      "quote": "Saint Magnolia",
+      "matched": true,
+      "spans": [
+        [
+          101,
+          115
+        ]
+      ]
+    },
+    {
+      "path": "characters[9].aliases[0].evidence[0]",
+      "record_id": "c010",
+      "paragraph_id": "p0006",
+      "quote": "the saint of the revolution, Saint Magnolia",
+      "matched": true,
+      "spans": [
+        [
+          72,
+          115
+        ]
+      ]
+    },
+    {
+      "path": "characters[9].aliases[1].evidence[0]",
+      "record_id": "c010",
+      "paragraph_id": "p0065",
+      "quote": "patron saint of the revolution",
+      "matched": true,
+      "spans": [
+        [
+          650,
+          680
+        ]
+      ]
+    },
+    {
+      "path": "characters[9].attributes[0].evidence[0]",
+      "record_id": "c010",
+      "paragraph_id": "p0006",
+      "quote": "the saint of the revolution, Saint Magnolia",
+      "matched": true,
+      "spans": [
+        [
+          72,
+          115
+        ]
+      ]
+    },
+    {
+      "path": "characters[9].attributes[1].evidence[0]",
+      "record_id": "c010",
+      "paragraph_id": "p0065",
+      "quote": "patron saint of the revolution",
+      "matched": true,
+      "spans": [
+        [
+          650,
+          680
+        ]
+      ]
+    },
+    {
+      "path": "characters[9].attributes[2].evidence[0]",
+      "record_id": "c010",
+      "paragraph_id": "p0006",
+      "quote": "a flag bearing the visage of the saint of the revolution, Saint Magnolia",
+      "matched": true,
+      "spans": [
+        [
+          43,
+          115
+        ]
+      ]
+    },
+    {
+      "path": "characters[10].name.evidence[0]",
+      "record_id": "c011",
+      "paragraph_id": "p0010",
+      "quote": "the snowy-haired, silver-eyed alabaster newscaster’s brilliant smile",
+      "matched": true,
+      "spans": [
+        [
+          43,
+          111
+        ]
+      ]
+    },
+    {
+      "path": "characters[10].attributes[0].evidence[0]",
+      "record_id": "c011",
+      "paragraph_id": "p0010",
+      "quote": "the snowy-haired, silver-eyed alabaster newscaster",
+      "matched": true,
+      "spans": [
+        [
+          43,
+          93
+        ]
+      ]
+    },
+    {
+      "path": "characters[10].attributes[1].evidence[0]",
+      "record_id": "c011",
+      "paragraph_id": "p0065",
+      "quote": "This was a government-sponsored broadcast",
+      "matched": true,
+      "spans": [
+        [
+          424,
+          465
+        ]
+      ]
+    },
+    {
+      "path": "characters[10].attributes[2].evidence[0]",
+      "record_id": "c011",
+      "paragraph_id": "p0010",
+      "quote": "This optimistic, or rather unrealistic, news report had been repeated countless times since the war began",
+      "matched": true,
+      "spans": [
+        [
+          113,
+          218
+        ]
+      ]
+    },
+    {
+      "path": "characters[11].name.evidence[0]",
+      "record_id": "c012",
+      "paragraph_id": "p0157",
+      "quote": "The other researcher was an Eighty-Six.",
+      "matched": true,
+      "spans": [
+        [
+          101,
+          140
+        ]
+      ]
+    },
+    {
+      "path": "characters[11].attributes[0].evidence[0]",
+      "record_id": "c012",
+      "paragraph_id": "p0157",
+      "quote": "The other researcher was an Eighty-Six.",
+      "matched": true,
+      "spans": [
+        [
+          101,
+          140
+        ]
+      ]
+    },
+    {
+      "path": "characters[11].attributes[1].evidence[0]",
+      "record_id": "c012",
+      "paragraph_id": "p0156",
+      "quote": "The fundamental theory and hypothesis were all the work of other researchers.",
+      "matched": true,
+      "spans": [
+        [
+          74,
+          151
+        ]
+      ]
+    },
+    {
+      "path": "characters[11].attributes[1].evidence[1]",
+      "record_id": "c012",
+      "paragraph_id": "p0157",
+      "quote": "The other researcher was an Eighty-Six.",
+      "matched": true,
+      "spans": [
+        [
+          101,
+          140
+        ]
+      ]
+    },
+    {
+      "path": "characters[11].attributes[2].evidence[0]",
+      "record_id": "c012",
+      "paragraph_id": "p0157",
+      "quote": "didn’t have their names recorded",
+      "matched": true,
+      "spans": [
+        [
+          188,
+          220
+        ]
+      ]
+    },
+    {
+      "path": "characters[11].attributes[2].evidence[1]",
+      "record_id": "c012",
+      "paragraph_id": "p0157",
+      "quote": "they each received a number as their sole identifier",
+      "matched": true,
+      "spans": [
+        [
+          257,
+          309
+        ]
+      ]
+    },
+    {
+      "path": "locations[0].name.evidence[0]",
+      "record_id": "l001",
+      "paragraph_id": "p0004",
+      "quote": "Liberté et Égalité",
+      "matched": true,
+      "spans": [
+        [
+          59,
+          77
+        ]
+      ]
+    },
+    {
+      "path": "locations[0].attributes[0].evidence[0]",
+      "record_id": "l001",
+      "paragraph_id": "p0004",
+      "quote": "The main street of the Republic of San Magnolia’s capital, Liberté et Égalité",
+      "matched": true,
+      "spans": [
+        [
+          0,
+          77
+        ]
+      ]
+    },
+    {
+      "path": "locations[0].attributes[1].evidence[0]",
+      "record_id": "l001",
+      "paragraph_id": "p0004",
+      "quote": "was so peaceful and beautiful one would be hard pressed to believe the country had been at war",
+      "matched": true,
+      "spans": [
+        [
+          79,
+          173
+        ]
+      ]
+    },
+    {
+      "path": "locations[0].attributes[2].evidence[0]",
+      "record_id": "l001",
+      "paragraph_id": "p0006",
+      "quote": "The main street was paved with vast, delicately carved stones",
+      "matched": true,
+      "spans": [
+        [
+          245,
+          306
+        ]
+      ]
+    },
+    {
+      "path": "locations[1].name.evidence[0]",
+      "record_id": "l002",
+      "paragraph_id": "p0014",
+      "quote": "the Gran Mule",
+      "matched": true,
+      "spans": [
+        [
+          245,
+          258
+        ]
+      ]
+    },
+    {
+      "path": "locations[1].attributes[0].evidence[0]",
+      "record_id": "l002",
+      "paragraph_id": "p0014",
+      "quote": "the fortification wall that encircled the administrative Sector, the Gran Mule",
+      "matched": true,
+      "spans": [
+        [
+          180,
+          258
+        ]
+      ]
+    },
+    {
+      "path": "locations[1].attributes[1].evidence[0]",
+      "record_id": "l002",
+      "paragraph_id": "p0014",
+      "quote": "the center of command for the entirety of the Republic’s military",
+      "matched": true,
+      "spans": [
+        [
+          287,
+          352
+        ]
+      ]
+    },
+    {
+      "path": "locations[1].attributes[2].evidence[0]",
+      "record_id": "l002",
+      "paragraph_id": "p0015",
+      "quote": "on the front lines one hundred kilometers away from the fortress walls",
+      "matched": true,
+      "spans": [
+        [
+          46,
+          116
+        ]
+      ]
+    },
+    {
+      "path": "locations[2].name.evidence[0]",
+      "record_id": "l003",
+      "paragraph_id": "p0014",
+      "quote": "Palace Blancneige",
+      "matched": true,
+      "spans": [
+        [
+          48,
+          65
+        ]
+      ]
+    },
+    {
+      "path": "locations[2].attributes[0].evidence[0]",
+      "record_id": "l003",
+      "paragraph_id": "p0014",
+      "quote": "once home to the royal court in days past",
+      "matched": true,
+      "spans": [
+        [
+          67,
+          108
+        ]
+      ]
+    },
+    {
+      "path": "locations[2].attributes[1].evidence[0]",
+      "record_id": "l003",
+      "paragraph_id": "p0014",
+      "quote": "now served as the military’s luxurious headquarters",
+      "matched": true,
+      "spans": [
+        [
+          110,
+          161
+        ]
+      ]
+    },
+    {
+      "path": "locations[3].name.evidence[0]",
+      "record_id": "l004",
+      "paragraph_id": "p0144",
+      "quote": "the First Sector",
+      "matched": true,
+      "spans": [
+        [
+          49,
+          65
+        ]
+      ]
+    },
+    {
+      "path": "locations[3].attributes[0].evidence[0]",
+      "record_id": "l004",
+      "paragraph_id": "p0144",
+      "quote": "The Republic’s current administrative center was the First Sector",
+      "matched": true,
+      "spans": [
+        [
+          0,
+          65
+        ]
+      ]
+    },
+    {
+      "path": "locations[3].attributes[1].evidence[0]",
+      "record_id": "l004",
+      "paragraph_id": "p0144",
+      "quote": "it was at the heart of it all",
+      "matched": true,
+      "spans": [
+        [
+          71,
+          100
+        ]
+      ]
+    },
+    {
+      "path": "locations[4].name.evidence[0]",
+      "record_id": "l005",
+      "paragraph_id": "p0038",
+      "quote": "The Eighty-Sixth Sector",
+      "matched": true,
+      "spans": [
+        [
+          150,
+          173
+        ]
+      ]
+    },
+    {
+      "path": "locations[4].attributes[0].evidence[0]",
+      "record_id": "l005",
+      "paragraph_id": "p0038",
+      "quote": "The Eighty-Sixth Sector was designated a no-man’s-land",
+      "matched": true,
+      "spans": [
+        [
+          150,
+          204
+        ]
+      ]
+    },
+    {
+      "path": "locations[4].attributes[1].evidence[0]",
+      "record_id": "l005",
+      "paragraph_id": "p0038",
+      "quote": "those Colorata cast outside the Gran Mule to live in internment camps on the front lines",
+      "matched": true,
+      "spans": [
+        [
+          385,
+          473
+        ]
+      ]
+    },
+    {
+      "path": "locations[5].name.evidence[0]",
+      "record_id": "l006",
+      "paragraph_id": "p0099",
+      "quote": "the eastern front’s first ward’s first defensive squadron",
+      "matched": true,
+      "spans": [
+        [
+          14,
+          71
+        ]
+      ]
+    },
+    {
+      "path": "locations[5].attributes[0].evidence[0]",
+      "record_id": "l006",
+      "paragraph_id": "p0100",
+      "quote": "The first ward was certainly an important location; it was an imperative defensive position where the Legion’s advance was the fiercest.",
+      "matched": true,
+      "spans": [
+        [
+          58,
+          194
+        ]
+      ]
+    },
+    {
+      "path": "locations[5].attributes[1].evidence[0]",
+      "record_id": "l006",
+      "paragraph_id": "p0100",
+      "quote": "the first defensive squadron was a significant unit that was single-handedly responsible for the first ward’s defense",
+      "matched": true,
+      "spans": [
+        [
+          199,
+          316
+        ]
+      ]
+    },
+    {
+      "path": "locations[6].name.evidence[0]",
+      "record_id": "l007",
+      "paragraph_id": "p0027",
+      "quote": "the eastern front’s ninth ward",
+      "matched": true,
+      "spans": [
+        [
+          81,
+          111
+        ]
+      ]
+    },
+    {
+      "path": "locations[6].attributes[0].evidence[0]",
+      "record_id": "l007",
+      "paragraph_id": "p0027",
+      "quote": "commanding control officer for the eastern front’s ninth ward, third defensive squadron",
+      "matched": true,
+      "spans": [
+        [
+          50,
+          137
+        ]
+      ]
+    },
+    {
+      "path": "locations[6].attributes[1].evidence[0]",
+      "record_id": "l007",
+      "paragraph_id": "p0028",
+      "quote": "The third squadron, which was under Lena’s command, had twenty-four units",
+      "matched": true,
+      "spans": [
+        [
+          469,
+          542
+        ]
+      ]
+    },
+    {
+      "path": "locations[6].attributes[1].evidence[1]",
+      "record_id": "l007",
+      "paragraph_id": "p0051",
+      "quote": "her third squadron lost seven units",
+      "matched": true,
+      "spans": [
+        [
+          180,
+          215
+        ]
+      ]
+    },
+    {
+      "path": "locations[7].name.evidence[0]",
+      "record_id": "l008",
+      "paragraph_id": "p0003",
+      "quote": "the seventeenth ward",
+      "matched": true,
+      "spans": [
+        [
+          123,
+          143
+        ]
+      ]
+    },
+    {
+      "path": "locations[7].attributes[0].evidence[0]",
+      "record_id": "l008",
+      "paragraph_id": "p0066",
+      "quote": "the seventeenth ward of the southern front",
+      "matched": true,
+      "spans": [
+        [
+          162,
+          204
+        ]
+      ]
+    },
+    {
+      "path": "locations[7].attributes[1].evidence[0]",
+      "record_id": "l008",
+      "paragraph_id": "p0066",
+      "quote": "the seventeenth ward of the southern front will be abolished, and all forces stationed there dissolved and discharged",
+      "matched": true,
+      "spans": [
+        [
+          162,
+          279
+        ]
+      ]
+    },
+    {
+      "path": "locations[8].name.evidence[0]",
+      "record_id": "l009",
+      "paragraph_id": "p0091",
+      "quote": "the division commander’s office",
+      "matched": true,
+      "spans": [
+        [
+          59,
+          90
+        ]
+      ]
+    },
+    {
+      "path": "locations[8].attributes[0].evidence[0]",
+      "record_id": "l009",
+      "paragraph_id": "p0091",
+      "quote": "The golden wallpaper, streaked with dark-red stripes, gave the division commander’s office a profound, dignified atmosphere.",
+      "matched": true,
+      "spans": [
+        [
+          0,
+          124
+        ]
+      ]
+    },
+    {
+      "path": "locations[9].name.evidence[0]",
+      "record_id": "l010",
+      "paragraph_id": "p0128",
+      "quote": "the medical room’s reinforced glass window",
+      "matched": true,
+      "spans": [
+        [
+          103,
+          145
+        ]
+      ]
+    },
+    {
+      "path": "locations[9].attributes[0].evidence[0]",
+      "record_id": "l010",
+      "paragraph_id": "p0128",
+      "quote": "the medical room’s reinforced glass window",
+      "matched": true,
+      "spans": [
+        [
+          103,
+          145
+        ]
+      ]
+    },
+    {
+      "path": "organizations[0].name.evidence[0]",
+      "record_id": "g001",
+      "paragraph_id": "p0004",
+      "quote": "Republic of San Magnolia",
+      "matched": true,
+      "spans": [
+        [
+          23,
+          47
+        ]
+      ]
+    },
+    {
+      "path": "organizations[0].aliases[0].evidence[0]",
+      "record_id": "g001",
+      "paragraph_id": "p0009",
+      "quote": "Hail the Republic of Magnolia.",
+      "matched": true,
+      "spans": [
+        [
+          439,
+          469
+        ]
+      ]
+    },
+    {
+      "path": "organizations[0].aliases[1].evidence[0]",
+      "record_id": "g001",
+      "paragraph_id": "p0010",
+      "quote": "the Republic had failed to regain any of it in nine years of fighting",
+      "matched": true,
+      "spans": [
+        [
+          411,
+          480
+        ]
+      ]
+    },
+    {
+      "path": "organizations[0].attributes[0].evidence[0]",
+      "record_id": "g001",
+      "paragraph_id": "p0004",
+      "quote": "the country had been at war for the past nine years",
+      "matched": true,
+      "spans": [
+        [
+          146,
+          197
+        ]
+      ]
+    },
+    {
+      "path": "organizations[0].attributes[1].evidence[0]",
+      "record_id": "g001",
+      "paragraph_id": "p0011",
+      "quote": "The Republic prided itself on being the first modern democracy in the world",
+      "matched": true,
+      "spans": [
+        [
+          228,
+          303
+        ]
+      ]
+    },
+    {
+      "path": "organizations[0].attributes[2].evidence[0]",
+      "record_id": "g001",
+      "paragraph_id": "p0011",
+      "quote": "The Republic had been the native land of the Alba since ages past",
+      "matched": true,
+      "spans": [
+        [
+          362,
+          427
+        ]
+      ]
+    },
+    {
+      "path": "organizations[0].attributes[3].evidence[0]",
+      "record_id": "g001",
+      "paragraph_id": "p0012",
+      "quote": "the Republic’s eighty-five administrative Sectors",
+      "matched": true,
+      "spans": [
+        [
+          117,
+          166
+        ]
+      ]
+    },
+    {
+      "path": "organizations[0].attributes[4].evidence[0]",
+      "record_id": "g001",
+      "paragraph_id": "p0042",
+      "quote": "This law acknowledged all persons of Colorata descent within the borders of the Republic as inimical characters and supporters of the Empire and allowed the stripping of their civilian rights.",
+      "matched": true,
+      "spans": [
+        [
+          188,
+          380
+        ]
+      ]
+    },
+    {
+      "path": "organizations[0].attributes[5].evidence[0]",
+      "record_id": "g001",
+      "paragraph_id": "p0049",
+      "quote": "The Eighty-Six who served as pilots were designated information-processing units— Processors",
+      "matched": true,
+      "spans": [
+        [
+          262,
+          354
+        ]
+      ]
+    },
+    {
+      "path": "organizations[1].name.evidence[0]",
+      "record_id": "g002",
+      "paragraph_id": "p0040",
+      "quote": "the Empire of Giad",
+      "matched": true,
+      "spans": [
+        [
+          74,
+          92
+        ]
+      ]
+    },
+    {
+      "path": "organizations[1].aliases[0].evidence[0]",
+      "record_id": "g002",
+      "paragraph_id": "p0009",
+      "quote": "the fallen Empire’s evil relics",
+      "matched": true,
+      "spans": [
+        [
+          329,
+          360
+        ]
+      ]
+    },
+    {
+      "path": "organizations[1].aliases[1].evidence[0]",
+      "record_id": "g002",
+      "paragraph_id": "p0093",
+      "quote": "the militant Giadian Empire",
+      "matched": true,
+      "spans": [
+        [
+          108,
+          135
+        ]
+      ]
+    },
+    {
+      "path": "organizations[1].attributes[0].evidence[0]",
+      "record_id": "g002",
+      "paragraph_id": "p0040",
+      "quote": "The Republic’s eastern neighbor and superpower of the northern continent, the Empire of Giad",
+      "matched": true,
+      "spans": [
+        [
+          0,
+          92
+        ]
+      ]
+    },
+    {
+      "path": "organizations[1].attributes[1].evidence[0]",
+      "record_id": "g002",
+      "paragraph_id": "p0040",
+      "quote": "declared war on all its neighboring countries",
+      "matched": true,
+      "spans": [
+        [
+          94,
+          139
+        ]
+      ]
+    },
+    {
+      "path": "organizations[1].attributes[2].evidence[0]",
+      "record_id": "g002",
+      "paragraph_id": "p0040",
+      "quote": "began attacking with an army of the world’s first completely autonomous unmanned combat drone, Legion.",
+      "matched": true,
+      "spans": [
+        [
+          144,
+          246
+        ]
+      ]
+    },
+    {
+      "path": "organizations[1].attributes[3].evidence[0]",
+      "record_id": "g002",
+      "paragraph_id": "p0121",
+      "quote": "it seemed to have fallen into ruin four years ago",
+      "matched": true,
+      "spans": [
+        [
+          95,
+          144
+        ]
+      ]
+    },
+    {
+      "path": "organizations[1].attributes[4].evidence[0]",
+      "record_id": "g002",
+      "paragraph_id": "p0121",
+      "quote": "The Empire transmissions the Republic was able to intercept in between waves of Eintagsfliege jamming suddenly ceased",
+      "matched": true,
+      "spans": [
+        [
+          146,
+          263
+        ]
+      ]
+    },
+    {
+      "path": "organizations[2].name.evidence[0]",
+      "record_id": "g003",
+      "paragraph_id": "p0003",
+      "quote": "the Legion",
+      "matched": true,
+      "spans": [
+        [
+          99,
+          109
+        ]
+      ]
+    },
+    {
+      "path": "organizations[2].attributes[0].evidence[0]",
+      "record_id": "g003",
+      "paragraph_id": "p0003",
+      "quote": "the unmanned Imperial weapons known as the Legion",
+      "matched": true,
+      "spans": [
+        [
+          60,
+          109
+        ]
+      ]
+    },
+    {
+      "path": "organizations[2].attributes[1].evidence[0]",
+      "record_id": "g003",
+      "paragraph_id": "p0040",
+      "quote": "an army of the world’s first completely autonomous unmanned combat drone, Legion",
+      "matched": true,
+      "spans": [
+        [
+          165,
+          245
+        ]
+      ]
+    },
+    {
+      "path": "organizations[2].attributes[2].evidence[0]",
+      "record_id": "g003",
+      "paragraph_id": "p0093",
+      "quote": "the Legion never tired, never disobeyed orders, and never knew fear",
+      "matched": true,
+      "spans": [
+        [
+          436,
+          503
+        ]
+      ]
+    },
+    {
+      "path": "organizations[2].attributes[3].evidence[0]",
+      "record_id": "g003",
+      "paragraph_id": "p0146",
+      "quote": "The Legion’s central processors had a fixed life span programmed into them: fifty thousand hours of operation time per version.",
+      "matched": true,
+      "spans": [
+        [
+          156,
+          283
+        ]
+      ]
+    },
+    {
+      "path": "organizations[2].attributes[4].evidence[0]",
+      "record_id": "g003",
+      "paragraph_id": "p0093",
+      "quote": "fully automated production and repair factories lay scattered across the depths of their territories",
+      "matched": true,
+      "spans": [
+        [
+          544,
+          644
+        ]
+      ]
+    },
+    {
+      "path": "organizations[3].name.evidence[0]",
+      "record_id": "g004",
+      "paragraph_id": "p0008",
+      "quote": "the Republic military",
+      "matched": true,
+      "spans": [
+        [
+          16,
+          37
+        ]
+      ]
+    },
+    {
+      "path": "organizations[3].aliases[0].evidence[0]",
+      "record_id": "g004",
+      "paragraph_id": "p0041",
+      "quote": "the Republic Armed Forces",
+      "matched": true,
+      "spans": [
+        [
+          56,
+          81
+        ]
+      ]
+    },
+    {
+      "path": "organizations[3].attributes[0].evidence[0]",
+      "record_id": "g004",
+      "paragraph_id": "p0015",
+      "quote": "not a single soldier in the Republic military had ever known true combat",
+      "matched": true,
+      "spans": [
+        [
+          684,
+          756
+        ]
+      ]
+    },
+    {
+      "path": "organizations[3].attributes[1].evidence[0]",
+      "record_id": "g004",
+      "paragraph_id": "p0014",
+      "quote": "the center of command for the entirety of the Republic’s military",
+      "matched": true,
+      "spans": [
+        [
+          287,
+          352
+        ]
+      ]
+    },
+    {
+      "path": "organizations[3].attributes[2].evidence[0]",
+      "record_id": "g004",
+      "paragraph_id": "p0015",
+      "quote": "they were commanded from control rooms in the military’s headquarters",
+      "matched": true,
+      "spans": [
+        [
+          174,
+          243
+        ]
+      ]
+    },
+    {
+      "path": "organizations[3].attributes[3].evidence[0]",
+      "record_id": "g004",
+      "paragraph_id": "p0015",
+      "quote": "Other professions in the military included communications, transport, analysis, tactical planning, and assorted bureaucracy.",
+      "matched": true,
+      "spans": [
+        [
+          543,
+          667
+        ]
+      ]
+    },
+    {
+      "path": "organizations[4].name.evidence[0]",
+      "record_id": "g005",
+      "paragraph_id": "p0099",
+      "quote": "the Spearhead squadron",
+      "matched": true,
+      "spans": [
+        [
+          87,
+          109
+        ]
+      ]
+    },
+    {
+      "path": "organizations[4].aliases[0].evidence[0]",
+      "record_id": "g005",
+      "paragraph_id": "p0099",
+      "quote": "the eastern front’s first ward’s first defensive squadron, also known as the Spearhead squadron",
+      "matched": true,
+      "spans": [
+        [
+          14,
+          109
+        ]
+      ]
+    },
+    {
+      "path": "organizations[4].attributes[0].evidence[0]",
+      "record_id": "g005",
+      "paragraph_id": "p0099",
+      "quote": "It’s a unit that consists of veterans from the eastern front… You could call it an elite unit.",
+      "matched": true,
+      "spans": [
+        [
+          111,
+          205
+        ]
+      ]
+    },
+    {
+      "path": "organizations[4].attributes[1].evidence[0]",
+      "record_id": "g005",
+      "paragraph_id": "p0100",
+      "quote": "the first defensive squadron was a significant unit that was single-handedly responsible for the first ward’s defense",
+      "matched": true,
+      "spans": [
+        [
+          199,
+          316
+        ]
+      ]
+    },
+    {
+      "path": "organizations[4].attributes[2].evidence[0]",
+      "record_id": "g005",
+      "paragraph_id": "p0106",
+      "quote": "It’s the Spearhead squadron’s captain unit, Personal Name: Undertaker.",
+      "matched": true,
+      "spans": [
+        [
+          79,
+          149
+        ]
+      ]
+    },
+    {
+      "path": "organizations[4].attributes[3].evidence[0]",
+      "record_id": "g005",
+      "paragraph_id": "p0125",
+      "quote": "I hereby appoint you to the role of commanding officer for the eastern front’s first ward’s first defensive squadron",
+      "matched": true,
+      "spans": [
+        [
+          136,
+          252
+        ]
+      ]
+    },
+    {
+      "path": "organizations[5].name.evidence[0]",
+      "record_id": "g006",
+      "paragraph_id": "p0027",
+      "quote": "third defensive squadron",
+      "matched": true,
+      "spans": [
+        [
+          113,
+          137
+        ]
+      ]
+    },
+    {
+      "path": "organizations[5].aliases[0].evidence[0]",
+      "record_id": "g006",
+      "paragraph_id": "p0028",
+      "quote": "The third squadron",
+      "matched": true,
+      "spans": [
+        [
+          469,
+          487
+        ]
+      ]
+    },
+    {
+      "path": "organizations[5].attributes[0].evidence[0]",
+      "record_id": "g006",
+      "paragraph_id": "p0028",
+      "quote": "The third squadron, which was under Lena’s command",
+      "matched": true,
+      "spans": [
+        [
+          469,
+          519
+        ]
+      ]
+    },
+    {
+      "path": "organizations[5].attributes[1].evidence[0]",
+      "record_id": "g006",
+      "paragraph_id": "p0028",
+      "quote": "had twenty-four units",
+      "matched": true,
+      "spans": [
+        [
+          521,
+          542
+        ]
+      ]
+    },
+    {
+      "path": "organizations[5].attributes[2].evidence[0]",
+      "record_id": "g006",
+      "paragraph_id": "p0051",
+      "quote": "her third squadron lost seven units",
+      "matched": true,
+      "spans": [
+        [
+          180,
+          215
+        ]
+      ]
+    },
+    {
+      "path": "organizations[6].name.evidence[0]",
+      "record_id": "g007",
+      "paragraph_id": "p0049",
+      "quote": "Republic Military Industries",
+      "matched": true,
+      "spans": [
+        [
+          83,
+          111
+        ]
+      ]
+    },
+    {
+      "path": "organizations[6].aliases[0].evidence[0]",
+      "record_id": "g007",
+      "paragraph_id": "p0049",
+      "quote": "Republic Military Industries (RMI)",
+      "matched": true,
+      "spans": [
+        [
+          83,
+          117
+        ]
+      ]
+    },
+    {
+      "path": "organizations[6].attributes[0].evidence[0]",
+      "record_id": "g007",
+      "paragraph_id": "p0049",
+      "quote": "manufactured by Republic Military Industries (RMI)",
+      "matched": true,
+      "spans": [
+        [
+          67,
+          117
+        ]
+      ]
+    },
+    {
+      "path": "organizations[7].name.evidence[0]",
+      "record_id": "g008",
+      "paragraph_id": "p0019",
+      "quote": "the lab division",
+      "matched": true,
+      "spans": [
+        [
+          283,
+          299
+        ]
+      ]
+    },
+    {
+      "path": "organizations[7].attributes[0].evidence[0]",
+      "record_id": "g008",
+      "paragraph_id": "p0019",
+      "quote": "She was a technical lieutenant affiliated with the lab division",
+      "matched": true,
+      "spans": [
+        [
+          236,
+          299
+        ]
+      ]
+    },
+    {
+      "path": "organizations[7].attributes[1].evidence[0]",
+      "record_id": "g008",
+      "paragraph_id": "p0127",
+      "quote": "Annette was the officer in charge of the Para-RAID development team",
+      "matched": true,
+      "spans": [
+        [
+          161,
+          228
+        ]
+      ]
+    },
+    {
+      "path": "relationships[0].evidence[0]",
+      "record_id": "r001",
+      "paragraph_id": "p0008",
+      "quote": "She was clad in the Republic military’s dark-blue collared uniform for female officers.",
+      "matched": true,
+      "spans": [
+        [
+          0,
+          87
+        ]
+      ]
+    },
+    {
+      "path": "relationships[1].evidence[0]",
+      "record_id": "r002",
+      "paragraph_id": "p0028",
+      "quote": "The third squadron, which was under Lena’s command",
+      "matched": true,
+      "spans": [
+        [
+          469,
+          519
+        ]
+      ]
+    },
+    {
+      "path": "relationships[2].evidence[0]",
+      "record_id": "r003",
+      "paragraph_id": "p0125",
+      "quote": "I hereby appoint you to the role of commanding officer for the eastern front’s first ward’s first defensive squadron",
+      "matched": true,
+      "spans": [
+        [
+          136,
+          252
+        ]
+      ]
+    },
+    {
+      "path": "relationships[3].evidence[0]",
+      "record_id": "r004",
+      "paragraph_id": "p0091",
+      "quote": "the division commander seated behind the antiquated desk, Commodore Karlstahl",
+      "matched": true,
+      "spans": [
+        [
+          224,
+          301
+        ]
+      ]
+    },
+    {
+      "path": "relationships[4].evidence[0]",
+      "record_id": "r005",
+      "paragraph_id": "p0102",
+      "quote": "best friends with Lena’s late father",
+      "matched": true,
+      "spans": [
+        [
+          175,
+          211
+        ]
+      ]
+    },
+    {
+      "path": "relationships[4].evidence[1]",
+      "record_id": "r005",
+      "paragraph_id": "p0125",
+      "quote": "You really do take after Václav",
+      "matched": true,
+      "spans": [
+        [
+          69,
+          100
+        ]
+      ]
+    },
+    {
+      "path": "relationships[5].evidence[0]",
+      "record_id": "r006",
+      "paragraph_id": "p0102",
+      "quote": "he helped arrange the funeral, as well as support Lena and her family in various ways",
+      "matched": true,
+      "spans": [
+        [
+          449,
+          534
+        ]
+      ]
+    },
+    {
+      "path": "relationships[6].evidence[0]",
+      "record_id": "r007",
+      "paragraph_id": "p0019",
+      "quote": "a friend of Lena’s since secondary school",
+      "matched": true,
+      "spans": [
+        [
+          304,
+          345
+        ]
+      ]
+    },
+    {
+      "path": "relationships[7].evidence[0]",
+      "record_id": "r008",
+      "paragraph_id": "p0019",
+      "quote": "She was a technical lieutenant affiliated with the lab division",
+      "matched": true,
+      "spans": [
+        [
+          236,
+          299
+        ]
+      ]
+    },
+    {
+      "path": "relationships[8].evidence[0]",
+      "record_id": "r009",
+      "paragraph_id": "p0159",
+      "quote": "Annette’s father, Professor Josef von Penrose",
+      "matched": true,
+      "spans": [
+        [
+          4,
+          49
+        ]
+      ]
+    },
+    {
+      "path": "relationships[9].evidence[0]",
+      "record_id": "r010",
+      "paragraph_id": "p0031",
+      "quote": "the third squadron’s captain, the Processor operating Personal Name unit Pleiades",
+      "matched": true,
+      "spans": [
+        [
+          231,
+          312
+        ]
+      ]
+    },
+    {
+      "path": "relationships[10].evidence[0]",
+      "record_id": "r011",
+      "paragraph_id": "p0180",
+      "quote": "This is the Spearhead squadron’s captain, Personal Name: Undertaker, speaking.",
+      "matched": true,
+      "spans": [
+        [
+          35,
+          113
+        ]
+      ]
+    },
+    {
+      "path": "relationships[11].evidence[0]",
+      "record_id": "r012",
+      "paragraph_id": "p0180",
+      "quote": "This is the Spearhead squadron’s captain, Personal Name: Undertaker, speaking.",
+      "matched": true,
+      "spans": [
+        [
+          35,
+          113
+        ]
+      ]
+    },
+    {
+      "path": "relationships[12].evidence[0]",
+      "record_id": "r013",
+      "paragraph_id": "p0099",
+      "quote": "the eastern front’s first ward’s first defensive squadron, also known as the Spearhead squadron",
+      "matched": true,
+      "spans": [
+        [
+          14,
+          109
+        ]
+      ]
+    },
+    {
+      "path": "relationships[13].evidence[0]",
+      "record_id": "r014",
+      "paragraph_id": "p0027",
+      "quote": "commanding control officer for the eastern front’s ninth ward, third defensive squadron",
+      "matched": true,
+      "spans": [
+        [
+          50,
+          137
+        ]
+      ]
+    },
+    {
+      "path": "relationships[14].evidence[0]",
+      "record_id": "r015",
+      "paragraph_id": "p0040",
+      "quote": "the Empire of Giad, declared war on all its neighboring countries",
+      "matched": true,
+      "spans": [
+        [
+          74,
+          139
+        ]
+      ]
+    },
+    {
+      "path": "relationships[15].evidence[0]",
+      "record_id": "r016",
+      "paragraph_id": "p0040",
+      "quote": "began attacking with an army of the world’s first completely autonomous unmanned combat drone, Legion.",
+      "matched": true,
+      "spans": [
+        [
+          144,
+          246
+        ]
+      ]
+    },
+    {
+      "path": "relationships[16].evidence[0]",
+      "record_id": "r017",
+      "paragraph_id": "p0003",
+      "quote": "the Legion have invaded the seventeenth ward today",
+      "matched": true,
+      "spans": [
+        [
+          99,
+          149
+        ]
+      ]
+    },
+    {
+      "path": "relationships[16].evidence[1]",
+      "record_id": "r017",
+      "paragraph_id": "p0004",
+      "quote": "the country had been at war for the past nine years",
+      "matched": true,
+      "spans": [
+        [
+          146,
+          197
+        ]
+      ]
+    },
+    {
+      "path": "relationships[17].evidence[0]",
+      "record_id": "r018",
+      "paragraph_id": "p0068",
+      "quote": "Lena’s mother opened her perfectly rouged lips to speak.",
+      "matched": true,
+      "spans": [
+        [
+          56,
+          112
+        ]
+      ]
+    },
+    {
+      "path": "relationships[18].evidence[0]",
+      "record_id": "r019",
+      "paragraph_id": "p0065",
+      "quote": "This was a government-sponsored broadcast",
+      "matched": true,
+      "spans": [
+        [
+          424,
+          465
+        ]
+      ]
+    },
+    {
+      "path": "relationships[19].evidence[0]",
+      "record_id": "r020",
+      "paragraph_id": "p0031",
+      "quote": "the third squadron’s captain, the Processor operating Personal Name unit Pleiades",
+      "matched": true,
+      "spans": [
+        [
+          231,
+          312
+        ]
+      ]
+    },
+    {
+      "path": "relationships[20].evidence[0]",
+      "record_id": "r021",
+      "paragraph_id": "p0169",
+      "quote": "the guy who came over for my arranged marriage",
+      "matched": true,
+      "spans": [
+        [
+          31,
+          77
+        ]
+      ]
+    },
+    {
+      "path": "relationships[20].evidence[1]",
+      "record_id": "r021",
+      "paragraph_id": "p0172",
+      "quote": "‘To my darling Theobald’",
+      "matched": true,
+      "spans": [
+        [
+          167,
+          191
+        ]
+      ]
+    },
+    {
+      "path": "events[0].evidence[0]",
+      "record_id": "e001",
+      "paragraph_id": "p0003",
+      "quote": "A group of the unmanned Imperial weapons known as the Legion have invaded the seventeenth ward today.",
+      "matched": true,
+      "spans": [
+        [
+          49,
+          150
+        ]
+      ]
+    },
+    {
+      "path": "events[0].evidence[1]",
+      "record_id": "e001",
+      "paragraph_id": "p0003",
+      "quote": "no loss of life was reported on our side today yet again",
+      "matched": true,
+      "spans": [
+        [
+          355,
+          411
+        ]
+      ]
+    },
+    {
+      "path": "events[1].evidence[0]",
+      "record_id": "e002",
+      "paragraph_id": "p0007",
+      "quote": "A young boy passed by Lena",
+      "matched": true,
+      "spans": [
+        [
+          0,
+          26
+        ]
+      ]
+    },
+    {
+      "path": "events[1].evidence[1]",
+      "record_id": "e002",
+      "paragraph_id": "p0007",
+      "quote": "turned her silver eyes to the street-side television’s holo-screen",
+      "matched": true,
+      "spans": [
+        [
+          229,
+          295
+        ]
+      ]
+    },
+    {
+      "path": "events[2].evidence[0]",
+      "record_id": "e003",
+      "paragraph_id": "p0027",
+      "quote": "Major Vladilena Milizé, commanding control officer for the eastern front’s ninth ward, third defensive squadron.",
+      "matched": true,
+      "spans": [
+        [
+          26,
+          138
+        ]
+      ]
+    },
+    {
+      "path": "events[3].evidence[0]",
+      "record_id": "e004",
+      "paragraph_id": "p0029",
+      "quote": "Activate Para-RAID. Set Resonance target, information-processing unit Pleiades.",
+      "matched": true,
+      "spans": [
+        [
+          1,
+          80
+        ]
+      ]
+    },
+    {
+      "path": "events[3].evidence[1]",
+      "record_id": "e004",
+      "paragraph_id": "p0032",
+      "quote": "Handler One to Pleiades—Resonance complete.",
+      "matched": true,
+      "spans": [
+        [
+          1,
+          44
+        ]
+      ]
+    },
+    {
+      "path": "events[4].evidence[0]",
+      "record_id": "e005",
+      "paragraph_id": "p0040",
+      "quote": "the Empire of Giad, declared war on all its neighboring countries and began attacking with an army of the world’s first completely autonomous unmanned combat drone, Legion.",
+      "matched": true,
+      "spans": [
+        [
+          74,
+          246
+        ]
+      ]
+    },
+    {
+      "path": "events[5].evidence[0]",
+      "record_id": "e006",
+      "paragraph_id": "p0042",
+      "quote": "Presidential Order #6609. The Special Wartime Peace Preservation Act.",
+      "matched": true,
+      "spans": [
+        [
+          118,
+          187
+        ]
+      ]
+    },
+    {
+      "path": "events[5].evidence[1]",
+      "record_id": "e006",
+      "paragraph_id": "p0042",
+      "quote": "allowed the stripping of their civilian rights",
+      "matched": true,
+      "spans": [
+        [
+          333,
+          379
+        ]
+      ]
+    },
+    {
+      "path": "events[6].evidence[0]",
+      "record_id": "e007",
+      "paragraph_id": "p0047",
+      "quote": "introduction of drones manned by living soldiers—and all those soldiers were of the Eighty-Six",
+      "matched": true,
+      "spans": [
+        [
+          155,
+          249
+        ]
+      ]
+    },
+    {
+      "path": "events[6].evidence[1]",
+      "record_id": "e007",
+      "paragraph_id": "p0049",
+      "quote": "The Eighty-Six who served as pilots were designated information-processing units— Processors",
+      "matched": true,
+      "spans": [
+        [
+          262,
+          354
+        ]
+      ]
+    },
+    {
+      "path": "events[7].evidence[0]",
+      "record_id": "e008",
+      "paragraph_id": "p0051",
+      "quote": "the Legion’s red blips were retreating east",
+      "matched": true,
+      "spans": [
+        [
+          16,
+          59
+        ]
+      ]
+    },
+    {
+      "path": "events[7].evidence[1]",
+      "record_id": "e008",
+      "paragraph_id": "p0051",
+      "quote": "her third squadron lost seven units",
+      "matched": true,
+      "spans": [
+        [
+          180,
+          215
+        ]
+      ]
+    },
+    {
+      "path": "events[7].evidence[2]",
+      "record_id": "e008",
+      "paragraph_id": "p0051",
+      "quote": "Seven Juggernauts detonated, exploding along with the Processors who piloted them. None survived.",
+      "matched": true,
+      "spans": [
+        [
+          250,
+          347
+        ]
+      ]
+    },
+    {
+      "path": "events[8].evidence[0]",
+      "record_id": "e009",
+      "paragraph_id": "p0060",
+      "quote": "Good job today, Pleiades. And to all other units, too, and the seven who were lost… I’m so, so sorry.",
+      "matched": true,
+      "spans": [
+        [
+          1,
+          102
+        ]
+      ]
+    },
+    {
+      "path": "events[8].evidence[1]",
+      "record_id": "e009",
+      "paragraph_id": "p0063",
+      "quote": "Thank you for all the kind words you always offer us, Handler One.",
+      "matched": true,
+      "spans": [
+        [
+          2,
+          68
+        ]
+      ]
+    },
+    {
+      "path": "events[9].evidence[0]",
+      "record_id": "e010",
+      "paragraph_id": "p0066",
+      "quote": "the seventeenth ward of the southern front will be abolished",
+      "matched": true,
+      "spans": [
+        [
+          162,
+          222
+        ]
+      ]
+    },
+    {
+      "path": "events[10].evidence[0]",
+      "record_id": "e011",
+      "paragraph_id": "p0072",
+      "quote": "Lena, isn’t it about time you quit the army and find a groom from a good family?",
+      "matched": true,
+      "spans": [
+        [
+          20,
+          100
+        ]
+      ]
+    },
+    {
+      "path": "events[10].evidence[1]",
+      "record_id": "e011",
+      "paragraph_id": "p0076",
+      "quote": "They’re respectable citizens of the Republic, same as you and me.",
+      "matched": true,
+      "spans": [
+        [
+          114,
+          179
+        ]
+      ]
+    },
+    {
+      "path": "events[10].evidence[2]",
+      "record_id": "e011",
+      "paragraph_id": "p0077",
+      "quote": "when they’re stained with those filthy colors?",
+      "matched": true,
+      "spans": [
+        [
+          105,
+          151
+        ]
+      ]
+    },
+    {
+      "path": "events[11].evidence[0]",
+      "record_id": "e012",
+      "paragraph_id": "p0097",
+      "quote": "another squadron’s Handler recently resigned, and we need to elect a replacement Handler",
+      "matched": true,
+      "spans": [
+        [
+          69,
+          157
+        ]
+      ]
+    },
+    {
+      "path": "events[11].evidence[1]",
+      "record_id": "e012",
+      "paragraph_id": "p0099",
+      "quote": "the eastern front’s first ward’s first defensive squadron, also known as the Spearhead squadron",
+      "matched": true,
+      "spans": [
+        [
+          14,
+          109
+        ]
+      ]
+    },
+    {
+      "path": "events[12].evidence[0]",
+      "record_id": "e013",
+      "paragraph_id": "p0107",
+      "quote": "The Handlers who know him seem to call him the Reaper",
+      "matched": true,
+      "spans": [
+        [
+          31,
+          84
+        ]
+      ]
+    },
+    {
+      "path": "events[12].evidence[1]",
+      "record_id": "e013",
+      "paragraph_id": "p0110",
+      "quote": "some have committed suicide after resigning",
+      "matched": true,
+      "spans": [
+        [
+          476,
+          519
+        ]
+      ]
+    },
+    {
+      "path": "events[12].evidence[2]",
+      "record_id": "e013",
+      "paragraph_id": "p0114",
+      "quote": "I’ll do it. I’ll put all my efforts into serving as the Spearhead squadron’s commanding officer.",
+      "matched": true,
+      "spans": [
+        [
+          31,
+          127
+        ]
+      ]
+    },
+    {
+      "path": "events[13].evidence[0]",
+      "record_id": "e014",
+      "paragraph_id": "p0121",
+      "quote": "it seemed to have fallen into ruin four years ago",
+      "matched": true,
+      "spans": [
+        [
+          95,
+          144
+        ]
+      ]
+    },
+    {
+      "path": "events[13].evidence[1]",
+      "record_id": "e014",
+      "paragraph_id": "p0121",
+      "quote": "The Empire transmissions the Republic was able to intercept in between waves of Eintagsfliege jamming suddenly ceased",
+      "matched": true,
+      "spans": [
+        [
+          146,
+          263
+        ]
+      ]
+    },
+    {
+      "path": "events[14].evidence[0]",
+      "record_id": "e015",
+      "paragraph_id": "p0125",
+      "quote": "I hereby appoint you to the role of commanding officer for the eastern front’s first ward’s first defensive squadron, effective as of today.",
+      "matched": true,
+      "spans": [
+        [
+          136,
+          276
+        ]
+      ]
+    },
+    {
+      "path": "events[15].evidence[0]",
+      "record_id": "e016",
+      "paragraph_id": "p0127",
+      "quote": "Annette was the officer in charge of the Para-RAID development team",
+      "matched": true,
+      "spans": [
+        [
+          161,
+          228
+        ]
+      ]
+    },
+    {
+      "path": "events[15].evidence[1]",
+      "record_id": "e016",
+      "paragraph_id": "p0158",
+      "quote": "if you stay Resonated for too long at maximum synchronization rate, it’s possible for your ego to completely collapse",
+      "matched": true,
+      "spans": [
+        [
+          188,
+          305
+        ]
+      ]
+    },
+    {
+      "path": "events[16].evidence[0]",
+      "record_id": "e017",
+      "paragraph_id": "p0157",
+      "quote": "The other researcher was an Eighty-Six.",
+      "matched": true,
+      "spans": [
+        [
+          101,
+          140
+        ]
+      ]
+    },
+    {
+      "path": "events[16].evidence[1]",
+      "record_id": "e017",
+      "paragraph_id": "p0157",
+      "quote": "didn’t have their names recorded",
+      "matched": true,
+      "spans": [
+        [
+          188,
+          220
+        ]
+      ]
+    },
+    {
+      "path": "events[17].evidence[0]",
+      "record_id": "e018",
+      "paragraph_id": "p0159",
+      "quote": "was involved in an accident during an experiment that drove him mad and ultimately killed him",
+      "matched": true,
+      "spans": [
+        [
+          51,
+          144
+        ]
+      ]
+    },
+    {
+      "path": "events[18].evidence[0]",
+      "record_id": "e019",
+      "paragraph_id": "p0177",
+      "quote": "Handler One to all units in the Spearhead squadron. It’s a pleasure to meet you all. I will be serving as your commanding officer starting today.",
+      "matched": true,
+      "spans": [
+        [
+          1,
+          146
+        ]
+      ]
+    },
+    {
+      "path": "events[18].evidence[1]",
+      "record_id": "e019",
+      "paragraph_id": "p0180",
+      "quote": "This is the Spearhead squadron’s captain, Personal Name: Undertaker, speaking.",
+      "matched": true,
+      "spans": [
+        [
+          35,
+          113
+        ]
+      ]
+    },
+    {
+      "path": "events[19].evidence[0]",
+      "record_id": "e020",
+      "paragraph_id": "p0184",
+      "quote": "They were human beings. They were not something subhuman, something known only as an Eighty-Six.",
+      "matched": true,
+      "spans": [
+        [
+          0,
+          96
+        ]
+      ]
+    },
+    {
+      "path": "uncertainties[0].evidence[0]",
+      "record_id": null,
+      "paragraph_id": "p0021",
+      "quote": "certified genius Technical Lieutenant Henrietta Penrose",
+      "matched": true,
+      "spans": [
+        [
+          186,
+          241
+        ]
+      ]
+    },
+    {
+      "path": "uncertainties[0].evidence[1]",
+      "record_id": null,
+      "paragraph_id": "p0019",
+      "quote": "she turned to find Annette",
+      "matched": true,
+      "spans": [
+        [
+          147,
+          173
+        ]
+      ]
+    },
+    {
+      "path": "uncertainties[1].evidence[0]",
+      "record_id": null,
+      "paragraph_id": "p0102",
+      "quote": "best friends with Lena’s late father",
+      "matched": true,
+      "spans": [
+        [
+          175,
+          211
+        ]
+      ]
+    },
+    {
+      "path": "uncertainties[1].evidence[1]",
+      "record_id": null,
+      "paragraph_id": "p0125",
+      "quote": "You really do take after Václav",
+      "matched": true,
+      "spans": [
+        [
+          69,
+          100
+        ]
+      ]
+    },
+    {
+      "path": "uncertainties[2].evidence[0]",
+      "record_id": null,
+      "paragraph_id": "p0031",
+      "quote": "the third squadron’s captain, the Processor operating Personal Name unit Pleiades",
+      "matched": true,
+      "spans": [
+        [
+          231,
+          312
+        ]
+      ]
+    },
+    {
+      "path": "uncertainties[2].evidence[1]",
+      "record_id": null,
+      "paragraph_id": "p0180",
+      "quote": "This is the Spearhead squadron’s captain, Personal Name: Undertaker, speaking.",
+      "matched": true,
+      "spans": [
+        [
+          35,
+          113
+        ]
+      ]
+    },
+    {
+      "path": "uncertainties[3].evidence[0]",
+      "record_id": null,
+      "paragraph_id": "p0111",
+      "quote": "they claimed they could ‘hear the ghosts’ voices’ and were haunted by them even after retiring from service",
+      "matched": true,
+      "spans": [
+        [
+          51,
+          158
+        ]
+      ]
+    },
+    {
+      "path": "uncertainties[3].evidence[1]",
+      "record_id": null,
+      "paragraph_id": "p0110",
+      "quote": "some have committed suicide after resigning",
+      "matched": true,
+      "spans": [
+        [
+          476,
+          519
+        ]
+      ]
+    },
+    {
+      "path": "uncertainties[4].evidence[0]",
+      "record_id": null,
+      "paragraph_id": "p0121",
+      "quote": "It was uncertain why the Empire fell; did the Legion turn against them, or was there some other reason?",
+      "matched": true,
+      "spans": [
+        [
+          315,
+          418
+        ]
+      ]
+    },
+    {
+      "path": "uncertainties[5].evidence[0]",
+      "record_id": null,
+      "paragraph_id": "p0157",
+      "quote": "The other researcher was an Eighty-Six.",
+      "matched": true,
+      "spans": [
+        [
+          101,
+          140
+        ]
+      ]
+    },
+    {
+      "path": "uncertainties[5].evidence[1]",
+      "record_id": null,
+      "paragraph_id": "p0157",
+      "quote": "there was no way of even knowing which internment camp they’d been sent to",
+      "matched": true,
+      "spans": [
+        [
+          326,
+          400
+        ]
+      ]
+    },
+    {
+      "path": "uncertainties[6].evidence[0]",
+      "record_id": null,
+      "paragraph_id": "p0159",
+      "quote": "Some believed he connected to somewhere that lay beyond the human collective unconscious.",
+      "matched": true,
+      "spans": [
+        [
+          326,
+          415
+        ]
+      ]
+    },
+    {
+      "path": "uncertainties[7].evidence[0]",
+      "record_id": null,
+      "paragraph_id": "p0169",
+      "quote": "the guy who came over for my arranged marriage",
+      "matched": true,
+      "spans": [
+        [
+          31,
+          77
+        ]
+      ]
+    },
+    {
+      "path": "uncertainties[7].evidence[1]",
+      "record_id": null,
+      "paragraph_id": "p0172",
+      "quote": "‘To my darling Theobald’",
+      "matched": true,
+      "spans": [
+        [
+          167,
+          191
+        ]
+      ]
+    }
+  ],
+  "note": "A matched quote only shows the text exists in that paragraph; it does not show that the quote supports the claim."
+}

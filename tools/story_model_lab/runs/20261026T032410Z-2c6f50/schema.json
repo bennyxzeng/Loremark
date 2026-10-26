@@ -1,0 +1,387 @@
+{
+  "$defs": {
+    "Attribute": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "string"
+        },
+        "assertion": {
+          "enum": [
+            "explicit",
+            "reported",
+            "inferred"
+          ],
+          "title": "Assertion",
+          "type": "string"
+        },
+        "attributed_to_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Attributed To Id"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "title": "Evidence",
+          "type": "array"
+        }
+      },
+      "required": [
+        "label",
+        "value",
+        "assertion",
+        "attributed_to_id",
+        "evidence"
+      ],
+      "title": "Attribute",
+      "type": "object"
+    },
+    "Entity": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "$ref": "#/$defs/SupportedText"
+        },
+        "aliases": {
+          "items": {
+            "$ref": "#/$defs/SupportedText"
+          },
+          "title": "Aliases",
+          "type": "array"
+        },
+        "attributes": {
+          "items": {
+            "$ref": "#/$defs/Attribute"
+          },
+          "title": "Attributes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "aliases",
+        "attributes"
+      ],
+      "title": "Entity",
+      "type": "object"
+    },
+    "Evidence": {
+      "additionalProperties": false,
+      "properties": {
+        "paragraph_id": {
+          "title": "Paragraph Id",
+          "type": "string"
+        },
+        "quote": {
+          "title": "Quote",
+          "type": "string"
+        }
+      },
+      "required": [
+        "paragraph_id",
+        "quote"
+      ],
+      "title": "Evidence",
+      "type": "object"
+    },
+    "Relationship": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "source_id": {
+          "title": "Source Id",
+          "type": "string"
+        },
+        "target_id": {
+          "title": "Target Id",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "assertion": {
+          "enum": [
+            "explicit",
+            "reported",
+            "inferred"
+          ],
+          "title": "Assertion",
+          "type": "string"
+        },
+        "attributed_to_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Attributed To Id"
+        },
+        "temporal_context": {
+          "enum": [
+            "current",
+            "past",
+            "future",
+            "hypothetical",
+            "unknown"
+          ],
+          "title": "Temporal Context",
+          "type": "string"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "title": "Evidence",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "source_id",
+        "target_id",
+        "label",
+        "description",
+        "assertion",
+        "attributed_to_id",
+        "temporal_context",
+        "evidence"
+      ],
+      "title": "Relationship",
+      "type": "object"
+    },
+    "StoryEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "participant_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Participant Ids",
+          "type": "array"
+        },
+        "location_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Location Id"
+        },
+        "narrative_order": {
+          "title": "Narrative Order",
+          "type": "integer"
+        },
+        "temporal_context": {
+          "enum": [
+            "current",
+            "past",
+            "future",
+            "hypothetical",
+            "unknown"
+          ],
+          "title": "Temporal Context",
+          "type": "string"
+        },
+        "story_time": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Story Time"
+        },
+        "assertion": {
+          "enum": [
+            "explicit",
+            "reported",
+            "inferred"
+          ],
+          "title": "Assertion",
+          "type": "string"
+        },
+        "attributed_to_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Attributed To Id"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "title": "Evidence",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "description",
+        "participant_ids",
+        "location_id",
+        "narrative_order",
+        "temporal_context",
+        "story_time",
+        "assertion",
+        "attributed_to_id",
+        "evidence"
+      ],
+      "title": "StoryEvent",
+      "type": "object"
+    },
+    "SupportedText": {
+      "additionalProperties": false,
+      "properties": {
+        "text": {
+          "title": "Text",
+          "type": "string"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "title": "Evidence",
+          "type": "array"
+        }
+      },
+      "required": [
+        "text",
+        "evidence"
+      ],
+      "title": "SupportedText",
+      "type": "object"
+    },
+    "Uncertainty": {
+      "additionalProperties": false,
+      "properties": {
+        "question": {
+          "title": "Question",
+          "type": "string"
+        },
+        "related_entity_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Related Entity Ids",
+          "type": "array"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "title": "Evidence",
+          "type": "array"
+        }
+      },
+      "required": [
+        "question",
+        "related_entity_ids",
+        "evidence"
+      ],
+      "title": "Uncertainty",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "characters": {
+      "items": {
+        "$ref": "#/$defs/Entity"
+      },
+      "title": "Characters",
+      "type": "array"
+    },
+    "locations": {
+      "items": {
+        "$ref": "#/$defs/Entity"
+      },
+      "title": "Locations",
+      "type": "array"
+    },
+    "organizations": {
+      "items": {
+        "$ref": "#/$defs/Entity"
+      },
+      "title": "Organizations",
+      "type": "array"
+    },
+    "relationships": {
+      "items": {
+        "$ref": "#/$defs/Relationship"
+      },
+      "title": "Relationships",
+      "type": "array"
+    },
+    "events": {
+      "items": {
+        "$ref": "#/$defs/StoryEvent"
+      },
+      "title": "Events",
+      "type": "array"
+    },
+    "uncertainties": {
+      "items": {
+        "$ref": "#/$defs/Uncertainty"
+      },
+      "title": "Uncertainties",
+      "type": "array"
+    }
+  },
+  "required": [
+    "characters",
+    "locations",
+    "organizations",
+    "relationships",
+    "events",
+    "uncertainties"
+  ],
+  "title": "ChapterStoryModel",
+  "type": "object"
+}

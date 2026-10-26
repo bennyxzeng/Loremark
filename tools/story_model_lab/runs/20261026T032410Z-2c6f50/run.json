@@ -1,0 +1,90 @@
+{
+  "run_id": "20261026T032410Z-2c6f50",
+  "command": "generate",
+  "status": "succeeded",
+  "exit_code": 0,
+  "started_at": "2026-10-26T03:24:10Z",
+  "finished_at": "2026-10-26T03:28:29Z",
+  "elapsed_seconds": 258.592,
+  "output_dir": "/Users/frankhao76/MineApps/vscode/loremark/Loremark/tools/story_model_lab/runs/20261026T032410Z-2c6f50",
+  "source": {
+    "epub_path": "/Users/frankhao76/MineApps/vscode/loremark/Loremark/sample_epub/86v1_chapters.epub",
+    "book_sha256": "452d8183147c1d20a0d474b8d0c981556b2f1bdb4bfb7151c25729f413911317",
+    "book_title": "86—EIGHTY-SIX, Vol. 1",
+    "toc_source": "nav",
+    "section_id": "section-004",
+    "chapter_number": 1,
+    "title": "Chapter 1: A Battlefield with Zero Casualties",
+    "source_href": "EPUB/section-004.xhtml",
+    "source_fragment": "section-004",
+    "paragraph_count": 185,
+    "character_count": 49692,
+    "omitted_image_count": 6,
+    "extraction_version": "1.0",
+    "extraction_notes": [],
+    "epub_warnings": []
+  },
+  "hashes": {
+    "text_sha256": "d1053fa1bbdd5a1609a15112b64f9fa961aa5395f72a2d80bed92ade53f9d549",
+    "prompt_sha256": "6ae94bfc105ab8fd90929576e68a12601c60e70ed19c2ec7ead173699886ddc0",
+    "schema_sha256": "9726d2213492cefd3895a1d4231c9fbbced1c18eeed6ed1e8f814c85fbd821cf"
+  },
+  "prompt_source": "builtin:extract_story_v1.txt",
+  "request": {
+    "provider": "deepseek",
+    "base_url": "https://api.deepseek.com",
+    "model": "deepseek-flash",
+    "max_output_tokens": null,
+    "timeout_seconds": null,
+    "max_retries": 2,
+    "store": null,
+    "truncation": null,
+    "dry_run": false
+  },
+  "response": {
+    "status": "completed",
+    "api_status": "completed",
+    "response_id": "461aff59-f61f-4864-b270-dc0b54b34531",
+    "request_id": null,
+    "model": "deepseek-flash",
+    "usage": {
+      "input_tokens": 14143,
+      "input_tokens_details": {
+        "cached_tokens": 0
+      },
+      "output_tokens": 58662,
+      "output_tokens_details": {
+        "reasoning_tokens": 38521
+      },
+      "total_tokens": 72805
+    },
+    "api_elapsed_seconds": 258.511,
+    "retries_taken": 0
+  },
+  "validation": {
+    "passed": true,
+    "structure_valid": true,
+    "error_count": 0,
+    "warning_count": 0,
+    "validator_version": "1.0",
+    "validated_at": "2026-10-26T03:35:50Z"
+  },
+  "versions": {
+    "python": "3.14.6",
+    "loremark-story-lab": "0.1.0",
+    "openai": "3.37.0",
+    "pydantic": "2.14.1",
+    "beautifulsoup4": "4.15.0"
+  },
+  "manual_corrections": [
+    {
+      "path": "characters[1].attributes[6].evidence[0].paragraph_id",
+      "from": "p0164",
+      "to": "p0163",
+      "reason": "Quote 'Annette smiled mischievously.' occurs verbatim in p0163, not p0164; only the paragraph ID was changed",
+      "corrected_by": "Claude Code (manual, at user request)",
+      "corrected_at": "2026-10-26T03:35:50Z",
+      "original_candidate": "candidate.original.json"
+    }
+  ]
+}
