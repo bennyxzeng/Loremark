@@ -1,4 +1,8 @@
-"""Single-chapter experiment flows behind the CLI commands."""
+"""Single-chapter experiment flows behind the CLI commands.
+
+Cumulative flows (init/update/show) live in incremental_pipeline.py; `run_validate` hands
+update runs over to it.
+"""
 
 from __future__ import annotations
 
@@ -29,6 +33,7 @@ EXIT_OK = 0
 EXIT_INPUT = 2
 EXIT_API = 3
 EXIT_VALIDATION = 4
+EXIT_STALE_BASE = 5
 
 # Run status -> exit code for every terminal state of `generate`.
 STATUS_EXIT_CODES = {
@@ -123,7 +128,7 @@ def run_generate(
     write_json(run_dir / "schema.json", text_format["schema"])
     write_json(run_dir / "request.json", request_record(params, config))
 
-    run = _new_run_record(run_dir, book, chapter_input, config, params, prompt_text, prompt_source)
+    run = new_run_record(run_dir, book, chapter_input, config, params, prompt_text, prompt_source)
     run["hashes"]["schema_sha256"] = sha256_json(text_format["schema"])
     warnings = [*book.warnings, *chapter_input.extraction_notes]
 
@@ -160,6 +165,12 @@ def run_generate(
 
 def run_validate(run_dir: Path, echo: Echo) -> Outcome:
     run_dir = run_dir.resolve()
+    run_path = run_dir / "run.json"
+    if run_path.is_file() and read_json(run_path).get("command") == "update":
+        # Imported here: incremental_pipeline builds on this module.
+        from .incremental_pipeline import validate_update_run
+
+        return validate_update_run(run_dir, echo)
     chapter_path, candidate_path = run_dir / "chapter.json", run_dir / "candidate.json"
     if not chapter_path.is_file():
         raise RunInputError(f"{chapter_path} not found; is this a run directory?")
@@ -168,7 +179,6 @@ def run_validate(run_dir: Path, echo: Echo) -> Outcome:
             f"{candidate_path} not found; the run produced no parseable model output to validate"
         )
     chapter = ChapterInput.model_validate(read_json(chapter_path))
-    run_path = run_dir / "run.json"
     run: dict[str, Any] = read_json(run_path) if run_path.is_file() else {"run_id": run_dir.name}
 
     report = _validate_and_save(run_dir, chapter, read_json(candidate_path))
@@ -188,7 +198,7 @@ def run_validate(run_dir: Path, echo: Echo) -> Outcome:
 # --- internals -------------------------------------------------------------------
 
 
-def _new_run_record(
+def new_run_record(
     run_dir: Path,
     book: EpubBook,
     chapter: ChapterInput,
@@ -196,10 +206,11 @@ def _new_run_record(
     params: dict[str, Any],
     prompt_text: str,
     prompt_source: str,
+    command: str = "generate",
 ) -> dict[str, Any]:
     return {
         "run_id": run_dir.name,
-        "command": "generate",
+        "command": command,
         "status": "running",
         "exit_code": None,
         "started_at": utc_now(),
@@ -254,10 +265,8 @@ def _finish(run: dict[str, Any], status: str, started_clock: float) -> None:
     run["elapsed_seconds"] = round(time.monotonic() - started_clock, 3)
 
 
-def _record_result(
-    run_dir: Path, run: dict[str, Any], chapter: ChapterInput, result: CallResult
-) -> tuple[str, ValidationReport | None]:
-    run["response"] = {
+def response_summary(result: CallResult) -> dict[str, Any]:
+    return {
         "status": result.status,
         "api_status": (result.response_body or {}).get("status"),
         "response_id": result.response_id,
@@ -267,6 +276,23 @@ def _record_result(
         "api_elapsed_seconds": result.elapsed_seconds,
         "retries_taken": result.retries_taken,
     }
+
+
+def failure_record(result: CallResult, status: str) -> dict[str, Any]:
+    return {
+        "status": status,
+        "error": result.error,
+        "response_id": result.response_id,
+        "request_id": result.request_id,
+        "usage": result.usage,
+        "output_text": result.output_text if result.candidate is None else None,
+    }
+
+
+def _record_result(
+    run_dir: Path, run: dict[str, Any], chapter: ChapterInput, result: CallResult
+) -> tuple[str, ValidationReport | None]:
+    run["response"] = response_summary(result)
     if result.response_body is not None:
         write_json(run_dir / "response.json", result.response_body)
     if result.candidate is not None:
@@ -280,15 +306,7 @@ def _record_result(
         return _validation_status(report), report
 
     status = "schema_invalid" if result.status == "parse_error" else result.status
-    failure = {
-        "status": status,
-        "error": result.error,
-        "response_id": result.response_id,
-        "request_id": result.request_id,
-        "usage": result.usage,
-        "output_text": result.output_text if result.candidate is None else None,
-    }
-    write_json(run_dir / "failure.json", failure)
+    write_json(run_dir / "failure.json", failure_record(result, status))
     return status, report
 
 

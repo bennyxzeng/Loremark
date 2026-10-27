@@ -102,14 +102,14 @@ def validate_candidate(candidate: Any, chapter: ChapterInput) -> ValidationRepor
         model = ChapterStoryModel.model_validate(candidate)
     except ValidationError as exc:
         issues = [
-            Issue("error", "schema", _loc(err["loc"]), err["msg"])
+            Issue("error", "schema", error_path(err["loc"]), err["msg"])
             for err in exc.errors(include_url=False)
         ]
         return ValidationReport(structure_valid=False, issues=issues, evidence=[], counts={})
     return _Checker(model, chapter).run()
 
 
-def _loc(loc: tuple[Any, ...]) -> str:
+def error_path(loc: tuple[Any, ...]) -> str:
     path = ""
     for part in loc:
         path += f"[{part}]" if isinstance(part, int) else (f".{part}" if path else str(part))
@@ -283,8 +283,8 @@ class _Checker:
         elsewhere = [pid for pid, text in self.paragraphs.items() if item.quote in text]
         if elsewhere:
             return f"{message}; it occurs verbatim in {', '.join(elsewhere[:5])} (not accepted)"
-        folded = _fold(item.quote)
-        if folded and folded in _fold(self.paragraphs[item.paragraph_id]):
+        folded = fold_text(item.quote)
+        if folded and folded in fold_text(self.paragraphs[item.paragraph_id]):
             return f"{message}; it matches only after folding quotes/dashes/case/spaces"
         return message
 
@@ -392,5 +392,5 @@ class _Checker:
             self._check_evidence(path, item.evidence, None)
 
 
-def _fold(text: str) -> str:
+def fold_text(text: str) -> str:
     return " ".join(text.translate(_QUOTE_FOLD).casefold().split())

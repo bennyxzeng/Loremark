@@ -1,8 +1,10 @@
 """Responses API adapter (OpenAI, or DeepSeek's compatible endpoint) with failure capture.
 
-`responses.parse` raises when the output does not fit the schema, which would lose the
-response. Calling it through `with_raw_response` keeps the HTTP body available, so status,
-refusals, usage, and the raw output text are saved before parsing is attempted.
+The output model is a parameter: ChapterStoryModel for `generate` (the default), StoryDelta
+for cumulative updates. `responses.parse` raises when the output does not fit the schema,
+which would lose the response. Calling it through `with_raw_response` keeps the HTTP body
+available, so status, refusals, usage, and the raw output text are saved before parsing is
+attempted.
 """
 
 from __future__ import annotations
@@ -17,6 +19,8 @@ import pydantic
 
 from .config import GenerateConfig
 from .schemas import ChapterStoryModel
+
+OutputModel = type[pydantic.BaseModel]
 
 if TYPE_CHECKING:
     import httpx2
@@ -39,7 +43,7 @@ _STATUS_CATEGORIES = {
 @dataclass
 class CallResult:
     status: CallStatus
-    parsed: ChapterStoryModel | None = None
+    parsed: pydantic.BaseModel | None = None
     candidate: Any = None
     output_text: str | None = None
     response_body: Any = None
@@ -53,7 +57,9 @@ class CallResult:
 
 
 class StoryModelClient(Protocol):
-    def generate(self, params: dict[str, Any]) -> CallResult: ...
+    def generate(
+        self, params: dict[str, Any], output_type: OutputModel = ChapterStoryModel
+    ) -> CallResult: ...
 
 
 def make_sdk_client(
@@ -78,12 +84,12 @@ class ResponsesClient:
     def __init__(self, sdk: openai.OpenAI) -> None:
         self._sdk = sdk
 
-    def generate(self, params: dict[str, Any]) -> CallResult:
+    def generate(
+        self, params: dict[str, Any], output_type: OutputModel = ChapterStoryModel
+    ) -> CallResult:
         started = time.monotonic()
         try:
-            raw = self._sdk.responses.with_raw_response.parse(
-                text_format=ChapterStoryModel, **params
-            )
+            raw = self._sdk.responses.with_raw_response.parse(text_format=output_type, **params)
         except openai.APIStatusError as exc:
             result = CallResult(status="api_error", request_id=exc.request_id)
             result.error = {

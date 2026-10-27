@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import platform
 import secrets
@@ -47,8 +48,17 @@ def prepare_output_dir(out: Path | None) -> Path:
     return path
 
 
+def json_bytes(data: Any) -> bytes:
+    """The exact bytes write_json writes; stored files are hashed over these."""
+    return (json.dumps(data, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+
+
+def sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
 def write_json(path: Path, data: Any) -> None:
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    path.write_bytes(json_bytes(data))
 
 
 def read_json(path: Path) -> Any:

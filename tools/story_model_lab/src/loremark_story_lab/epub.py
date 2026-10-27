@@ -150,6 +150,14 @@ def open_epub(path: Path) -> EpubBook:
 
 
 def select_section(book: EpubBook, *, chapter: int | None, section_id: str | None) -> Section:
+    section = find_section(book, chapter=chapter, section_id=section_id)
+    if section.problem:
+        raise EpubError(f"{section.section_id} cannot be extracted reliably: {section.problem}")
+    return section
+
+
+def find_section(book: EpubBook, *, chapter: int | None, section_id: str | None) -> Section:
+    """The section a --chapter/--section choice names, even when it cannot be extracted."""
     if (chapter is None) == (section_id is None):
         raise EpubError("Choose exactly one of --chapter or --section")
     if section_id is not None:
@@ -170,10 +178,7 @@ def select_section(book: EpubBook, *, chapter: int | None, section_id: str | Non
             raise EpubError(
                 f"Chapter {chapter} matches several sections ({ids}); choose one with --section"
             )
-    section = matches[0]
-    if section.problem:
-        raise EpubError(f"{section.section_id} cannot be extracted reliably: {section.problem}")
-    return section
+    return matches[0]
 
 
 def extract_section(book: EpubBook, section: Section) -> ChapterInput:
@@ -185,6 +190,13 @@ def extract_section(book: EpubBook, section: Section) -> ChapterInput:
     next_section = _next_in_same_document(book, section)
     if next_section is not None:
         end = _anchor_element(soup, next_section.fragment)
+        ordinals = _element_ordinals(soup)
+        start_position = _DOCUMENT_START if start is None else ordinals[id(start)]
+        if end is None or ordinals[id(end)] <= start_position:
+            raise EpubError(
+                f"{section.section_id} has no end boundary after its start: "
+                f"{next_section.section_id} starts at {_resource(next_section)}"
+            )
 
     collector = _RangeCollector(start=start, end=end)
     collector.walk(soup.body or soup)
@@ -406,19 +418,75 @@ def _read_ncx(archive: zipfile.ZipFile, ncx_href: str) -> list[_TocEntry]:
 # --- section boundaries ------------------------------------------------------
 
 
+# Position of a section that starts with its document (no fragment, or the body/html element);
+# every element inside the body has a non-negative position.
+_DOCUMENT_START = -1
+
+
+def _resource(entry: Section | _TocEntry) -> str:
+    return entry.href + (f"#{entry.fragment}" if entry.fragment else "")
+
+
 def _anchor_element(soup: BeautifulSoup, fragment: str | None) -> Tag | None:
-    """The element a section starts at, or None for the start of the document."""
+    """The element a section starts at; None only for the start of the document.
+
+    A fragment that cannot be located exactly raises instead of falling back to the start.
+    """
     if fragment is None:
         return None
-    element = soup.find(id=fragment)
-    if element is None or element.name in {"html", "body"}:
+    matches = soup.find_all(id=fragment)
+    if not matches:
+        raise EpubError(f"anchor #{fragment} was not found")
+    if len(matches) > 1:
+        raise EpubError(
+            f"id {fragment!r} appears {len(matches)} times, so #{fragment} is ambiguous"
+        )
+    element = matches[0]
+    if element.name in {"html", "body"}:
         return None
+    for node in (element, *element.parents):
+        name = (node.name or "").lower()
+        if name in SKIP_TAGS:
+            raise EpubError(f"anchor #{fragment} is inside <{name}>, whose text is not extracted")
     return element
 
 
 def _element_ordinals(soup: BeautifulSoup) -> dict[int, int]:
     root = soup.body or soup
     return {id(node): index for index, node in enumerate(root.descendants) if isinstance(node, Tag)}
+
+
+def _boundary_positions(
+    soup: BeautifulSoup, entries: list[tuple[int, _TocEntry]]
+) -> tuple[dict[int, int], list[str]]:
+    """Position of each TOC entry (by TOC index) in one document, and every problem found."""
+    ordinals = _element_ordinals(soup)
+    entry_by_index = dict(entries)
+    positions: dict[int, int] = {}
+    problems: list[str] = []
+    for toc_index, entry in entries:
+        try:
+            element = _anchor_element(soup, entry.fragment)
+        except EpubError as exc:
+            problems.append(f"{entry.title!r} → {_resource(entry)}: {exc}")
+            continue
+        if element is None:
+            positions[toc_index] = _DOCUMENT_START
+        elif id(element) in ordinals:
+            positions[toc_index] = ordinals[id(element)]
+        else:
+            problems.append(
+                f"{entry.title!r} → {_resource(entry)}: anchor is outside the document body"
+            )
+
+    by_position: dict[int, list[_TocEntry]] = {}
+    for toc_index, position in positions.items():
+        by_position.setdefault(position, []).append(entry_by_index[toc_index])
+    for same in by_position.values():
+        if len(same) > 1:
+            listed = ", ".join(f"{e.title!r} ({_resource(e)})" for e in same)
+            problems.append(f"TOC entries {listed} start at the same position")
+    return positions, problems
 
 
 def _document_title(soup: BeautifulSoup, href: str) -> str:
@@ -434,7 +502,8 @@ def _document_title(soup: BeautifulSoup, href: str) -> str:
 def _build_sections(book: EpubBook, spine: list[str], entries: list[_TocEntry]) -> list[Section]:
     spine_index = {href: index for index, href in enumerate(spine, start=1)}
     positioned: list[tuple[tuple[int, int, int], Section]] = []
-    toc_docs: set[str] = set()
+    by_document: dict[str, list[tuple[int, _TocEntry]]] = {}
+    seen: set[tuple[str, str | None, str]] = set()
 
     for toc_index, entry in enumerate(entries):
         if entry.href not in spine_index:
@@ -443,32 +512,43 @@ def _build_sections(book: EpubBook, spine: list[str], entries: list[_TocEntry]) 
                 "document in the spine; it is not listed"
             )
             continue
-        toc_docs.add(entry.href)
-        soup = book.soup(entry.href)
+        key = (entry.href, entry.fragment, entry.title)
+        if key in seen:
+            book.warnings.append(
+                f"TOC entry {entry.title!r} → {_resource(entry)} is listed more than once; "
+                "the repeats are ignored"
+            )
+            continue
+        seen.add(key)
+        by_document.setdefault(entry.href, []).append((toc_index, entry))
+
+    # Boundaries are checked per document before anything is extracted. If one of them cannot
+    # be located exactly, no section of that document can be cut reliably, so all are flagged
+    # and listed in TOC order; their positions are never used for sorting.
+    for href, doc_entries in by_document.items():
+        soup = book.soup(href)
+        positions, problems = _boundary_positions(soup, doc_entries)
         problem = None
-        ordinal = -1
-        if entry.fragment is not None:
-            element = soup.find(id=entry.fragment)
-            if element is None:
-                problem = f"anchor #{entry.fragment} was not found in {entry.href}"
-            elif element.name not in {"html", "body"}:
-                ordinal = _element_ordinals(soup)[id(element)]
-        section = Section(
-            section_id="",
-            order=0,
-            title=entry.title or _document_title(soup, entry.href),
-            chapter_number=None,
-            href=entry.href,
-            fragment=entry.fragment,
-            spine_index=spine_index[entry.href],
-            in_toc=True,
-            problem=problem,
-        )
-        positioned.append(((section.spine_index, ordinal, toc_index), section))
+        if problems:
+            problem = f"TOC boundaries in {href} cannot be located reliably: " + "; ".join(problems)
+        for toc_index, entry in doc_entries:
+            section = Section(
+                section_id="",
+                order=0,
+                title=entry.title or _document_title(soup, href),
+                chapter_number=None,
+                href=href,
+                fragment=entry.fragment,
+                spine_index=spine_index[href],
+                in_toc=True,
+                problem=problem,
+            )
+            position = 0 if problem else positions[toc_index]
+            positioned.append(((section.spine_index, position, toc_index), section))
 
     # Spine documents the TOC never starts in are listed on their own, never silently merged.
     for href, index in spine_index.items():
-        if href in toc_docs:
+        if href in by_document:
             continue
         soup = book.soup(href)
         section = Section(
@@ -483,7 +563,7 @@ def _build_sections(book: EpubBook, spine: list[str], entries: list[_TocEntry]) 
         )
         if book.toc_source != "spine":
             section.notes.append("Spine document not referenced by the table of contents")
-        positioned.append(((index, -1, len(entries) + index), section))
+        positioned.append(((index, _DOCUMENT_START, len(entries) + index), section))
 
     positioned.sort(key=lambda item: item[0])
     sections = [section for _, section in positioned]
@@ -502,13 +582,21 @@ def _build_sections(book: EpubBook, spine: list[str], entries: list[_TocEntry]) 
 
 
 def _next_in_same_document(book: EpubBook, section: Section) -> Section | None:
+    """The section that ends this one, or None when this one runs to the end of its document.
+
+    A following section without a reliable start is an error, never skipped: skipping it
+    would extend this section over the other one's text.
+    """
     index = book.sections.index(section)
-    for candidate in book.sections[index + 1 :]:
-        if candidate.href != section.href:
-            return None
-        if candidate.problem is None:
-            return candidate
-    return None
+    following = book.sections[index + 1 : index + 2]
+    if not following or following[0].href != section.href:
+        return None
+    if following[0].problem is not None:
+        raise EpubError(
+            f"{section.section_id} has no reliable end: the next section "
+            f"{following[0].section_id} cannot be located ({following[0].problem})"
+        )
+    return following[0]
 
 
 class _RangeCollector:

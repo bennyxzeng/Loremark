@@ -22,7 +22,7 @@ def md(text: str) -> str:
     return _MD_SPECIAL.sub(r"\\\1", html.escape(text, quote=False))
 
 
-def _code(value: object) -> str:
+def inline_code(value: object) -> str:
     return "—" if value is None else f"`{value}`"
 
 
@@ -95,17 +95,18 @@ def _metadata(chapter: ChapterInput, run: dict[str, Any]) -> list[str]:
     lines = [
         "## 运行信息",
         "",
-        f"- 运行 ID：{_code(run.get('run_id'))}；状态：{_code(run.get('status'))}",
-        f"- Provider：{_code(request.get('provider'))}；请求模型：{_code(request.get('model'))}；"
-        f"响应模型：{_code(response.get('model'))}",
-        f"- Response ID：{_code(response.get('response_id'))}；"
-        f"Request ID：{_code(response.get('request_id'))}",
+        f"- 运行 ID：{inline_code(run.get('run_id'))}；状态：{inline_code(run.get('status'))}",
+        f"- Provider：{inline_code(request.get('provider'))}；"
+        f"请求模型：{inline_code(request.get('model'))}；"
+        f"响应模型：{inline_code(response.get('model'))}",
+        f"- Response ID：{inline_code(response.get('response_id'))}；"
+        f"Request ID：{inline_code(response.get('request_id'))}",
         f"- 书籍：{md(chapter.book_title)}；节：`{chapter.section_id}`"
         f"（Chapter {chapter.chapter_number if chapter.chapter_number is not None else '—'}）；"
         f"资源：`{chapter.source_href}`；段落数：{len(chapter.paragraphs)}",
         f"- 文本 SHA-256：`{chapter.text_sha256}`",
-        f"- Prompt SHA-256：{_code(hashes.get('prompt_sha256'))}；"
-        f"Schema SHA-256：{_code(hashes.get('schema_sha256'))}",
+        f"- Prompt SHA-256：{inline_code(hashes.get('prompt_sha256'))}；"
+        f"Schema SHA-256：{inline_code(hashes.get('schema_sha256'))}",
     ]
     usage = response.get("usage")
     if usage:

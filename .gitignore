@@ -54,6 +54,15 @@ __pycache__/
 .ruff_cache/
 *.egg-info/
 tools/story_model_lab/runs/
+# Share this book's authoritative model and history snapshots for team review.
+# Other stores, chapter inputs, API provenance, locks, and temporary files stay local.
+tools/story_model_lab/stores/*
+!tools/story_model_lab/stores/86v1/
+tools/story_model_lab/stores/86v1/*
+!tools/story_model_lab/stores/86v1/story_model.json
+!tools/story_model_lab/stores/86v1/revisions/
+tools/story_model_lab/stores/86v1/revisions/*
+!tools/story_model_lab/stores/86v1/revisions/*.json
 .env
 .env.*
 !.env.example

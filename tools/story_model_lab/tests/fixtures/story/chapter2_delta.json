@@ -1,0 +1,192 @@
+{
+  "new_entities": [
+    {"local_id": "new_entity_001", "kind": "character"},
+    {"local_id": "new_entity_002", "kind": "character"}
+  ],
+  "new_records": {
+    "names": [
+      {
+        "local_id": "new_record_001",
+        "payload": {"entity_id": "new_entity_001", "text": "Mara Quill"},
+        "evidence": [{"section_id": "section-003", "paragraph_id": "p0006", "quote": "The engineer Mara Quill"}]
+      },
+      {
+        "local_id": "new_record_002",
+        "payload": {"entity_id": "new_entity_002", "text": "the old harbor master"},
+        "evidence": [{"section_id": "section-003", "paragraph_id": "p0007", "quote": "the old harbor master"}]
+      }
+    ],
+    "aliases": [
+      {
+        "local_id": "new_record_003",
+        "payload": {"entity_id": "c001", "text": "Captain Ilse Varga"},
+        "evidence": [{"section_id": "section-003", "paragraph_id": "p0002", "quote": "Captain Ilse Varga"}]
+      }
+    ],
+    "attributes": [
+      {
+        "local_id": "new_record_004",
+        "payload": {
+          "entity_id": "c001",
+          "label": "rank",
+          "value": "Captain",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [{"section_id": "section-003", "paragraph_id": "p0002", "quote": "Captain Ilse Varga had been promoted"}]
+      },
+      {
+        "local_id": "new_record_005",
+        "payload": {
+          "entity_id": "new_entity_001",
+          "label": "occupation",
+          "value": "engineer",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [{"section_id": "section-003", "paragraph_id": "p0006", "quote": "The engineer Mara Quill"}]
+      }
+    ],
+    "relationships": [
+      {
+        "local_id": "new_record_006",
+        "payload": {
+          "source_id": "c001",
+          "target_id": "c002",
+          "label": "relationship_status",
+          "description": "Ilse and the Grey Fox are now allies.",
+          "assertion": "explicit",
+          "attributed_to_id": null,
+          "temporal_context": "current"
+        },
+        "evidence": [{"section_id": "section-003", "paragraph_id": "p0003", "quote": "Ilse and the Grey Fox became allies"}]
+      },
+      {
+        "local_id": "new_record_007",
+        "payload": {
+          "source_id": "c001",
+          "target_id": "c004",
+          "label": "rivals_with",
+          "description": "Ilse and Petr were childhood rivals.",
+          "assertion": "explicit",
+          "attributed_to_id": null,
+          "temporal_context": "past"
+        },
+        "evidence": [{"section_id": "section-003", "paragraph_id": "p0005", "quote": "Years ago, Ilse and Petr had been childhood rivals"}]
+      },
+      {
+        "local_id": "new_record_008",
+        "payload": {
+          "source_id": "g001",
+          "target_id": "c002",
+          "label": "allied_with",
+          "description": "The Harbor Watch works alongside the Grey Fox.",
+          "assertion": "explicit",
+          "attributed_to_id": null,
+          "temporal_context": "current"
+        },
+        "evidence": [{"section_id": "section-003", "paragraph_id": "p0008", "quote": "The Harbor Watch now worked alongside the Grey Fox"}]
+      }
+    ],
+    "events": [
+      {
+        "local_id": "new_record_009",
+        "payload": {
+          "description": "A storm wrecks the harbor.",
+          "participant_ids": [],
+          "location_id": null,
+          "narrative_order": 1,
+          "temporal_context": "current",
+          "story_time": null,
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [{"section_id": "section-003", "paragraph_id": "p0003", "quote": "the storm wrecked the harbor"}]
+      },
+      {
+        "local_id": "new_record_010",
+        "payload": {
+          "description": "The Grey Fox pulls back his hood, and Ilse recognizes Petr Lask.",
+          "participant_ids": ["c002", "c001"],
+          "location_id": null,
+          "narrative_order": 2,
+          "temporal_context": "current",
+          "story_time": null,
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [{"section_id": "section-003", "paragraph_id": "p0004", "quote": "The Grey Fox pulled back his hood"}]
+      },
+      {
+        "local_id": "new_record_011",
+        "payload": {
+          "description": "Mara Quill repairs the signal lamp with Ilse.",
+          "participant_ids": ["new_entity_001", "c001"],
+          "location_id": null,
+          "narrative_order": 3,
+          "temporal_context": "current",
+          "story_time": null,
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [{"section_id": "section-003", "paragraph_id": "p0006", "quote": "repaired the signal lamp with Ilse"}]
+      }
+    ],
+    "uncertainties": [
+      {
+        "local_id": "new_record_012",
+        "payload": {
+          "question": "Is the old harbor master paying the smugglers?",
+          "related_entity_ids": ["new_entity_002"]
+        },
+        "evidence": [{"section_id": "section-003", "paragraph_id": "p0007", "quote": "the old harbor master might be paying the smugglers"}]
+      }
+    ],
+    "identity_links": [
+      {
+        "local_id": "new_record_013",
+        "payload": {
+          "left_entity_id": "c002",
+          "right_entity_id": "c004",
+          "assertion": "explicit",
+          "explanation": "Under the hood, the Grey Fox is Petr Lask."
+        },
+        "evidence": [{"section_id": "section-003", "paragraph_id": "p0004", "quote": "Ilse saw that he was Petr Lask"}]
+      }
+    ]
+  },
+  "transitions": [
+    {
+      "target_record_id": "f000008",
+      "action": "supersede",
+      "replacement_local_id": "new_record_004",
+      "resolution": null,
+      "reason": "Ilse has been promoted from lieutenant to captain.",
+      "evidence": [{"section_id": "section-003", "paragraph_id": "p0002", "quote": "had been promoted after the spring inspection"}]
+    },
+    {
+      "target_record_id": "f000013",
+      "action": "supersede",
+      "replacement_local_id": "new_record_006",
+      "resolution": null,
+      "reason": "The storm turned the enemies into allies.",
+      "evidence": [{"section_id": "section-003", "paragraph_id": "p0003", "quote": "Ilse and the Grey Fox became allies"}]
+    },
+    {
+      "target_record_id": "f000015",
+      "action": "retract",
+      "replacement_local_id": null,
+      "resolution": null,
+      "reason": "The Harbor Watch now works with the Grey Fox instead of hunting him.",
+      "evidence": [{"section_id": "section-003", "paragraph_id": "p0008", "quote": "The Harbor Watch now worked alongside the Grey Fox"}]
+    },
+    {
+      "target_record_id": "f000021",
+      "action": "resolve",
+      "replacement_local_id": null,
+      "resolution": "The Grey Fox is Petr Lask.",
+      "reason": "Ilse sees his face when he pulls back his hood.",
+      "evidence": [{"section_id": "section-003", "paragraph_id": "p0004", "quote": "Ilse saw that he was Petr Lask"}]
+    }
+  ]
+}

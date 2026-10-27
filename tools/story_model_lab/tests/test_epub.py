@@ -15,6 +15,8 @@ from loremark_story_lab.epub import (
     select_section,
 )
 
+CHAPTER_ONE_SHA256 = "d1053fa1bbdd5a1609a15112b64f9fa961aa5395f72a2d80bed92ade53f9d549"
+
 
 def _texts(book, section_id: str) -> list[str]:
     section = select_section(book, chapter=None, section_id=section_id)
@@ -169,6 +171,148 @@ def test_missing_anchor_is_reported_not_guessed(tmp_path: Path) -> None:
         select_section(book, chapter=1, section_id=None)
 
 
+def _two_chapter_doc(nav: list[tuple[str, str]], tmp_path: Path, body: str | None = None):
+    body = body or (
+        '<h2 id="c1">Chapter 1</h2><p>CHAPTER_ONE_ONLY</p>'
+        '<h2 id="c2">Chapter 2</h2><p>CHAPTER_TWO_SENTINEL</p>'
+    )
+    return open_epub(build_epub(tmp_path / "b.epub", {"all.xhtml": xhtml(body)}, nav=nav))
+
+
+def test_missing_next_anchor_does_not_extend_previous_chapter(tmp_path: Path) -> None:
+    book = _two_chapter_doc(
+        [("all.xhtml#c1", "Chapter 1"), ("all.xhtml#missing", "Chapter 2")], tmp_path
+    )
+
+    assert [s.title for s in book.sections] == ["Chapter 1", "Chapter 2"]
+    assert all("#missing" in (s.problem or "") for s in book.sections)
+    with pytest.raises(EpubError, match="anchor #missing was not found") as excinfo:
+        select_section(book, chapter=1, section_id=None)
+    assert "CHAPTER_TWO_SENTINEL" not in str(excinfo.value)
+    for section in book.sections:
+        with pytest.raises(EpubError, match="cannot be extracted reliably"):
+            extract_section(book, section)
+
+
+def test_invalid_middle_anchor_does_not_cut_at_the_third_chapter(tmp_path: Path) -> None:
+    body = (
+        '<h2 id="c1">Chapter 1</h2><p>ONE</p>'
+        '<h2 id="c2">Chapter 2</h2><p>TWO</p>'
+        '<h2 id="c3">Chapter 3</h2><p>THREE</p>'
+    )
+    nav = [("all.xhtml#c1", "Chapter 1"), ("all.xhtml#bad", "Chapter 2"), ("all.xhtml#c3", "C3")]
+    book = _two_chapter_doc(nav, tmp_path, body)
+
+    assert [s.title for s in book.sections] == ["Chapter 1", "Chapter 2", "C3"]
+    for section in book.sections:
+        assert "'Chapter 2' → OEBPS/all.xhtml#bad" in (section.problem or "")
+        with pytest.raises(EpubError):
+            extract_section(book, section)
+
+
+@pytest.mark.parametrize(
+    ("body", "nav", "message"),
+    [
+        (
+            '<h2 id="c1">One</h2><p>A.</p><h2 id="c2">Two</h2><p id="c2">B.</p>',
+            [("all.xhtml#c1", "Chapter 1"), ("all.xhtml#c2", "Chapter 2")],
+            "id 'c2' appears 2 times",
+        ),
+        (
+            '<h2 id="c1">One</h2><p>A.</p><h2 id="c2">Two</h2><p>B.</p>',
+            [
+                ("all.xhtml#c1", "Chapter 1"),
+                ("all.xhtml#c2", "Chapter 2"),
+                ("all.xhtml#c2", "Chapter 2 again"),
+            ],
+            "start at the same position",
+        ),
+        (
+            '<h2 id="c1">One</h2><p>A.</p><h2>Two</h2><p>B.</p>',
+            [("all.xhtml#c1", "Chapter 1"), ("all.xhtml#doc-title", "Chapter 2")],
+            "inside <head>",
+        ),
+        (
+            '<h2>One</h2><p>A.</p><h2 id="c2">Two</h2><p>B.</p>',
+            [
+                ("all.xhtml", "Chapter 1"),
+                ("all.xhtml#main", "Chapter 1 body"),
+                ("all.xhtml#c2", "Ch"),
+            ],
+            "start at the same position",
+        ),
+        (
+            '<h2 id="c1">One</h2><p>A.</p><svg><text id="c2">Two</text></svg><p>B.</p>',
+            [("all.xhtml#c1", "Chapter 1"), ("all.xhtml#c2", "Chapter 2")],
+            "inside <svg>",
+        ),
+    ],
+    ids=["duplicate-id", "duplicate-boundary", "head-anchor", "body-and-start", "skipped-node"],
+)
+def test_unreliable_boundaries_are_explained(
+    tmp_path: Path, body: str, nav: list[tuple[str, str]], message: str
+) -> None:
+    document = xhtml(body).replace("<title>", '<title id="doc-title">', 1)
+    document = document.replace("<body>", '<body id="main">', 1)
+    book = open_epub(build_epub(tmp_path / "b.epub", {"all.xhtml": document}, nav=nav))
+
+    assert len(book.sections) == len(nav)
+    for section in book.sections:
+        assert message in (section.problem or "")
+        with pytest.raises(EpubError, match="cannot be extracted reliably"):
+            extract_section(book, section)
+
+
+def test_exact_duplicate_toc_link_is_listed_once(tmp_path: Path) -> None:
+    nav = [("all.xhtml#c1", "Chapter 1"), ("all.xhtml#c1", "Chapter 1"), ("all.xhtml#c2", "Ch 2")]
+    book = _two_chapter_doc(nav, tmp_path)
+
+    assert [s.title for s in book.sections] == ["Chapter 1", "Ch 2"]
+    assert any("more than once" in w for w in book.warnings)
+    assert _texts(book, "section-001") == ["Chapter 1", "CHAPTER_ONE_ONLY"]
+    assert _texts(book, "section-002") == ["Chapter 2", "CHAPTER_TWO_SENTINEL"]
+
+
+def test_broken_document_does_not_affect_other_documents(tmp_path: Path) -> None:
+    docs = {
+        "one.xhtml": xhtml('<h2 id="a">One</h2><p>ONE TEXT</p><h2>Two</h2><p>TWO TEXT</p>'),
+        "three.xhtml": xhtml('<h2 id="x">Three</h2><p>THREE</p><h2 id="y">Four</h2><p>FOUR</p>'),
+    }
+    nav = [
+        ("one.xhtml#a", "Chapter 1"),
+        ("one.xhtml#gone", "Chapter 2"),
+        ("three.xhtml#x", "Chapter 3"),
+        ("three.xhtml#y", "Chapter 4"),
+    ]
+    book = open_epub(build_epub(tmp_path / "b.epub", docs, nav=nav))
+
+    assert [s.problem is not None for s in book.sections] == [True, True, False, False]
+    assert _texts(book, "section-003") == ["Three", "THREE"]
+    assert _texts(book, "section-004") == ["Four", "FOUR"]
+    with pytest.raises(EpubError):
+        select_section(book, chapter=1, section_id=None)
+
+
+def test_last_chapter_in_shared_document_runs_to_the_end(tmp_path: Path) -> None:
+    body = '<p>Front.</p><h2 id="c1">One</h2><p>A.</p><h2 id="c2">Two</h2><p>B.</p><p>End.</p>'
+    nav = [("all.xhtml", "Opening"), ("all.xhtml#c1", "Chapter 1"), ("all.xhtml#c2", "Chapter 2")]
+    book = _two_chapter_doc(nav, tmp_path, body)
+
+    assert _texts(book, "section-001") == ["Front."]
+    assert _texts(book, "section-002") == ["One", "A."]
+    assert _texts(book, "section-003") == ["Two", "B.", "End."]
+
+
+def test_ncx_multi_anchor_document(tmp_path: Path) -> None:
+    body = '<h2 id="c1">One</h2><p>A.</p><h2 id="c2">Two</h2><p>B.</p>'
+    ncx = [("all.xhtml#c1", "Chapter 1"), ("all.xhtml#c2", "Chapter 2")]
+    book = open_epub(build_epub(tmp_path / "b.epub", {"all.xhtml": xhtml(body)}, ncx=ncx))
+
+    assert book.toc_source == "ncx"
+    assert _texts(book, "section-001") == ["One", "A."]
+    assert _texts(book, "section-002") == ["Two", "B."]
+
+
 def test_chapter_selection_errors(tmp_path: Path) -> None:
     docs = {"a.xhtml": xhtml("<p>A.</p>"), "b.xhtml": xhtml("<p>B.</p>")}
     nav = [("a.xhtml", "Chapter 1: A"), ("b.xhtml", "Chapter 1: Again")]
@@ -250,8 +394,12 @@ def test_user_sample_chapter_mapping() -> None:
         assert section.spine_index == spine_index
         assert section.href == f"EPUB/section-{spine_index:03d}.xhtml"
 
+    assert all(section.problem is None for section in book.sections)
+
     chapter = extract_section(book, select_section(book, chapter=1, section_id=None))
     assert chapter.source_href == "EPUB/section-004.xhtml"
+    assert chapter.section_id == "section-004" and len(chapter.paragraphs) == 185
+    assert chapter.text_sha256 == CHAPTER_ONE_SHA256
     assert chapter.paragraphs[0].text.startswith("CHAPTER 1")
     assert chapter.paragraphs[1].text == "There were no casualties on that battlefield."
     previous = extract_section(book, select_section(book, chapter=None, section_id="section-003"))

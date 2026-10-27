@@ -1,4 +1,5 @@
-"""Command line entry point: chapters / extract / generate / validate."""
+"""Command line entry point: chapters / extract / generate / validate / init / update /
+commit / show."""
 
 from __future__ import annotations
 
@@ -8,9 +9,36 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from .artifacts import OutputDirError
-from .config import PROVIDERS, ConfigError, resolve_generate_config
+from .config import PROVIDERS, ConfigError, GenerateConfig, resolve_generate_config
 from .epub import EpubError, extract_section, open_epub
-from .pipeline import EXIT_INPUT, EXIT_OK, RunInputError, run_extract, run_generate, run_validate
+from .incremental_pipeline import (
+    UpdateInputError,
+    run_commit_corrected,
+    run_init,
+    run_show,
+    run_update,
+)
+from .migration import MigrationError
+from .pipeline import (
+    EXIT_INPUT,
+    EXIT_OK,
+    EXIT_STALE_BASE,
+    RunInputError,
+    run_extract,
+    run_generate,
+    run_validate,
+)
+from .story_store import StaleBaseError, StoreError
+
+INPUT_ERRORS = (
+    EpubError,
+    ConfigError,
+    OutputDirError,
+    RunInputError,
+    StoreError,
+    MigrationError,
+    UpdateInputError,
+)
 
 
 def _echo(message: str) -> None:
@@ -24,7 +52,8 @@ def _warn(message: str) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="story-model",
-        description="Extract a single-chapter story model from an EPUB with the Responses API.",
+        description="Extract a story model from an EPUB with the Responses API: one chapter "
+        "(generate), or a cumulative model updated one section at a time (init/update/show).",
     )
     commands = parser.add_subparsers(dest="command", required=True)
 
@@ -36,39 +65,86 @@ def build_parser() -> argparse.ArgumentParser:
 
     generate = commands.add_parser("generate", help="run one chapter through the model")
     _add_selection(generate)
-    generate.add_argument(
+    _add_model_options(generate)
+
+    validate = commands.add_parser(
+        "validate", help="re-check a saved generate or update run offline"
+    )
+    validate.add_argument("--run", type=Path, required=True, help="run directory")
+
+    init = commands.add_parser(
+        "init", help="start a cumulative store from a generate run (offline)"
+    )
+    init.add_argument("--from-run", type=Path, required=True, help="v1 generate run directory")
+    init.add_argument("--store", type=Path, required=True, help="new or empty store directory")
+    init.add_argument(
+        "--epub",
+        type=Path,
+        help="EPUB to verify against when the run's recorded path is gone (same SHA-256)",
+    )
+
+    update = commands.add_parser(
+        "update", help="add the next section to a cumulative store through the model"
+    )
+    update.add_argument("--store", type=Path, required=True, help="store directory")
+    _add_selection(update)
+    _add_model_options(update)
+
+    commit = commands.add_parser(
+        "commit",
+        help="commit an update run after manual corrections of evidence locations (offline)",
+    )
+    commit.add_argument("--run", type=Path, required=True, help="update run directory")
+    commit.add_argument("--epub", type=Path, required=True, help="the store's EPUB")
+
+    show = commands.add_parser("show", help="print a committed revision of a store (offline)")
+    show.add_argument("--store", type=Path, required=True, help="store directory")
+    show.add_argument("--revision", type=int, help="revision number (default: latest)")
+    show.add_argument("--json", action="store_true", help="full v2 JSON instead of Markdown")
+    return parser
+
+
+def _add_model_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
         "--provider",
         choices=sorted(PROVIDERS),
         default="openai",
         help="openai (default) or deepseek; picks the key/model/base-URL environment variables",
     )
-    generate.add_argument("--model", help="overrides OPENAI_MODEL / DEEPSEEK_MODEL")
-    generate.add_argument("--prompt-file", type=Path, help="system prompt file (default: v1)")
-    generate.add_argument(
+    parser.add_argument("--model", help="overrides OPENAI_MODEL / DEEPSEEK_MODEL")
+    parser.add_argument("--prompt-file", type=Path, help="system prompt file (default: built-in)")
+    parser.add_argument(
         "--max-output-tokens",
         type=int,
         metavar="N",
         help="optional output cap; by default none is sent and the provider's limit applies",
     )
-    generate.add_argument(
+    parser.add_argument(
         "--timeout",
         type=float,
         metavar="SECONDS",
         help="optional per-request timeout; by default the client waits indefinitely",
     )
-    generate.add_argument(
+    parser.add_argument(
         "--reasoning-effort",
         metavar="LEVEL",
         help="optional reasoning.effort, e.g. low/high/max for DeepSeek; "
         "by default none is sent and the model's default applies",
     )
-    generate.add_argument(
+    parser.add_argument(
         "--dry-run", action="store_true", help="write the request files without calling the API"
     )
 
-    validate = commands.add_parser("validate", help="re-check a saved run offline")
-    validate.add_argument("--run", type=Path, required=True, help="run directory")
-    return parser
+
+def _model_config(args: argparse.Namespace) -> GenerateConfig:
+    return resolve_generate_config(
+        provider=args.provider,
+        model=args.model,
+        max_output_tokens=args.max_output_tokens,
+        timeout=args.timeout,
+        dry_run=args.dry_run,
+        reasoning_effort=args.reasoning_effort,
+    )
 
 
 def _add_selection(parser: argparse.ArgumentParser) -> None:
@@ -121,35 +197,50 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "extract":
             outcome = run_extract(args.epub, args.chapter, args.section, args.out, _echo)
         elif args.command == "generate":
-            config = resolve_generate_config(
-                provider=args.provider,
-                model=args.model,
-                max_output_tokens=args.max_output_tokens,
-                timeout=args.timeout,
-                dry_run=args.dry_run,
-                reasoning_effort=args.reasoning_effort,
-            )
             outcome = run_generate(
                 epub_path=args.epub,
                 chapter=args.chapter,
                 section_id=args.section,
-                config=config,
+                config=_model_config(args),
                 out=args.out,
                 prompt_file=args.prompt_file,
                 echo=_echo,
             )
+        elif args.command == "init":
+            outcome = run_init(
+                from_run=args.from_run, store_root=args.store, epub_path=args.epub, echo=_echo
+            )
+        elif args.command == "update":
+            outcome = run_update(
+                store_root=args.store,
+                epub_path=args.epub,
+                chapter=args.chapter,
+                section_id=args.section,
+                config=_model_config(args),
+                out=args.out,
+                prompt_file=args.prompt_file,
+                echo=_echo,
+            )
+        elif args.command == "commit":
+            outcome = run_commit_corrected(run_dir=args.run, epub_path=args.epub, echo=_echo)
+        elif args.command == "show":
+            outcome = run_show(
+                store_root=args.store, revision=args.revision, as_json=args.json, echo=_echo
+            )
         else:
             outcome = run_validate(args.run, _echo)
-    except (EpubError, ConfigError, OutputDirError, RunInputError) as exc:
+    except INPUT_ERRORS as exc:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_INPUT
+    except StaleBaseError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_STALE_BASE
     for warning in outcome.warnings:
         _warn(warning)
     if outcome.exit_code != EXIT_OK:
-        print(
-            f"error: run finished with status {outcome.status}; see {outcome.run_dir}/review.md",
-            file=sys.stderr,
-        )
+        report = outcome.run_dir / "review.md"
+        detail = f"; see {report}" if report.is_file() else ""
+        print(f"error: run finished with status {outcome.status}{detail}", file=sys.stderr)
     return outcome.exit_code
 
 

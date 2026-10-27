@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+from conftest import build_epub, xhtml
 
+from loremark_story_lab import cli
 from loremark_story_lab.artifacts import read_json
 from loremark_story_lab.cli import main
+from loremark_story_lab.story_store import StaleBaseError
 
 pytestmark = pytest.mark.usefixtures("clean_env", "no_network")
 
@@ -152,4 +156,63 @@ def test_module_entrypoint() -> None:
         check=False,
     )
     assert result.returncode == 0
-    assert "chapters" in result.stdout and "generate" in result.stdout
+    for command in ("chapters", "generate", "validate", "init", "update", "show"):
+        assert command in result.stdout
+
+
+def test_cumulative_commands(
+    tmp_path: Path, v1_run: Path, story_epub: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    store = tmp_path / "store"
+    assert main(["init", "--from-run", str(v1_run), "--store", str(store)]) == 0
+    assert "Status: initialized" in capsys.readouterr().out
+
+    assert main(["show", "--store", str(store)]) == 0
+    shown = capsys.readouterr().out
+    assert "revision 1" in shown and "之前未处理的节：`section-001`" in shown
+    assert main(["show", "--store", str(store), "--revision", "1", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["scope"] == "cumulative"
+
+    dry = tmp_path / "dry"
+    update = ["update", "--store", str(store), "--epub", str(story_epub), "--provider", "deepseek"]
+    assert main([*update, "--chapter", "2", "--dry-run", "--out", str(dry)]) == 0
+    assert read_json(dry / "run.json")["status"] == "dry_run"
+    capsys.readouterr()
+
+    live = tmp_path / "live"
+    assert main([*update, "--chapter", "2", "--model", "m", "--out", str(live)]) == 2
+    assert "DEEPSEEK_API_KEY" in capsys.readouterr().err
+    assert not live.exists()
+    assert main([*update, "--chapter", "3", "--dry-run"]) == 2
+    assert "would skip section-003" in capsys.readouterr().err
+    assert main(["show", "--store", str(store), "--revision", "2"]) == 2
+    assert main(["init", "--from-run", str(v1_run), "--store", str(store)]) == 2
+    assert "not an empty directory" in capsys.readouterr().err
+
+
+def test_bad_boundary_fails_before_any_request(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.setenv("OPENAI_MODEL", "m")
+    body = '<h2 id="c1">Chapter 1</h2><p>ONE</p><h2 id="c2">Chapter 2</h2><p>TWO</p>'
+    nav = [("all.xhtml#c1", "Chapter 1"), ("all.xhtml#missing", "Chapter 2")]
+    epub = build_epub(tmp_path / "b.epub", {"all.xhtml": xhtml(body)}, nav=nav)
+    out = tmp_path / "run"
+
+    assert main(["generate", "--epub", str(epub), "--chapter", "1", "--out", str(out)]) == 2
+    assert "cannot be extracted reliably" in capsys.readouterr().err
+    assert not out.exists()
+    assert main(["chapters", "--epub", str(epub)]) == 0
+    assert "unsupported: TOC boundaries" in capsys.readouterr().out
+
+
+def test_stale_base_exits_5(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def stale(**kwargs: object) -> None:
+        raise StaleBaseError("store changed")
+
+    monkeypatch.setattr(cli, "run_init", stale)
+    assert main(["init", "--from-run", "r", "--store", "s"]) == 5
+    assert "store changed" in capsys.readouterr().err
