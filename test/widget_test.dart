@@ -1,30 +1,52 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
 import 'package:loremark/main.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('shows a tab for each main feature', (tester) async {
+    await tester.pumpWidget(const LoremarkApp());
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    for (final label in ['Read', 'Ask', 'Notes', 'Story Map']) {
+      expect(
+        find.descendant(
+          of: find.byType(NavigationBar),
+          matching: find.text(label),
+        ),
+        findsOneWidget,
+        reason: label,
+      );
+    }
+  });
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+  testWidgets('opens on the Read tab', (tester) async {
+    await tester.pumpWidget(const LoremarkApp());
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    final navigationBar = tester.widget<NavigationBar>(
+      find.byType(NavigationBar),
+    );
+    expect(navigationBar.selectedIndex, 0);
+  });
+
+  testWidgets('tapping a tab shows its screen', (tester) async {
+    const notesText = 'Your notes and theories will appear here.';
+    await tester.pumpWidget(const LoremarkApp());
+    expect(find.text(notesText), findsNothing);
+
+    await tester.tap(find.text('Notes'));
+    await tester.pumpAndSettle();
+
+    expect(find.text(notesText), findsOneWidget);
+  });
+
+  testWidgets('the recap button opens the Ask tab', (tester) async {
+    await tester.pumpWidget(const LoremarkApp());
+
+    await tester.tap(find.text('Recap where I left off'));
+    await tester.pumpAndSettle();
+
+    final navigationBar = tester.widget<NavigationBar>(
+      find.byType(NavigationBar),
+    );
+    expect(navigationBar.selectedIndex, 1);
   });
 }
