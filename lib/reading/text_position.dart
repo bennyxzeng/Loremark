@@ -39,6 +39,8 @@ class TextPosition implements Comparable<TextPosition> {
 
   bool operator <(TextPosition other) => compareTo(other) < 0;
   bool operator >(TextPosition other) => compareTo(other) > 0;
+  bool operator <=(TextPosition other) => compareTo(other) <= 0;
+  bool operator >=(TextPosition other) => compareTo(other) >= 0;
 
   @override
   bool operator ==(Object other) =>

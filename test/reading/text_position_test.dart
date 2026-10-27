@@ -14,6 +14,14 @@ void main() {
       expect(const TextPosition(3, 0.5) > const TextPosition(3, 0.2), isTrue);
     });
 
+    test('<= and >= include equal positions', () {
+      const a = TextPosition(3, 0.5);
+      expect(a <= const TextPosition(3, 0.5), isTrue);
+      expect(a >= const TextPosition(3, 0.5), isTrue);
+      expect(a <= const TextPosition(3, 0.4), isFalse);
+      expect(a >= const TextPosition(3, 0.6), isFalse);
+    });
+
     test('sorts a list in reading order', () {
       final positions = [
         const TextPosition(2, 0.0),
