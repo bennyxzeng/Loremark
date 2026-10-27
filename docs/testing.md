@@ -39,6 +39,10 @@ run with `flutter test`. It covers both kinds of automated test our plan needs f
 
 ## How to add a new test
 
+Each feature pull request includes tests for that feature, following the test plan's schedule
+of testing components as they are built. For example, the reading position PR adds
+`test/reading/`. The tests in `test/widget_test.dart` are only smoke tests for the app shell.
+
 1. **Create the file** under `test/`, mirroring the path of the code under test and ending in
    `_test.dart`. For `lib/reading/text_position.dart` the test is
    `test/reading/text_position_test.dart`. `flutter test` finds every `*_test.dart` file
@@ -98,7 +102,7 @@ appear as checks on the commit and the pull request, and in the repository's **A
 To reproduce the setup in another repository:
 
 1. Copy `ci.yml` into `.github/workflows/` and push it. GitHub Actions is enabled by default, so
-   the workflow starts running on the next pull request or push to `main`.
+   the workflow starts running on the next pull request or push to `main` or `ui`.
 2. Check that **Settings → Actions → General → Actions permissions** allows actions to run.
 3. Make CI block merging (a repository admin does this once): in
    **Settings → Branches → Add branch ruleset** (or **Add classic branch protection rule**) for
@@ -140,12 +144,13 @@ Any failing step fails the build and marks the commit or pull request with a red
 | Action | Runs CI? |
 | :--- | :--- |
 | Open, push to, or reopen a pull request (into any branch) | Yes |
-| Push or merge to `main` | Yes |
+| Push or merge to `main` or `ui` (our integration branch) | Yes |
 | Manual run (**Actions → CI → Run workflow**) | Yes |
 | Push to a feature branch with no pull request | No |
 
 Feature-branch pushes are checked once a pull request is open, so each change is tested once
-instead of twice. A newer push to the same pull request cancels the older run that is still in
+instead of twice. Pushes to `ui` and `main` are checked again after merging, because two pull
+requests can each pass on their own but break once combined. A newer push to the same pull request cancels the older run that is still in
 progress.
 
 ### Not yet in CI

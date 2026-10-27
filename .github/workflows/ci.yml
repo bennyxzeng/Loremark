@@ -3,7 +3,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # `ui` is our integration branch; checking pushes to it catches PRs that
+    # pass on their own but break once merged together.
+    branches: [main, ui]
   pull_request:
   workflow_dispatch:
 
