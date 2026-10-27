@@ -137,14 +137,22 @@ These are evaluation targets, not reported test results or a guarantee of spoile
 
 ## Getting started
 
-For now, [open the mockup](https://loremark-reading-studio.quietsage16.chatgpt.site/) to explore the intended experience. There is no runnable app, dependency manifest, or build/test command in this repository yet. Verified development instructions will be added alongside the implementation.
+For now, [open the mockup](https://loremark-reading-studio.quietsage16.chatgpt.site/) to explore the intended experience. The Flutter app is in early development.
 
-To work on the documentation and assets:
+[![CI](https://github.com/bennyxzeng/Loremark/actions/workflows/ci.yml/badge.svg)](https://github.com/bennyxzeng/Loremark/actions/workflows/ci.yml)
+
+To set up the app and run the same checks as CI (requires [Flutter 3.47.7](https://docs.flutter.dev/get-started)):
 
 ```bash
 git clone https://github.com/bennyxzeng/Loremark.git
 cd Loremark
+flutter pub get
+dart format .
+flutter analyze
+flutter test --exclude-tags live
 ```
+
+See [docs/testing.md](docs/testing.md) for how to add a test and how CI works.
 
 Have feedback? [Open an issue](https://github.com/bennyxzeng/Loremark/issues) with the reading scenario, the chapter boundary, and what you expected Loremark to do. Clearly label any spoilers in examples.
 
