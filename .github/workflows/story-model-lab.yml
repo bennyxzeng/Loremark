@@ -1,0 +1,49 @@
+# Lints and tests the Python story model lab (tools/story_model_lab).
+# Runs only when files in that directory change. See docs/testing.md.
+name: Story model lab
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/story_model_lab/**'
+  pull_request:
+    paths:
+      - 'tools/story_model_lab/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Python (ruff, pytest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          # The version the lab's requirements.lock.txt was tested with.
+          python-version: '3.14'
+          cache: pip
+          cache-dependency-path: tools/story_model_lab/requirements.lock.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install -r tools/story_model_lab/requirements.lock.txt
+          python -m pip install -e './tools/story_model_lab[dev]'
+
+      - name: Lint
+        run: |
+          python -m ruff check tools/story_model_lab
+          python -m ruff format --check tools/story_model_lab
+
+      # Tests marked `live` call a real model API and need keys; they are run by hand.
+      - name: Run tests
+        run: python -m pytest tools/story_model_lab/tests -m 'not live'
