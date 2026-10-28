@@ -66,7 +66,7 @@ Mark a note as a theory and keep reading. It stays **Unconfirmed** until you rea
 
 ## How it is designed to work
 
-The proposed architecture combines an iOS reader with a story model that records facts and their source locations, plus a Python service for LLM integration.
+The proposed architecture combines an iOS reader with a story model that records facts and their source locations, plus requests to an external LLM provider.
 
 ```mermaid
 flowchart LR
@@ -91,7 +91,7 @@ flowchart LR
 | :--- | :--- |
 | **iOS interface** | Swift and SwiftUI, developed with Xcode. |
 | **Book rendering** | An existing EPUB toolkit such as Readium, with source-position tracking. |
-| **AI integration** | Python services for extracting story facts and generating grounded responses. |
+| **AI integration** | An external LLM provider, called with the reader's own API key, extracts story facts and generates grounded responses. |
 | **Story state** | Versioned characters, relationships, locations, and events linked to source passages. |
 | **Personal data** | On-device books, reading position, notes, and theories; local theory evaluation is a design target. |
 
