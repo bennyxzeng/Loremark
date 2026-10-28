@@ -85,10 +85,7 @@ class _LoremarkHomeState extends State<LoremarkHome> {
             icon: Icon(Icons.chat_bubble_outline),
             label: 'Ask',
           ),
-          NavigationDestination(
-            icon: Icon(Icons.edit_note),
-            label: 'Notes',
-          ),
+          NavigationDestination(icon: Icon(Icons.edit_note), label: 'Notes'),
           NavigationDestination(
             icon: Icon(Icons.hub_outlined),
             label: 'Story Map',
@@ -104,10 +101,7 @@ class _LoremarkHomeState extends State<LoremarkHome> {
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
-        Text(
-          'Welcome back, Susan',
-          style: textTheme.headlineSmall,
-        ),
+        Text('Welcome back, Susan', style: textTheme.headlineSmall),
         const SizedBox(height: 8),
         const Text('Ready to return to your story?'),
         const SizedBox(height: 24),

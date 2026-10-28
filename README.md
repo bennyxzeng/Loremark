@@ -66,7 +66,7 @@ Mark a note as a theory and keep reading. It stays **Unconfirmed** until you rea
 
 ## How it is designed to work
 
-The proposed architecture combines an iOS reader with a story model that records facts and their source locations, plus a Python service for LLM integration.
+The proposed architecture combines an iOS reader with a story model that records facts and their source locations, plus requests to an external LLM provider.
 
 ```mermaid
 flowchart LR
@@ -91,7 +91,7 @@ flowchart LR
 | :--- | :--- |
 | **iOS interface** | Swift and SwiftUI, developed with Xcode. |
 | **Book rendering** | An existing EPUB toolkit such as Readium, with source-position tracking. |
-| **AI integration** | Python services for extracting story facts and generating grounded responses. |
+| **AI integration** | An external LLM provider, called with the reader's own API key, extracts story facts and generates grounded responses. |
 | **Story state** | Versioned characters, relationships, locations, and events linked to source passages. |
 | **Personal data** | On-device books, reading position, notes, and theories; local theory evaluation is a design target. |
 
@@ -137,14 +137,22 @@ These are evaluation targets, not reported test results or a guarantee of spoile
 
 ## Getting started
 
-For now, [open the mockup](https://loremark-reading-studio.quietsage16.chatgpt.site/) to explore the intended experience. There is no runnable app, dependency manifest, or build/test command in this repository yet. Verified development instructions will be added alongside the implementation.
+For now, [open the mockup](https://loremark-reading-studio.quietsage16.chatgpt.site/) to explore the intended experience. The Flutter app is in early development.
 
-To work on the documentation and assets:
+[![CI](https://github.com/bennyxzeng/Loremark/actions/workflows/ci.yml/badge.svg)](https://github.com/bennyxzeng/Loremark/actions/workflows/ci.yml)
+
+To set up the app and run the same checks as CI (requires [Flutter 3.47.7](https://docs.flutter.dev/get-started)):
 
 ```bash
 git clone https://github.com/bennyxzeng/Loremark.git
 cd Loremark
+flutter pub get
+dart format .
+flutter analyze
+flutter test --exclude-tags live
 ```
+
+See [docs/testing.md](docs/testing.md) for how to add a test and how CI works.
 
 Have feedback? [Open an issue](https://github.com/bennyxzeng/Loremark/issues) with the reading scenario, the chapter boundary, and what you expected Loremark to do. Clearly label any spoilers in examples.
 
