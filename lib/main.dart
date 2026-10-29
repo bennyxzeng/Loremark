@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 
+import 'story_map/story_map_screen.dart';
+import 'story_model/story_model.dart';
+import 'story_model/story_model_loader.dart';
+
 void main() {
   runApp(const LoremarkApp());
 }
@@ -38,6 +42,9 @@ class LoremarkHome extends StatefulWidget {
 
 class _LoremarkHomeState extends State<LoremarkHome> {
   int _selectedTab = 0;
+  late final Future<StoryModel> _storyModel = loadStoryModel(
+    demoStoryModelAsset,
+  );
 
   void _selectTab(int index) {
     setState(() {
@@ -67,9 +74,7 @@ class _LoremarkHomeState extends State<LoremarkHome> {
             const Center(
               child: Text('Your notes and theories will appear here.'),
             ),
-            const Center(
-              child: Text('Your character relationships will appear here.'),
-            ),
+            _buildStoryMapTab(),
           ],
         ),
       ),
@@ -92,6 +97,29 @@ class _LoremarkHomeState extends State<LoremarkHome> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildStoryMapTab() {
+    return FutureBuilder<StoryModel>(
+      future: _storyModel,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text('Could not load the story model.\n${snapshot.error}'),
+            ),
+          );
+        }
+        final model = snapshot.data;
+        // Plain text rather than a spinner: an endless animation would keep
+        // widget tests from settling.
+        if (model == null) {
+          return const Center(child: Text('Loading story model…'));
+        }
+        return StoryMapScreen(model: model);
+      },
     );
   }
 
