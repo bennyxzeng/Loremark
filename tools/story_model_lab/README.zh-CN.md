@@ -2,6 +2,10 @@
 
 [![English](https://img.shields.io/badge/English-64748B?style=for-the-badge)](README.md) [![简体中文](https://img.shields.io/badge/%E7%AE%80%E4%BD%93%E4%B8%AD%E6%96%87-2563EB?style=for-the-badge)](README.zh-CN.md)
 
+[![Story Model 文件结构与标签](https://img.shields.io/badge/Story_Model-%E6%96%87%E4%BB%B6%E7%BB%93%E6%9E%84%E4%B8%8E%E6%A0%87%E7%AD%BE-0F766E?style=for-the-badge)](STORY_MODEL_FORMAT.zh-CN.md)
+
+**`story_model.json` 里面记录了什么？** 查看[文件结构与标签说明](STORY_MODEL_FORMAT.zh-CN.md)：人物、地点、组织、关系、事件、证据、疑点、历史修订，以及 `inferred`、flashback（对应 `past`）等依据和时间标签的完整含义。[English](STORY_MODEL_FORMAT.md)。
+
 [第一次运行](#a-第一次运行从第一章建立一个新模型) · [更新已有模型](#b-更新已有模型你现在应该用这一节) · [累计模式参考](#cumulative-mode)
 
 ## 入门教程：直接照着运行
@@ -327,6 +331,8 @@ SDK 对网络错误、429 和 5xx 最多重试两次。没有额外业务重试�
 `dry-run` 只写前六个输入/配置文件；`extract` 只写 chapter.json/txt。单章 `validate` 会重写 validation/review 和 run 中的校验字段，并按结果创建或删除 story_model.json，不修改 request/response。
 
 单章模型格式是 `{schema_version, scope: "single_chapter", source, model}`，model 内含人物、地点、组织、关系、事件和疑点；书籍/章节元信息由程序填写。
+
+逐字段说明及累计 v2 格式见 [Story Model：文件结构与标签说明](STORY_MODEL_FORMAT.zh-CN.md)。
 
 ## 如何判断结果
 

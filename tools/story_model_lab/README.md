@@ -2,6 +2,10 @@
 
 [![English](https://img.shields.io/badge/English-2563EB?style=for-the-badge)](README.md) [![简体中文](https://img.shields.io/badge/%E7%AE%80%E4%BD%93%E4%B8%AD%E6%96%87-64748B?style=for-the-badge)](README.zh-CN.md)
 
+[![Story Model structure & labels](https://img.shields.io/badge/Story_Model-Structure_%26_Labels-0F766E?style=for-the-badge)](STORY_MODEL_FORMAT.md)
+
+**What does `story_model.json` contain?** Read the [file structure and label guide](STORY_MODEL_FORMAT.md) for characters, places, organizations, relationships, events, evidence, open questions, revisions, and every assertion/time label, including `inferred` and flashbacks (`past`). [简体中文](STORY_MODEL_FORMAT.zh-CN.md).
+
 [First run](#a-first-run-build-a-new-model-from-chapter-1) · [Update an existing model](#b-update-an-existing-model) · [Cumulative reference](#cumulative-mode)
 
 ## Step-by-step guide
@@ -385,6 +389,8 @@ changes `request.json` or `response.json`.
 `story_model.json` is `{schema_version, scope: "single_chapter", source, model}`, where
 `model` holds `characters`, `locations`, `organizations`, `relationships`, `events`, and
 `uncertainties`. Book and chapter metadata come from the code, never from the model.
+
+For field-by-field explanations and the cumulative v2 format, see [Story Model: file structure and labels](STORY_MODEL_FORMAT.md).
 
 ## Reading the results
 

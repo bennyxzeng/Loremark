@@ -5,6 +5,11 @@
 <h1 align="center">Loremark</h1>
 
 <p align="center">
+  <a href="tools/story_model_lab/STORY_MODEL_FORMAT.md"><img src="https://img.shields.io/badge/Story_Model-Structure_%26_Labels-0F766E?style=for-the-badge" alt="Story Model structure and labels — English"></a>
+  <a href="tools/story_model_lab/STORY_MODEL_FORMAT.zh-CN.md"><img src="https://img.shields.io/badge/Story_Model-%E6%96%87%E4%BB%B6%E7%BB%93%E6%9E%84%E4%B8%8E%E6%A0%87%E7%AD%BE-0F766E?style=for-the-badge" alt="Story Model 文件结构与标签 — 简体中文"></a>
+</p>
+
+<p align="center">
   <strong>A reading companion that meets you where you are in the story.</strong><br>
   Remember the characters. Revisit your theories. Keep the mystery.
 </p>
