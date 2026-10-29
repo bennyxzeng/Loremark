@@ -57,6 +57,10 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
+  # Demo data for the Story Map: a story model exported by the story model lab.
+  assets:
+    - assets/story_models/86v1.json
+
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg
