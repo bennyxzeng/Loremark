@@ -5,8 +5,7 @@ import 'package:flutter/services.dart';
 import 'story_model.dart';
 
 /// The story model the demo Story Map shows (86—EIGHTY-SIX, Vol. 1).
-const demoStoryModelAsset =
-    'tools/story_model_lab/stores/86v1/story_model.json';
+const demoStoryModelAsset = 'assets/story_models/86v1.json';
 
 /// Loads and parses a `story_model.json` bundled as an asset.
 Future<StoryModel> loadStoryModel(String asset, {AssetBundle? bundle}) async {

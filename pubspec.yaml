@@ -57,10 +57,9 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
-  # Demo data for the Story Map, read straight from the story model lab's store
-  # so a newly processed chapter shows up without copying files.
+  # Demo data for the Story Map: a story model exported by the story model lab.
   assets:
-    - tools/story_model_lab/stores/86v1/story_model.json
+    - assets/story_models/86v1.json
 
   # To add assets to your application, add an assets section, like this:
   # assets:
