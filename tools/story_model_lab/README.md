@@ -6,6 +6,8 @@
 
 **What does `story_model.json` contain?** Read the [file structure and label guide](STORY_MODEL_FORMAT.md) for characters, places, organizations, relationships, events, evidence, open questions, revisions, and every assertion/time label, including `inferred` and flashbacks (`past`). [简体中文](STORY_MODEL_FORMAT.zh-CN.md).
 
+[View the structure diagrams](STORY_MODEL_FORMAT.md#visual-overview): field contents and the ID links between entities, records, evidence, and revisions.
+
 [First run](#a-first-run-build-a-new-model-from-chapter-1) · [Update an existing model](#b-update-an-existing-model) · [Cumulative reference](#cumulative-mode)
 
 ## Step-by-step guide

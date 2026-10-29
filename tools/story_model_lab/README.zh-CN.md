@@ -6,6 +6,8 @@
 
 **`story_model.json` 里面记录了什么？** 查看[文件结构与标签说明](STORY_MODEL_FORMAT.zh-CN.md)：人物、地点、组织、关系、事件、证据、疑点、历史修订，以及 `inferred`、flashback（对应 `past`）等依据和时间标签的完整含义。[English](STORY_MODEL_FORMAT.md)。
 
+[查看结构关系图](STORY_MODEL_FORMAT.zh-CN.md#visual-overview)：直观看每个字段存什么，以及实体、记录、证据和历史修订之间如何通过 ID 关联。
+
 [第一次运行](#a-第一次运行从第一章建立一个新模型) · [更新已有模型](#b-更新已有模型你现在应该用这一节) · [累计模式参考](#cumulative-mode)
 
 ## 入门教程：直接照着运行

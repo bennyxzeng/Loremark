@@ -2,13 +2,38 @@
 
 [![English](https://img.shields.io/badge/English-64748B?style=for-the-badge)](STORY_MODEL_FORMAT.md) [![简体中文](https://img.shields.io/badge/%E7%AE%80%E4%BD%93%E4%B8%AD%E6%96%87-2563EB?style=for-the-badge)](STORY_MODEL_FORMAT.zh-CN.md)
 
-[返回 README](README.zh-CN.md) · [文件结构](#file-structure) · [人物与知识记录](#characters-and-records) · [事件](#events) · [标签含义](#labels) · [历史修订](#revisions) · [单章格式](#single-chapter-format)
+[返回 README](README.zh-CN.md) · [结构总览图](#visual-overview) · [文件结构](#file-structure) · [人物与知识记录](#characters-and-records) · [事件](#events) · [标签含义](#labels) · [历史修订](#revisions) · [单章格式](#single-chapter-format)
 
 Story Model 记录的是：**正文介绍了哪些人物、地点和组织，发生了什么，它们有什么关系，还有哪些疑点，以及每条主张由哪些原文支持**。它还保留读者何时得知一条信息，以及后续章节如何改变已有认知。
 
 当前累计示例是 [`stores/86v1/story_model.json`](stores/86v1/story_model.json)；[`ch2_story_model.md`](../../ch2_story_model.md) 是便于阅读的静态导出。本页主要介绍累计模型 **v2**，末尾也说明 **v1 单章模型**的区别。
 
 先区分两个标签：`assertion: "inferred"` 表示“根据文本推断”；`temporal_context: "past"` 表示“叙事当前时间之前”，包括 **flashback（倒叙、回忆）**。**文件里没有单独的 `flashback` 枚举值。** 过去的事件同样可以是 `explicit`、`reported` 或 `inferred`。
+
+<a id="visual-overview"></a>
+
+## 结构总览图
+
+下面的图展示累计模型 **v2** 的 JSON 结构。方框保留实际字段名，旁边说明其值存什么。`[]` 表示列表，`null` 表示没有值，ID 字段指向另一个已保存的对象。蓝色是来源信息，绿色是故事知识，橙色是修订历史。
+
+```mermaid
+flowchart TB
+    MODEL["story_model.json<br/>schema_version = 2.0：格式版本<br/>scope = cumulative：累计知识"]
+    SOURCE["来源与覆盖<br/>book：书名、EPUB 哈希<br/>processed_sections[]：已处理节、阅读顺序、输入路径与哈希<br/>coverage：起始节、未处理的前置内容"]
+    KNOWLEDGE["故事知识<br/>entities[]：人物 / 地点 / 组织的稳定 ID<br/>records：七类带原文证据的知识记录"]
+    HISTORY["修订历史<br/>revision：修订号、ID、时间、父快照<br/>transitions[]：替代 / 撤回 / 解答<br/>current：程序计算的有效记录和身份索引<br/>provenance：来源运行、迁移、人工修正"]
+    MODEL --> SOURCE
+    MODEL --> KNOWLEDGE
+    MODEL --> HISTORY
+    classDef source fill:#eff6ff,stroke:#2563eb,color:#172554;
+    classDef knowledge fill:#ecfdf5,stroke:#0f766e,color:#134e4a;
+    classDef history fill:#fff7ed,stroke:#c2410c,color:#7c2d12;
+    class SOURCE source;
+    class KNOWLEDGE knowledge;
+    class HISTORY history;
+```
+
+继续看[记录外层与证据](#record-diagram)、[实体属性与关系](#entity-payload-diagram)、[事件与身份链接](#event-payload-diagram)、[历史修订关联](#revision-diagram)的字段图。下方表格补充各项来源元信息的具体字段。
 
 <a id="file-structure"></a>
 
@@ -75,6 +100,26 @@ Git 中的示例 JSON 和修订快照可以直接阅读。运行 `show`、`updat
 
 每条记录都必须有证据。`quote` 必须是对应段落中逐字一致的连续片段，最长 300 个字符。累计更新新增的记录和状态转换引用的是**新加入的这一节**。引用匹配只能证明这些文字存在，仍需人工判断它们是否支持该主张。
 
+<a id="record-diagram"></a>
+
+### 一条记录如何连接主张与证据
+
+实线表示内部包含，虚线表示通过 ID 引用。七类记录都使用这层外壳；不同类别的 `payload` 在后面两张图中展开。
+
+```mermaid
+flowchart TB
+    RECORD["records 某个列表中的一项<br/>id：稳定知识 ID，如 f000123<br/>introduced_revision：加入这条记录的修订号<br/>learned_in_section_id：读者获知信息的节 ID<br/>legacy_id：原 v1 的 r/e ID，或 null"]
+    PAYLOAD["payload<br/>具体的名称、属性、关系、事件、<br/>疑点或身份主张"]
+    EVIDENCE["evidence[]<br/>section_id：证据所在节 ID<br/>paragraph_id：该节内的段落 ID<br/>quote：最长 300 字符的连续原文引用"]
+    ENTITY["entities[]<br/>id：c001 / l001 / g001<br/>kind：character / location / organization<br/>introduced_revision：实体首次加入的修订"]
+    SECTION["processed_sections[] 与保存的输入<br/>section_id：将证据关联到已处理节<br/>input_relative_path：规范化章节 JSON 的保存路径<br/>paragraphs[].id / text：定位段落并核对原文"]
+    RECORD -->|payload| PAYLOAD
+    RECORD -->|evidence| EVIDENCE
+    PAYLOAD -.->|适用字段中的实体 ID| ENTITY
+    RECORD -.->|learned_in_section_id| SECTION
+    EVIDENCE -.->|section_id + paragraph_id| SECTION
+```
+
 ### 七类知识分别记录什么
 
 | 集合 | 记录内容 | `payload` 内的字段 |
@@ -93,6 +138,47 @@ Git 中的示例 JSON 和修订快照可以直接阅读。运行 `show`、`updat
 
 别名是为一个已经认定的实体补充称呼；身份链接则连接**两个已有 ID**，且必须是同一实体类别。只有仍有效的 `explicit` 身份链接会产生 `current.identity_groups`，其中包含 `canonical_id`、`member_ids`、`link_record_ids`。最早引入的实体提供 canonical ID，同次引入时按 ID 排序；原实体和记录仍保留。`reported`、`inferred` 身份链接不会合并展示身份。
 
+<a id="entity-payload-diagram"></a>
+
+### 实体属性与关系的字段图
+
+下图展开 `names`/`aliases`、`attributes`、`relationships` 的 `payload`；每一项外面仍有前图中的公共外层和证据，实体的完整字段也见前图。`PK` 表示对象自身的 ID，`FK` 表示指向其他对象的 ID。每条记录通过连线上标明的字段关联实体；关系同时连接起点和终点。
+
+```mermaid
+erDiagram
+    direction LR
+    entities ||..o{ names_or_aliases_payload : entity_id
+    entities ||..o{ attributes_payload : entity_id
+    entities ||..o{ relationships_payload : source_id
+    entities ||..o{ relationships_payload : target_id
+
+    entities {
+        string id PK "c001 / l001 / g001"
+    }
+    names_or_aliases_payload {
+        string entity_id FK "这是谁的名称"
+        string text "names 存主要名称；aliases 存其他称呼"
+    }
+    attributes_payload {
+        string entity_id FK "描述哪个实体"
+        string label "属性名，如 rank 军衔"
+        string value "属性值，如 Captain 上尉"
+        string assertion "explicit 明述 / reported 来源说法 / inferred 推断"
+        string attributed_to_id FK "reported 的来源人物或组织；可为 null"
+    }
+    relationships_payload {
+        string source_id FK "关系起点实体"
+        string target_id FK "关系终点实体"
+        string label "有方向的谓词，如 member_of 属于"
+        string description "一句话说明这条关系主张"
+        string assertion "explicit / reported / inferred"
+        string attributed_to_id FK "reported 的来源人物或组织；可为 null"
+        string temporal_context "故事内时间；倒叙、回忆用 past"
+    }
+```
+
+例如 `source_id = c001`、`label = member_of`、`target_id = g001`，就是**人物 → 属于 → 组织**。`attributed_to_id` 也引用 `entities`，但只能指向人物或组织；它说明是谁提出 `reported` 主张，而不是主张描述的是谁。
+
 <a id="events"></a>
 
 ## 事件
@@ -107,6 +193,48 @@ Git 中的示例 JSON 和修订快照可以直接阅读。运行 `show`、`updat
 | `story_time` | 原文提供的时间说法，如 `"spring"`、`"nine years ago"`；没有说明时为 `null`，不自行计算或编造日期。 |
 | `assertion` | 这是直接叙述、某个来源的说法，还是基于文本的推断。 |
 | `attributed_to_id` | `reported` 主张的已知说话人/来源组织 ID；其他情况为 `null`。 |
+
+<a id="event-payload-diagram"></a>
+
+### 事件、疑点与身份链接的字段图
+
+下面展开其余三类 `payload`。身份链接的左右两端必须属于同一种实体类别。可空的来源字段 `attributed_to_id` 遵循前图说明的规则。为避免连线文字重叠，线上用简称：“参与者”对应 `participant_ids`，“地点”对应 `location_id`，“左端/右端”对应两个身份端点 ID。
+
+```mermaid
+erDiagram
+    direction LR
+    entities }o..o{ events_payload : "参与者"
+    entities o|..o{ events_payload : "地点"
+    entities }o..o{ uncertainties_payload : related_entity_ids
+    entities ||..o{ identity_links_payload : "左端"
+    entities ||..o{ identity_links_payload : "右端"
+
+    entities {
+        string id PK "c001 / l001 / g001"
+    }
+    events_payload {
+        string description "一项行动、发生的事情或重要揭示"
+        string[] participant_ids FK "参与的人物或组织 ID 列表"
+        string location_id FK "地点实体 ID；可为 null"
+        int narrative_order "本节讲述顺序：1、2、3……"
+        string temporal_context "故事内时间；倒叙、回忆用 past"
+        string story_time "原文给出的时间说法；可为 null"
+        string assertion "explicit / reported / inferred"
+        string attributed_to_id FK "reported 的来源人物或组织；可为 null"
+    }
+    uncertainties_payload {
+        string question "正文提出但尚未解答的问题"
+        string[] related_entity_ids FK "涉及哪些实体"
+    }
+    identity_links_payload {
+        string left_entity_id FK "第一个实体 ID"
+        string right_entity_id FK "第二个实体 ID，类别必须相同"
+        string assertion "explicit / reported / inferred"
+        string explanation "为何两个 ID 可能指同一身份"
+    }
+```
+
+多对多连线对应 ID 列表：一个事件可以有多个参与实体，一个实体也可以参与多个事件。`location_id` 则是可空的单个地点。`past` 包含倒叙、回忆，且与 `assertion` 的取值相互独立。
 
 下面是**虚构示例**，表示 `records.events` 中的一条记录。假设 `c001` 是 Mira，`l001` 是港口：
 
@@ -187,6 +315,48 @@ Git 中的示例 JSON 和修订快照可以直接阅读。运行 `show`、`updat
 | `supersede` | 替代：新记录替代先前有效的记录，例如晋升后的军衔或揭示后的主要姓名。 | `replacement_record_id` 指向新记录；`resolution` 为 `null`。 |
 | `retract` | 撤回：后文推翻旧主张，但没有替代记录。 | `replacement_record_id`、`resolution` 均为 `null`。 |
 | `resolve` | 解答：后文回答了一个尚未解决的疑点。 | `resolution` 保存答案；`replacement_record_id` 为 `null`。只能用于疑点。 |
+
+<a id="revision-diagram"></a>
+
+### 历史如何产生当前视图
+
+记录被转换操作停用后，仍保留在 `records` 中。下面的连线表示 ID 引用：“目标”对应 `target_record_id`，“替代”对应 `replacement_record_id`。`current` 是程序计算的索引，不是另一份事实副本。
+
+```mermaid
+erDiagram
+    records ||..o| transitions : "目标"
+    records o|..o{ transitions : "替代"
+    current o|..o{ records : active_record_ids
+    current o|..o{ records : resolved_uncertainty_ids
+    current ||--o{ identity_groups : contains
+
+    records {
+        string id PK "f000123；完整记录继续保留在历史中"
+    }
+    transitions {
+        string id PK "t000001；稳定的状态转换 ID"
+        int introduced_revision "实施本次变更的修订号"
+        string learned_in_section_id "揭示变化的节 ID"
+        string target_record_id FK "要停用的旧有效记录 ID"
+        string action "supersede 替代 / retract 撤回 / resolve 解答"
+        string replacement_record_id FK "supersede 的新记录 ID；否则 null"
+        string resolution "resolve 的解答文字；否则 null"
+        string reason "新节为何改变此前判断"
+        object[] evidence "新节的 section_id、paragraph_id、quote"
+    }
+    current {
+        string[] active_record_ids FK "没有被状态转换停用的记录 ID"
+        string[] resolved_uncertainty_ids FK "已通过 resolve 解答的疑点记录 ID"
+        object[] identity_groups "由有效 explicit 身份链接计算的组"
+    }
+    identity_groups {
+        string canonical_id FK "组内最早引入的实体 ID"
+        string[] member_ids FK "组内所有实体 ID"
+        string[] link_record_ids FK "有效的 explicit 身份链接记录 ID"
+    }
+```
+
+例如军衔记录由 `f000010` 替换为 `f000020`：两条记录都保留，新增一条以 `f000010` 为目标的 `supersede` 转换，这两条中只有 `f000020` 继续有效。身份组中的 `canonical_id`、`member_ids` 指向 `entities`，`link_record_ids` 指向 `records.identity_links`。
 
 目标必须是旧修订中仍有效的记录。替代必须属于同一集合、同一主体：属性保持实体和标签相同；关系保持方向、标签和时间背景相同。关系标签改变时，应撤回旧关系并新增另一条。事件或疑点是否真在描述同一件事，还需要人工审核。
 

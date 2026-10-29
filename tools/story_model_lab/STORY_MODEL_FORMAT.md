@@ -2,13 +2,36 @@
 
 [![English](https://img.shields.io/badge/English-2563EB?style=for-the-badge)](STORY_MODEL_FORMAT.md) [![简体中文](https://img.shields.io/badge/%E7%AE%80%E4%BD%93%E4%B8%AD%E6%96%87-64748B?style=for-the-badge)](STORY_MODEL_FORMAT.zh-CN.md)
 
-[Back to README](README.md) · [File structure](#file-structure) · [Characters and records](#characters-and-records) · [Events](#events) · [Labels](#labels) · [Revisions](#revisions) · [Single-chapter format](#single-chapter-format)
+[Back to README](README.md) · [Visual overview](#visual-overview) · [File structure](#file-structure) · [Characters and records](#characters-and-records) · [Events](#events) · [Labels](#labels) · [Revisions](#revisions) · [Single-chapter format](#single-chapter-format)
 
 A Story Model records **who and what the text introduces, what happens, how entities relate, what remains uncertain, and which passages support each claim**. It also preserves when the reader learned something and how later sections change that knowledge.
 
 The cumulative example is [`stores/86v1/story_model.json`](stores/86v1/story_model.json). [`ch2_story_model.md`](../../ch2_story_model.md) is a readable, static export. This guide primarily describes the cumulative **v2** format; the **v1** single-chapter format is explained at the end.
 
 Two labels answer different questions: `assertion: "inferred"` means a claim is inferred from the text; `temporal_context: "past"` means it concerns the narrative's past, including a **flashback**. **`flashback` is not a stored enum value.** A past event can be `explicit`, `reported`, or `inferred`.
+
+## Visual overview
+
+The diagrams describe the cumulative **v2** JSON. Boxes retain the actual field names; descriptions explain what their values store. `[]` means a list, `null` means no value, and ID fields reference another saved object. Colors distinguish source information, story knowledge, and revision history.
+
+```mermaid
+flowchart TB
+    MODEL["story_model.json<br/>schema_version = 2.0: format version<br/>scope = cumulative: accumulated knowledge"]
+    SOURCE["Source and coverage<br/>book: title and EPUB hash<br/>processed_sections[]: sections, reading order, input paths/hashes<br/>coverage: starting section and omitted earlier sections"]
+    KNOWLEDGE["Story knowledge<br/>entities[]: stable character / location / organization IDs<br/>records: seven collections of evidence-backed claims"]
+    HISTORY["Revision history<br/>revision: number, ID, timestamp, parent snapshot<br/>transitions[]: replace / retract / resolve decisions<br/>current: computed active-record and identity indexes<br/>provenance: source runs, migration, manual corrections"]
+    MODEL --> SOURCE
+    MODEL --> KNOWLEDGE
+    MODEL --> HISTORY
+    classDef source fill:#eff6ff,stroke:#2563eb,color:#172554;
+    classDef knowledge fill:#ecfdf5,stroke:#0f766e,color:#134e4a;
+    classDef history fill:#fff7ed,stroke:#c2410c,color:#7c2d12;
+    class SOURCE source;
+    class KNOWLEDGE knowledge;
+    class HISTORY history;
+```
+
+Follow the detailed diagrams for [record wrappers and evidence](#record-diagram), [entity facts and relationships](#entity-payload-diagram), [events and identity links](#event-payload-diagram), and [revision links](#revision-diagram). The tables below provide the remaining metadata details.
 
 ## File structure
 
@@ -71,6 +94,26 @@ Each item in any of the seven `records` collections has these fields:
 
 Quotes must be exact, contiguous substrings of the cited paragraph, at most 300 characters. Every record needs evidence. New update records and transitions cite the **new section**. A matching quote proves that the words occur there; a reviewer must still judge whether they support the claim.
 
+<a id="record-diagram"></a>
+
+### How a record connects a claim to its evidence
+
+Solid arrows show nested content; dotted arrows show ID references. Every collection uses this wrapper. The payload fields are expanded in the next two diagrams.
+
+```mermaid
+flowchart TB
+    RECORD["One records collection item<br/>id: stable claim ID, e.g. f000123<br/>introduced_revision: revision that added it<br/>learned_in_section_id: section where the reader learned it<br/>legacy_id: original v1 r/e ID, or null"]
+    PAYLOAD["payload<br/>The name, attribute, relationship, event,<br/>question, or identity claim itself"]
+    EVIDENCE["evidence[]<br/>section_id: source section ID<br/>paragraph_id: paragraph within that section<br/>quote: exact contiguous passage, at most 300 characters"]
+    ENTITY["entities[]<br/>id: c001 / l001 / g001<br/>kind: character / location / organization<br/>introduced_revision: when the entity was added"]
+    SECTION["processed_sections[] and saved input<br/>section_id: joins evidence to a processed section<br/>input_relative_path: saved normalized chapter JSON<br/>paragraphs[].id / text: locate and verify the quote"]
+    RECORD -->|payload| PAYLOAD
+    RECORD -->|evidence| EVIDENCE
+    PAYLOAD -.->|entity IDs, where applicable| ENTITY
+    RECORD -.->|learned_in_section_id| SECTION
+    EVIDENCE -.->|section_id + paragraph_id| SECTION
+```
+
 ### The seven knowledge collections
 
 | Collection | What it records | Fields inside `payload` |
@@ -89,6 +132,47 @@ Not every collection carries every label: `assertion` appears on attributes, rel
 
 An alias names an entity already recognized as one entity. An identity link connects **two existing IDs** of the same kind. Only active `explicit` links produce `current.identity_groups`, whose fields are `canonical_id`, `member_ids`, and `link_record_ids`. The earliest-introduced entity supplies the canonical ID (ties use ID order); original entities and records remain intact. `reported` and `inferred` links do not merge identities for display.
 
+<a id="entity-payload-diagram"></a>
+
+### Entity facts and relationship fields
+
+These boxes expand `payload` for `names`/`aliases`, `attributes`, and `relationships`; the common wrapper and evidence above surround each item. Entity metadata is shown in the preceding diagram. `PK` identifies an object's ID, and `FK` marks a reference to another object. Each record belongs to the entity at the indicated endpoint. A relationship has both a source and a target.
+
+```mermaid
+erDiagram
+    direction LR
+    entities ||..o{ names_or_aliases_payload : entity_id
+    entities ||..o{ attributes_payload : entity_id
+    entities ||..o{ relationships_payload : source_id
+    entities ||..o{ relationships_payload : target_id
+
+    entities {
+        string id PK "c001 / l001 / g001"
+    }
+    names_or_aliases_payload {
+        string entity_id FK "entity being named"
+        string text "names: primary; aliases: other name"
+    }
+    attributes_payload {
+        string entity_id FK "entity described"
+        string label "attribute name, e.g. rank"
+        string value "attribute value, e.g. Captain"
+        string assertion "explicit / reported / inferred"
+        string attributed_to_id FK "reported speaker/source ID; nullable"
+    }
+    relationships_payload {
+        string source_id FK "relationship starting entity"
+        string target_id FK "relationship ending entity"
+        string label "directed predicate, e.g. member_of"
+        string description "one-sentence relationship claim"
+        string assertion "explicit / reported / inferred"
+        string attributed_to_id FK "reported speaker/source ID; nullable"
+        string temporal_context "story time frame; flashback = past"
+    }
+```
+
+For example, `source_id = c001`, `label = member_of`, `target_id = g001` links **a character → membership → an organization**. `attributed_to_id` also references `entities`, but only a character or organization; it identifies who makes a reported claim, rather than the entity the claim describes.
+
 ## Events
 
 | Event `payload` field | How to read it |
@@ -101,6 +185,48 @@ An alias names an entity already recognized as one entity. An identity link conn
 | `story_time` | Time wording supplied by the text, such as `"spring"` or `"nine years ago"`; `null` if unspecified. Dates are not calculated or invented. |
 | `assertion` | Whether the event is directly stated, reported by a source, or inferred. |
 | `attributed_to_id` | Character/organization making a `reported` claim, when known; otherwise `null`. |
+
+<a id="event-payload-diagram"></a>
+
+### Events, open questions, and identity links
+
+These are the other three payload shapes. The two identity endpoints must have the same entity kind. Optional source references (`attributed_to_id`) follow the rule explained above. Short edge labels keep the connections readable: `who` = `participant_ids`, `where` = `location_id`, and `left`/`right` = the two identity endpoint IDs.
+
+```mermaid
+erDiagram
+    direction LR
+    entities }o..o{ events_payload : who
+    entities o|..o{ events_payload : where
+    entities }o..o{ uncertainties_payload : related_entity_ids
+    entities ||..o{ identity_links_payload : left
+    entities ||..o{ identity_links_payload : right
+
+    entities {
+        string id PK "c001 / l001 / g001"
+    }
+    events_payload {
+        string description "one action, occurrence, or revelation"
+        string[] participant_ids FK "participating characters or organizations"
+        string location_id FK "location entity; nullable"
+        int narrative_order "1, 2, 3... in this section's telling order"
+        string temporal_context "story time frame; flashback = past"
+        string story_time "time wording from the text; nullable"
+        string assertion "explicit / reported / inferred"
+        string attributed_to_id FK "reported speaker/source ID; nullable"
+    }
+    uncertainties_payload {
+        string question "unanswered question raised by the text"
+        string[] related_entity_ids FK "entities involved in the question"
+    }
+    identity_links_payload {
+        string left_entity_id FK "first entity ID"
+        string right_entity_id FK "second entity ID of the same kind"
+        string assertion "explicit / reported / inferred"
+        string explanation "why the two IDs may refer to one identity"
+    }
+```
+
+The many-to-many connections represent ID lists: an event can involve several entities, and an entity can participate in many events. `location_id` is an optional single location. `past` includes flashbacks; it is independent of `assertion`.
 
 This **synthetic example** is one record inside `records.events`; assume `c001` is Mira and `l001` is the harbor:
 
@@ -177,6 +303,48 @@ Later sections add records and transitions instead of overwriting old claims. A 
 | `supersede` | A new record replaces an earlier active record, e.g. a new rank or a revealed primary name. | `replacement_record_id` points to the new record; `resolution` is `null`. |
 | `retract` | A later section disproves an earlier claim without replacing it. | `replacement_record_id` and `resolution` are `null`. |
 | `resolve` | A later section answers an open uncertainty. | `resolution` contains the answer; `replacement_record_id` is `null`. Only uncertainties can be resolved. |
+
+<a id="revision-diagram"></a>
+
+### How history produces the current view
+
+Records stay in `records` after a transition deactivates them. The relationships below are references by ID: `target` means `target_record_id`, and `new` means `replacement_record_id`. `current` is a computed index, not a second copy of the claims.
+
+```mermaid
+erDiagram
+    records ||..o| transitions : target
+    records o|..o{ transitions : new
+    current o|..o{ records : active_record_ids
+    current o|..o{ records : resolved_uncertainty_ids
+    current ||--o{ identity_groups : contains
+
+    records {
+        string id PK "f000123; full record remains in history"
+    }
+    transitions {
+        string id PK "t000001; stable transition ID"
+        int introduced_revision "revision applying the change"
+        string learned_in_section_id "section revealing the change"
+        string target_record_id FK "earlier active record to deactivate"
+        string action "supersede / retract / resolve"
+        string replacement_record_id FK "new record for supersede; otherwise null"
+        string resolution "answer for resolve; otherwise null"
+        string reason "why the new section changes the earlier judgment"
+        object[] evidence "section_id, paragraph_id, quote from the new section"
+    }
+    current {
+        string[] active_record_ids FK "records not deactivated by a transition"
+        string[] resolved_uncertainty_ids FK "questions answered by resolve"
+        object[] identity_groups "groups computed from active explicit identity links"
+    }
+    identity_groups {
+        string canonical_id FK "earliest-introduced entity in this group"
+        string[] member_ids FK "all entity IDs in this group"
+        string[] link_record_ids FK "active explicit identity-link record IDs"
+    }
+```
+
+For example, replacing a rank record `f000010` with `f000020` keeps both records, adds a `supersede` transition targeting `f000010`, and leaves only `f000020` active among the pair. Identity-group `canonical_id`/`member_ids` refer to `entities`; `link_record_ids` refer to `records.identity_links`.
 
 Targets must be active records from an earlier revision. Replacement stays in the same collection and concerns the same subject: attributes keep the same entity and label; relationships keep the same direction, label, and time context. A relationship with a different label uses a retraction plus a new record. Replacing events or uncertainties still needs human review of whether they concern the same thing.
 
