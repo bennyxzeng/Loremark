@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 
+import 'notes/annotation_service.dart';
+import 'notes/note_passage.dart';
+import 'notes/note_repository.dart';
+import 'notes/notes_screen.dart';
 import 'story_map/story_map_screen.dart';
 import 'story_model/story_model.dart';
 import 'story_model/story_model_loader.dart';
@@ -46,6 +50,21 @@ class _LoremarkHomeState extends State<LoremarkHome> {
     demoStoryModelAsset,
   );
 
+  /// This is the id of the sample book until books can be imported.
+  static const _sampleBookId = 'glass-harbor';
+
+  /// This loads the saved notes of the sample book once, for the Read and Notes tabs.
+  late final Future<AnnotationService> _notes = _openNotes();
+
+  static Future<AnnotationService> _openNotes() async {
+    final service = AnnotationService(
+      bookId: _sampleBookId,
+      repository: await NoteRepository.forBook(_sampleBookId),
+    );
+    await service.load();
+    return service;
+  }
+
   void _selectTab(int index) {
     setState(() {
       _selectedTab = index;
@@ -71,9 +90,7 @@ class _LoremarkHomeState extends State<LoremarkHome> {
                 ),
               ),
             ),
-            const Center(
-              child: Text('Your notes and theories will appear here.'),
-            ),
+            _buildNotesTab(),
             _buildStoryMapTab(),
           ],
         ),
@@ -155,12 +172,51 @@ class _LoremarkHomeState extends State<LoremarkHome> {
         const SizedBox(height: 24),
         Text('Chapter 8', style: textTheme.titleLarge),
         const SizedBox(height: 16),
-        const Text(
-          'He pushed the letter across the table. '
-          '“You’re my sister, Mara. You should have trusted me.”',
-          style: TextStyle(fontSize: 18, height: 1.7),
-        ),
+        _buildSamplePassage(),
       ],
+    );
+  }
+
+  /// This builds the Notes tab once the saved notes are loaded.
+  /// Tapping a note goes back to the Read tab. Jumping to the exact passage
+  /// will be added together with the Readium reader.
+  Widget _buildNotesTab() {
+    return FutureBuilder<AnnotationService>(
+      future: _notes,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return const Center(child: Text('Could not open your notes.'));
+        }
+        final service = snapshot.data;
+        if (service == null) {
+          return const Center(child: Text('Loading notes…'));
+        }
+        return NotesScreen(service: service, onOpenNote: (_) => _selectTab(0));
+      },
+    );
+  }
+
+  /// This builds the sample passage. Once the notes are loaded, the reader can
+  /// select words in it to add a highlight or a note.
+  Widget _buildSamplePassage() {
+    const passage =
+        'He pushed the letter across the table. '
+        '“You’re my sister, Mara. You should have trusted me.”';
+    const style = TextStyle(fontSize: 18, height: 1.7);
+
+    return FutureBuilder<AnnotationService>(
+      future: _notes,
+      builder: (context, snapshot) {
+        final service = snapshot.data;
+        if (service == null) return const Text(passage, style: style);
+        return NotePassage(
+          service: service,
+          text: passage,
+          sectionIndex: 7,
+          chapterLabel: 'Chapter 8',
+          style: style,
+        );
+      },
     );
   }
 }
