@@ -2,11 +2,11 @@
 
 [![English](https://img.shields.io/badge/English-64748B?style=for-the-badge)](STORY_MODEL_FORMAT.md) [![简体中文](https://img.shields.io/badge/%E7%AE%80%E4%BD%93%E4%B8%AD%E6%96%87-2563EB?style=for-the-badge)](STORY_MODEL_FORMAT.zh-CN.md)
 
-[返回 README](README.zh-CN.md) · [结构总览图](#visual-overview) · [文件结构](#file-structure) · [人物与知识记录](#characters-and-records) · [事件](#events) · [标签含义](#labels) · [历史修订](#revisions) · [单章格式](#single-chapter-format)
+[返回 README](README.zh-CN.md) · [结构总览图](#visual-overview) · [文件结构](#file-structure) · [人物与知识记录](#characters-and-records) · [事件](#events) · [标签含义](#labels) · [历史修订](#revisions)
 
 Story Model 记录的是：**正文介绍了哪些人物、地点和组织，发生了什么，它们有什么关系，还有哪些疑点，以及每条主张由哪些原文支持**。它还保留读者何时得知一条信息，以及后续章节如何改变已有认知。
 
-当前累计示例是 [`stores/86v1/story_model.json`](stores/86v1/story_model.json)；[`ch2_story_model.md`](../../ch2_story_model.md) 是便于阅读的静态导出。本页主要介绍累计模型 **v2**，末尾也说明 **v1 单章模型**的区别。
+示例是 App 读取的 [`stores/86v1/story_model.json`](stores/86v1/story_model.json)；`story-model show` 可以把任意修订导出为可读的 Markdown。每个 store 都由 `update` 从空模型开始、一次一节建立。
 
 先区分两个标签：`assertion: "inferred"` 表示“根据文本推断”；`temporal_context: "past"` 表示“叙事当前时间之前”，包括 **flashback（倒叙、回忆）**。**文件里没有单独的 `flashback` 枚举值。** 过去的事件同样可以是 `explicit`、`reported` 或 `inferred`。
 
@@ -21,7 +21,7 @@ flowchart TB
     MODEL["story_model.json<br/>schema_version = 2.0：格式版本<br/>scope = cumulative：累计知识"]
     SOURCE["来源与覆盖<br/>book：书名、EPUB 哈希<br/>processed_sections[]：已处理节、阅读顺序、输入路径与哈希<br/>coverage：起始节、未处理的前置内容"]
     KNOWLEDGE["故事知识<br/>entities[]：人物 / 地点 / 组织的稳定 ID<br/>records：七类带原文证据的知识记录"]
-    HISTORY["修订历史<br/>revision：修订号、ID、时间、父快照<br/>transitions[]：替代 / 撤回 / 解答<br/>current：程序计算的有效记录和身份索引<br/>provenance：来源运行、迁移、人工修正"]
+    HISTORY["修订历史<br/>revision：修订号、ID、时间、父快照<br/>transitions[]：替代 / 撤回 / 解答<br/>current：程序计算的有效记录和身份索引<br/>provenance：人工修正"]
     MODEL --> SOURCE
     MODEL --> KNOWLEDGE
     MODEL --> HISTORY
@@ -46,8 +46,7 @@ flowchart TB
 | `stores/<name>/story_model.json` | 最新已提交的累计模型；查看目前累积的知识，应读这个文件。 |
 | `stores/<name>/revisions/<revision>-<id>.json` | 每次已提交修订的完整快照，保留当时已知的信息。 |
 | `stores/<name>/inputs/<section>-<hash>.json` | 规范化章节正文与段落 ID，用于核对证据。 |
-| `stores/<name>/provenance/` | 初次导入、历次更新的来源文件、ID 映射、manifest 和人工修正记录。 |
-| `runs/<run-id>/story_model.json` | `generate` 产生、通过校验的 **v1 单章模型**，尚未经过 `init`。 |
+| `stores/<name>/provenance/<run-id>/` | 每次已提交更新的增量、ID 映射、commit 记录、manifest，以及人工修正（如有）。 |
 | `runs/<run-id>/story_model.after.json` | 更新运行产生的累计候选模型；仅有这个文件不代表已经提交。 |
 | 导出的 `.md` 文件 | 某次修订的阅读版；后续更新后需要重新导出才会刷新。 |
 
@@ -67,9 +66,9 @@ Git 中的示例 JSON 和修订快照可以直接阅读。运行 `show`、`updat
 | `records` | 七类知识记录：`names`、`aliases`、`attributes`、`relationships`、`events`、`uncertainties`、`identity_links`。旧记录保留，不被原地修改。 |
 | `transitions` | 有证据支持的历史变更：替代旧记录、撤回主张或解答疑点。 |
 | `current` | 程序计算的索引：`active_record_ids`、`resolved_uncertainty_ids`、`identity_groups`。 |
-| `provenance` | `initial_run_id`、`migration_version`、`imported_manual_corrections`、`update_manual_corrections`：初始来源、迁移版本与人工修正审计。旧 store 可能没有 `update_manual_corrections`。 |
+| `provenance` | `manual_corrections`：提交前人工修正过的每处证据位置，包括修订号、记录、原值与修正值和理由。 |
 
-这里的 **section（节）**可以是正文章节、序章或间章。`section-004`、Chapter 1、revision 1 分别是阅读顺序中的节 ID、小说章节号、成功导入/更新的修订次数，不能混用。判断覆盖范围时，要同时看 `processed_sections` 和 `coverage`。
+这里的 **section（节）**可以是正文章节、序章或间章。`section-004`、Chapter 1、revision 1 分别是阅读顺序中的节 ID、小说章节号、成功更新的修订次数（revision 1 是 store 的第一节），不能混用。判断覆盖范围时，要同时看 `processed_sections` 和 `coverage`。
 
 <a id="characters-and-records"></a>
 
@@ -94,7 +93,6 @@ Git 中的示例 JSON 和修订快照可以直接阅读。运行 `show`、`updat
 | `id` | 稳定的知识记录 ID，例如 `f000123`。它标识一条主张，不是人物 ID，也不表示事件类别。 |
 | `introduced_revision` | 这条记录在哪一次修订中加入。 |
 | `learned_in_section_id` | 读者在哪一节得知这条信息；事件本身可能发生在很久以前。 |
-| `legacy_id` | 从 v1 导入时保留的原始 ID，例如 `r001`、`e001`；不适用时为 `null`。 |
 | `payload` | 具体主张，其字段由记录类别决定。 |
 | `evidence` | 支持它的原文：`{section_id, paragraph_id, quote}`。段落 ID 只在一节内有效，定位时必须同时看节 ID。 |
 
@@ -108,7 +106,7 @@ Git 中的示例 JSON 和修订快照可以直接阅读。运行 `show`、`updat
 
 ```mermaid
 flowchart TB
-    RECORD["records 某个列表中的一项<br/>id：稳定知识 ID，如 f000123<br/>introduced_revision：加入这条记录的修订号<br/>learned_in_section_id：读者获知信息的节 ID<br/>legacy_id：原 v1 的 r/e ID，或 null"]
+    RECORD["records 某个列表中的一项<br/>id：稳定知识 ID，如 f000123<br/>introduced_revision：加入这条记录的修订号<br/>learned_in_section_id：读者获知信息的节 ID"]
     PAYLOAD["payload<br/>具体的名称、属性、关系、事件、<br/>疑点或身份主张"]
     EVIDENCE["evidence[]<br/>section_id：证据所在节 ID<br/>paragraph_id：该节内的段落 ID<br/>quote：最长 300 字符的连续原文引用"]
     ENTITY["entities[]<br/>id：c001 / l001 / g001<br/>kind：character / location / organization<br/>introduced_revision：实体首次加入的修订"]
@@ -243,7 +241,6 @@ erDiagram
   "id": "f000042",
   "introduced_revision": 2,
   "learned_in_section_id": "section-005",
-  "legacy_id": null,
   "payload": {
     "description": "Mira witnessed a fire at the harbor as a child.",
     "participant_ids": ["c001"],
@@ -362,30 +359,10 @@ erDiagram
 
 三种操作都会让目标记录失效，但不删除它。已解答疑点还会进入 `current.resolved_uncertainty_ids`；若答案本身也是新事实，需另加一条事实记录。程序根据历史计算 `current`。新章节没有提及的事实继续保留；倒叙应新增 `past` 记录，不用过去关系替代当前关系。
 
-读取历史修订时，应只使用当时已知的信息，不能借用后文才知道的姓名、身份链接或答案。修订号按成功导入/更新计数，因此间章也会产生修订。
+读取历史修订时，应只使用当时已知的信息，不能借用后文才知道的姓名、身份链接或答案。修订号按成功更新计数，因此间章也会产生修订。
 
 <a id="single-chapter-format"></a>
 
-## 单章格式
+## 精确定义
 
-执行 `init` 之前，成功的 `generate` 运行保存的是 **v1**：
-
-```text
-story_model.json
-├── schema_version: "1.0"
-├── scope: "single_chapter"
-├── source: 书籍/章节元信息、EPUB 位置、哈希、段落数
-└── model
-    ├── characters[]
-    ├── locations[]
-    ├── organizations[]
-    ├── relationships[]
-    ├── events[]
-    └── uncertainties[]
-```
-
-每个人物/地点/组织直接包含 `id`、带证据的 `name`、带证据的 `aliases`、`attributes`。关系使用 `r001` 一类的 ID，事件使用 `e001` 一类的 ID。疑点包含问题、相关实体 ID 和证据，没有自己的 ID。因为只有一节，证据是 `{paragraph_id, quote}`，不另写 `section_id`。依据标签与时间标签的取值和 v2 相同。
-
-v1 没有累计记录外层、状态转换、当前索引或身份链接集合。`init` 将它迁移为 v2：保留实体 ID，分配 `f…` 知识记录 ID，将适用的旧 ID 放入 `legacy_id`，并为证据补上节 ID。不同单章运行中碰巧相同的 ID 不代表同一个实体。
-
-精确定义见 [`schemas.py`](src/loremark_story_lab/schemas.py)（v1）和 [`cumulative_schemas.py`](src/loremark_story_lab/cumulative_schemas.py)（v2）；抽取规则见[单章 prompt](src/loremark_story_lab/prompts/extract_story_v1.txt)与[更新 prompt](src/loremark_story_lab/prompts/update_story_v1.txt)。
+精确定义见 [`cumulative_schemas.py`](src/loremark_story_lab/cumulative_schemas.py)；抽取规则见[更新 prompt](src/loremark_story_lab/prompts/update_story_v2.txt)。

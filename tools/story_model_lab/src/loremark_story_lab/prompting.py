@@ -1,8 +1,5 @@
-"""Prompt loading, chapter and update-context serialization, Structured Outputs schemas, and
-request params.
-
-The output model is a parameter: ChapterStoryModel for `generate` (the default) and
-StoryDelta for cumulative updates, so the saved schema is always the one that was sent.
+"""Prompt loading, update-context serialization, the Structured Outputs schema, and request
+params. The model always returns a StoryDelta, so the saved schema is the one that was sent.
 """
 
 from __future__ import annotations
@@ -13,15 +10,13 @@ from importlib import resources
 from pathlib import Path
 from typing import Any
 
-import pydantic
 from openai.lib._parsing._responses import type_to_text_format_param
 
 from .config import ConfigError, GenerateConfig
-from .cumulative_schemas import CumulativeStoryModel
-from .schemas import ChapterInput, ChapterStoryModel
+from .cumulative_schemas import CumulativeStoryModel, StoryDelta
+from .schemas import ChapterInput
 
-BUILTIN_PROMPT = "extract_story_v1.txt"
-UPDATE_PROMPT = "update_story_v1.txt"
+UPDATE_PROMPT = "update_story_v2.txt"
 
 
 def sha256_text(text: str) -> str:
@@ -33,7 +28,7 @@ def sha256_json(value: Any) -> str:
     return sha256_text(canonical)
 
 
-def load_prompt(prompt_file: Path | None, builtin: str = BUILTIN_PROMPT) -> tuple[str, str]:
+def load_prompt(prompt_file: Path | None, builtin: str = UPDATE_PROMPT) -> tuple[str, str]:
     """Return (prompt text, source label)."""
     if prompt_file is None:
         text = resources.files("loremark_story_lab").joinpath("prompts", builtin)
@@ -47,25 +42,16 @@ def load_prompt(prompt_file: Path | None, builtin: str = BUILTIN_PROMPT) -> tupl
     return text, str(prompt_file.resolve())
 
 
-def serialize_chapter(chapter: ChapterInput) -> str:
-    """The user message: identifiers of the selected section and its paragraphs only."""
-    header = (
-        f"Chapter section ID: {chapter.section_id}\n"
-        f"Chapter title: {chapter.title}\n"
-        f"Paragraph count: {len(chapter.paragraphs)}\n\n"
-    )
-    return header + "\n".join(f"[{p.id}] {p.text}" for p in chapter.paragraphs) + "\n"
-
-
 def build_update_context(
     base: CumulativeStoryModel, chapter: ChapterInput, *, section_order: int
 ) -> dict[str, Any]:
     """Exactly what an update shows the model: all prior knowledge and the new section.
 
     Every entity, record (payload, evidence, revision), transition, and the current index
-    are kept as they are, without summarizing or trimming. Left out: run metadata (revision
-    IDs and times, file paths and hashes, provenance) and the book title, which, as in
-    `generate`, is not needed to read the text. Earlier sections' full text is not included.
+    are kept as they are, without summarizing or trimming. For the first section of a new
+    store the prior model is revision 0 and empty. Left out: run metadata (revision IDs and
+    times, file paths and hashes, provenance) and the book title, which is not needed to read
+    the text. Earlier sections' full text is not included.
     """
     prior = base.model_dump(mode="json")
     return {
@@ -116,16 +102,9 @@ def serialize_update_context(context: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def text_format(output_type: type[pydantic.BaseModel] = ChapterStoryModel) -> dict[str, Any]:
-    """The exact `text.format` object the SDK sends for the output model."""
-    return dict(type_to_text_format_param(output_type))
-
-
-def build_request_params(
-    chapter: ChapterInput, prompt_text: str, config: GenerateConfig
-) -> dict[str, Any]:
-    """Keyword arguments for `responses.parse`, except `text_format`."""
-    return _params(prompt_text, serialize_chapter(chapter), config)
+def text_format() -> dict[str, Any]:
+    """The exact `text.format` object the SDK sends for StoryDelta."""
+    return dict(type_to_text_format_param(StoryDelta))
 
 
 def build_update_params(
@@ -153,13 +132,9 @@ def _params(system: str, user: str, config: GenerateConfig) -> dict[str, Any]:
     return params
 
 
-def request_record(
-    params: dict[str, Any],
-    config: GenerateConfig,
-    output_type: type[pydantic.BaseModel] = ChapterStoryModel,
-) -> dict[str, Any]:
+def request_record(params: dict[str, Any], config: GenerateConfig) -> dict[str, Any]:
     """What request.json stores: semantic parameters and text, never credentials."""
-    fmt = text_format(output_type)
+    fmt = text_format()
     return {
         "endpoint": "POST /responses (client.responses.parse)",
         "provider": config.provider.name,

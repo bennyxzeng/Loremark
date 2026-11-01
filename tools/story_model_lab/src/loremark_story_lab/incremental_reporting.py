@@ -6,6 +6,8 @@ aliases, identity merges, or answers from a later revision.
 
 from __future__ import annotations
 
+import html
+import re
 from typing import Any
 
 from .cumulative_schemas import (
@@ -22,8 +24,14 @@ from .cumulative_schemas import (
 )
 from .cumulative_validation import UpdateValidation
 from .merge import IdMap, record_index
-from .reporting import SUPPORT_NOTE, inline_code, md
 from .schemas import ChapterInput
+
+_MD_SPECIAL = re.compile(r"([\\`*_\[\]|])")
+
+SUPPORT_NOTE = (
+    "引用匹配通过只表示该短引用逐字出现在所标段落中，**不代表引用支持对应结论**。"
+    "每条主张仍需人工阅读原文判断。"
+)
 
 KIND_TITLES = {"character": "人物", "location": "地点", "organization": "组织"}
 COLLECTION_TITLES = {
@@ -36,6 +44,17 @@ COLLECTION_TITLES = {
     "identity_links": "身份链接",
 }
 ACTION_TITLES = {"supersede": "替代", "retract": "撤回", "resolve": "解答"}
+
+
+def md(text: str) -> str:
+    """Escape model or novel text for inline Markdown."""
+    return _MD_SPECIAL.sub(r"\\\1", html.escape(text, quote=False))
+
+
+def inline_code(value: object) -> str:
+    return "—" if value is None else f"`{value}`"
+
+
 REVIEW_FOCUS_CODES = {
     "semantic_supersede_review",
     "name_conflict",
@@ -209,16 +228,7 @@ def _coverage(model: CumulativeStoryModel, view: _View) -> list[str]:
             "本模型不包含这些节的信息，不代表“全书开头到当前”的完整状态。"
         )
     lines.append(start)
-    corrections = model.provenance.imported_manual_corrections
-    if corrections:
-        lines.append(
-            f"- ⚠️ 导入的初始模型含 {len(corrections)} 处人工修正，不是模型原样输出"
-            f"（初始运行 `{model.provenance.initial_run_id}`）："
-        )
-        for item in corrections:
-            change = f"{md(item.original)} → {md(item.corrected)}"
-            lines.append(f"  - `{item.path}`：{change}（{md(item.reason)}）")
-    updates = model.provenance.update_manual_corrections
+    updates = model.provenance.manual_corrections
     if updates:
         revisions = sorted({item.revision for item in updates})
         lines.append(
@@ -383,8 +393,13 @@ def render_diff(base: CumulativeStoryModel, after: CumulativeStoryModel, id_map:
     view = _View(after)
     section = after.processed_sections[-1]
     local_of = {stable: local for local, stable in {**id_map.entities, **id_map.records}.items()}
+    title = (
+        f"revision {base.revision.number} → {after.revision.number}"
+        if base.revision.number
+        else f"新建 store，revision {after.revision.number}"
+    )
     lines = [
-        f"# 增量变化：revision {base.revision.number} → {after.revision.number}（候选）",
+        f"# 增量变化：{title}（候选）",
         "",
         f"- 新节：`{section.section_id}` {md(section.title)}（{section.paragraph_count} 段）",
         "- 本文件描述合并后的候选修订；是否已提交以 `run.json` 的 `commit_status` 为准。",
@@ -421,6 +436,8 @@ def render_diff(base: CumulativeStoryModel, after: CumulativeStoryModel, id_map:
                 lines.append("- ⚠️ 重点人工审阅：代码无法判断新旧描述是否指同一件事")
             lines += view.transition(item)
         lines.append("")
+    if not base.revision.number:
+        return "\n".join(lines).rstrip() + "\n"
     unchanged = sum(
         1
         for collection in COLLECTION_TITLES
@@ -452,7 +469,9 @@ def render_update_review(
         "",
         f"- {SUPPORT_NOTE}",
         "- 输入只有上一版完整的结构化模型和本节原文；此前各章原文与后续章节均未发送。"
-        "上一版模型是可被新证据修订的抽取结果，不是绝对真理。",
+        "上一版模型是可被新证据修订的抽取结果，不是绝对真理。"
+        if base.revision.number
+        else "- 这是新 store 的第一节：已有模型为空，输入只有本节原文；后续章节均未发送。",
         "- 新记录和状态转换的证据只能来自本节；旧记录不会被改写或删除，只能通过新的转换失效。",
     ]
     omitted = base.coverage.omitted_prefix_section_ids
@@ -460,11 +479,6 @@ def render_update_review(
         lines.append(
             f"- 起点为 `{base.coverage.start_section_id}`，之前的 "
             f"{'、'.join(f'`{s}`' for s in omitted)} 未处理。"
-        )
-    if base.provenance.imported_manual_corrections:
-        lines.append(
-            f"- 初始模型含 {len(base.provenance.imported_manual_corrections)} 处人工修正，"
-            "不是模型原样输出。"
         )
     lines += [f"- 本节省略了 {chapter.omitted_image_count} 张图片，图片内容未被读取。", ""]
 
@@ -483,7 +497,12 @@ def render_update_review(
         ]
         lines += ["## 重要变化（需人工审阅）", ""]
         if not (new_transitions or new_links or new_names):
-            lines += ["- 本节没有修订旧记录、揭示身份或为已有实体添加新名称。", ""]
+            lines += [
+                "- 本节没有修订旧记录、揭示身份或为已有实体添加新名称。"
+                if base.revision.number
+                else "- 第一节没有可修订的旧记录。",
+                "",
+            ]
         for item in new_transitions:
             lines += view.transition(item)
         for record in new_links:
@@ -581,7 +600,9 @@ def _update_metadata(chapter: ChapterInput, run: dict[str, Any]) -> list[str]:
         f"- 运行 ID：{inline_code(run.get('run_id'))}；状态：{inline_code(run.get('status'))}；"
         f"commit_status：{inline_code(run.get('commit_status'))}",
         f"- Base revision：{inline_code(base.get('number'))}（{inline_code(base.get('id'))}，"
-        f"SHA-256 {inline_code(base.get('sha256'))}）",
+        f"SHA-256 {inline_code(base.get('sha256'))}）"
+        if base
+        else "- Base revision：无（本次运行新建 store）",
         f"- 候选 revision：{inline_code(candidate.get('number'))}；"
         f"已提交 revision：{inline_code(committed.get('number'))}",
         f"- Provider：{inline_code(request.get('provider'))}；请求模型："

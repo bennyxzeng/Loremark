@@ -1,0 +1,423 @@
+{
+  "new_entities": [
+    {
+      "local_id": "new_entity_001",
+      "kind": "character"
+    },
+    {
+      "local_id": "new_entity_002",
+      "kind": "character"
+    },
+    {
+      "local_id": "new_entity_003",
+      "kind": "character"
+    },
+    {
+      "local_id": "new_entity_004",
+      "kind": "character"
+    },
+    {
+      "local_id": "new_entity_005",
+      "kind": "location"
+    },
+    {
+      "local_id": "new_entity_006",
+      "kind": "organization"
+    }
+  ],
+  "new_records": {
+    "names": [
+      {
+        "local_id": "new_record_001",
+        "payload": {
+          "entity_id": "new_entity_001",
+          "text": "Ilse Varga"
+        },
+        "evidence": [
+          {
+            "section_id": "section-002",
+            "paragraph_id": "p0002",
+            "quote": "Lieutenant Ilse Varga"
+          }
+        ]
+      },
+      {
+        "local_id": "new_record_002",
+        "payload": {
+          "entity_id": "new_entity_002",
+          "text": "the Grey Fox"
+        },
+        "evidence": [
+          {
+            "section_id": "section-002",
+            "paragraph_id": "p0003",
+            "quote": "the smuggler called the Grey Fox"
+          }
+        ]
+      },
+      {
+        "local_id": "new_record_003",
+        "payload": {
+          "entity_id": "new_entity_003",
+          "text": "Tomas"
+        },
+        "evidence": [
+          {
+            "section_id": "section-002",
+            "paragraph_id": "p0005",
+            "quote": "Her brother Tomas"
+          }
+        ]
+      },
+      {
+        "local_id": "new_record_004",
+        "payload": {
+          "entity_id": "new_entity_004",
+          "text": "Petr Lask"
+        },
+        "evidence": [
+          {
+            "section_id": "section-002",
+            "paragraph_id": "p0007",
+            "quote": "The ferryman Petr Lask"
+          }
+        ]
+      },
+      {
+        "local_id": "new_record_005",
+        "payload": {
+          "entity_id": "new_entity_005",
+          "text": "Greyford"
+        },
+        "evidence": [
+          {
+            "section_id": "section-002",
+            "paragraph_id": "p0002",
+            "quote": "the tower at Greyford"
+          }
+        ]
+      },
+      {
+        "local_id": "new_record_006",
+        "payload": {
+          "entity_id": "new_entity_006",
+          "text": "the Harbor Watch"
+        },
+        "evidence": [
+          {
+            "section_id": "section-002",
+            "paragraph_id": "p0008",
+            "quote": "the Harbor Watch"
+          }
+        ]
+      }
+    ],
+    "aliases": [
+      {
+        "local_id": "new_record_007",
+        "payload": {
+          "entity_id": "new_entity_001",
+          "text": "Ilse"
+        },
+        "evidence": [
+          {
+            "section_id": "section-002",
+            "paragraph_id": "p0004",
+            "quote": "Ilse and the Grey Fox"
+          }
+        ]
+      }
+    ],
+    "attributes": [
+      {
+        "local_id": "new_record_008",
+        "payload": {
+          "entity_id": "new_entity_001",
+          "label": "rank",
+          "value": "Lieutenant",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-002",
+            "paragraph_id": "p0002",
+            "quote": "Lieutenant Ilse Varga"
+          }
+        ]
+      },
+      {
+        "local_id": "new_record_009",
+        "payload": {
+          "entity_id": "new_entity_001",
+          "label": "affiliation",
+          "value": "Harbor Watch",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-002",
+            "paragraph_id": "p0008",
+            "quote": "Ilse served in the Harbor Watch"
+          }
+        ]
+      },
+      {
+        "local_id": "new_record_010",
+        "payload": {
+          "entity_id": "new_entity_002",
+          "label": "occupation",
+          "value": "smuggler",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-002",
+            "paragraph_id": "p0003",
+            "quote": "the smuggler called the Grey Fox"
+          }
+        ]
+      },
+      {
+        "local_id": "new_record_011",
+        "payload": {
+          "entity_id": "new_entity_003",
+          "label": "age",
+          "value": "older than Ilse (KNOWN-WRONG inference kept for the migration test)",
+          "assertion": "inferred",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-002",
+            "paragraph_id": "p0005",
+            "quote": "Her brother Tomas"
+          }
+        ]
+      },
+      {
+        "local_id": "new_record_012",
+        "payload": {
+          "entity_id": "new_entity_004",
+          "label": "occupation",
+          "value": "ferryman",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-002",
+            "paragraph_id": "p0007",
+            "quote": "The ferryman Petr Lask"
+          }
+        ]
+      }
+    ],
+    "relationships": [
+      {
+        "local_id": "new_record_013",
+        "payload": {
+          "source_id": "new_entity_001",
+          "target_id": "new_entity_002",
+          "label": "relationship_status",
+          "description": "Ilse and the Grey Fox are sworn enemies.",
+          "assertion": "explicit",
+          "attributed_to_id": null,
+          "temporal_context": "current"
+        },
+        "evidence": [
+          {
+            "section_id": "section-002",
+            "paragraph_id": "p0004",
+            "quote": "Ilse and the Grey Fox were sworn enemies."
+          }
+        ]
+      },
+      {
+        "local_id": "new_record_014",
+        "payload": {
+          "source_id": "new_entity_003",
+          "target_id": "new_entity_001",
+          "label": "sibling_of",
+          "description": "Tomas is Ilse's brother.",
+          "assertion": "explicit",
+          "attributed_to_id": null,
+          "temporal_context": "current"
+        },
+        "evidence": [
+          {
+            "section_id": "section-002",
+            "paragraph_id": "p0005",
+            "quote": "Her brother Tomas"
+          }
+        ]
+      },
+      {
+        "local_id": "new_record_015",
+        "payload": {
+          "source_id": "new_entity_006",
+          "target_id": "new_entity_002",
+          "label": "opposes",
+          "description": "The Harbor Watch has sworn to hunt down the Grey Fox.",
+          "assertion": "explicit",
+          "attributed_to_id": null,
+          "temporal_context": "current"
+        },
+        "evidence": [
+          {
+            "section_id": "section-002",
+            "paragraph_id": "p0009",
+            "quote": "The Harbor Watch had sworn to hunt down the Grey Fox."
+          }
+        ]
+      },
+      {
+        "local_id": "new_record_016",
+        "payload": {
+          "source_id": "new_entity_001",
+          "target_id": "new_entity_006",
+          "label": "member_of",
+          "description": "Ilse serves in the Harbor Watch.",
+          "assertion": "explicit",
+          "attributed_to_id": null,
+          "temporal_context": "current"
+        },
+        "evidence": [
+          {
+            "section_id": "section-002",
+            "paragraph_id": "p0008",
+            "quote": "Ilse served in the Harbor Watch"
+          }
+        ]
+      }
+    ],
+    "events": [
+      {
+        "local_id": "new_record_017",
+        "payload": {
+          "description": "Ilse keeps watch from the tower at Greyford.",
+          "participant_ids": [
+            "new_entity_001"
+          ],
+          "location_id": "new_entity_005",
+          "narrative_order": 1,
+          "temporal_context": "current",
+          "story_time": null,
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-002",
+            "paragraph_id": "p0002",
+            "quote": "kept watch from the tower at Greyford"
+          }
+        ]
+      },
+      {
+        "local_id": "new_record_018",
+        "payload": {
+          "description": "The Grey Fox slips boats past the tower every night.",
+          "participant_ids": [
+            "new_entity_002"
+          ],
+          "location_id": "new_entity_005",
+          "narrative_order": 2,
+          "temporal_context": "current",
+          "story_time": "every night",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-002",
+            "paragraph_id": "p0003",
+            "quote": "slipped boats past her tower"
+          }
+        ]
+      },
+      {
+        "local_id": "new_record_019",
+        "payload": {
+          "description": "Tomas trims the signal lamp.",
+          "participant_ids": [
+            "new_entity_003"
+          ],
+          "location_id": null,
+          "narrative_order": 3,
+          "temporal_context": "current",
+          "story_time": null,
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-002",
+            "paragraph_id": "p0005",
+            "quote": "trimmed the signal lamp"
+          }
+        ]
+      },
+      {
+        "local_id": "new_record_020",
+        "payload": {
+          "description": "Petr Lask rows the night crossing alone.",
+          "participant_ids": [
+            "new_entity_004"
+          ],
+          "location_id": null,
+          "narrative_order": 4,
+          "temporal_context": "current",
+          "story_time": null,
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-002",
+            "paragraph_id": "p0007",
+            "quote": "rowed the night crossing alone"
+          }
+        ]
+      }
+    ],
+    "uncertainties": [
+      {
+        "local_id": "new_record_021",
+        "payload": {
+          "question": "Who is the Grey Fox?",
+          "related_entity_ids": [
+            "new_entity_002"
+          ]
+        },
+        "evidence": [
+          {
+            "section_id": "section-002",
+            "paragraph_id": "p0006",
+            "quote": "No one in Greyford knew the Grey Fox’s real name."
+          }
+        ]
+      },
+      {
+        "local_id": "new_record_022",
+        "payload": {
+          "question": "Why does the Grey Fox pass the tower every night?",
+          "related_entity_ids": [
+            "new_entity_002"
+          ]
+        },
+        "evidence": [
+          {
+            "section_id": "section-002",
+            "paragraph_id": "p0003",
+            "quote": "Every night the smuggler called the Grey Fox"
+          }
+        ]
+      }
+    ],
+    "identity_links": []
+  },
+  "transitions": []
+}

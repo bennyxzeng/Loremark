@@ -116,7 +116,6 @@ Map<String, dynamic> _record(
   'id': id,
   'introduced_revision': section == 's1' ? 1 : 2,
   'learned_in_section_id': section,
-  'legacy_id': null,
   'payload': payload,
   'evidence': [
     {'section_id': section, 'paragraph_id': 'p0001', 'quote': 'quote $id'},

@@ -1,10 +1,12 @@
-"""Cumulative flows behind `init`, `update`, `show`, and `validate` of update runs.
+"""The flows behind `update`, `commit`, `show`, and `validate`.
 
 `update` reads and verifies the store, checks that the requested section is the next one in
 reading order of the same EPUB, sends the prior model and that section, validates the
-returned delta, merges it in memory, and commits a new revision. Every check that can fail
-without the model runs before the API call; nothing reaches the store unless the whole
-candidate revision passes, and a commit refuses to overwrite a store another update changed.
+returned delta, merges it in memory, and commits a new revision. When the store does not
+exist yet, the prior model is an empty revision 0 and the chosen section becomes revision 1.
+Every check that can fail without the model runs before the API call; nothing reaches the
+store unless the whole candidate revision passes, and a commit refuses to overwrite a store
+another update changed (or created).
 """
 
 from __future__ import annotations
@@ -32,7 +34,17 @@ from .artifacts import (
     write_text,
 )
 from .config import GenerateConfig
-from .cumulative_schemas import CumulativeStoryModel, RevisionInfo, StoryDelta
+from .cumulative_schemas import (
+    COLLECTIONS,
+    BookRef,
+    Coverage,
+    CumulativeStoryModel,
+    CurrentIndex,
+    Provenance,
+    RecordCollections,
+    RevisionInfo,
+    StoryDelta,
+)
 from .cumulative_validation import (
     VALIDATOR_VERSION,
     UpdateValidation,
@@ -41,7 +53,6 @@ from .cumulative_validation import (
 )
 from .epub import EpubBook, EpubError, Section, extract_section, find_section, open_epub
 from .incremental_reporting import render_diff, render_story_markdown, render_update_review
-from .migration import import_v1_run
 from .pipeline import (
     EXIT_API,
     EXIT_INPUT,
@@ -70,6 +81,7 @@ from .prompting import (
 )
 from .schemas import ChapterInput
 from .story_store import (
+    LATEST_FILE,
     StaleBaseError,
     StoreError,
     StoreState,
@@ -79,6 +91,7 @@ from .story_store import (
     load_store,
     manifest_bytes,
     model_bytes,
+    new_store_state,
     section_source,
 )
 
@@ -114,32 +127,7 @@ def new_revision_id() -> str:
     return secrets.token_hex(6)
 
 
-# --- init / show ----------------------------------------------------------------------------
-
-
-def run_init(*, from_run: Path, store_root: Path, epub_path: Path | None, echo: Echo) -> Outcome:
-    store_root = store_root.resolve()
-    ensure_new_store(store_root)
-    imported = import_v1_run(
-        from_run, epub_override=epub_path, revision_id=new_revision_id(), created_at=utc_now()
-    )
-    commit_revision(store_root, imported.model, imported.files, expected_base_sha256=None)
-    state = load_store(store_root)
-    model = state.model
-    echo(f"Imported {from_run.resolve()} ({model.provenance.initial_run_id}) as revision 1")
-    echo(f"Book: {model.book.title} (SHA-256 {model.book.epub_sha256})")
-    section = model.processed_sections[0]
-    echo(f"Section: {section.section_id} {section.title!r} [{section.paragraph_count} paragraphs]")
-    omitted = model.coverage.omitted_prefix_section_ids
-    if omitted:
-        echo(f"Not covered (before the start): {', '.join(omitted)}")
-    echo(
-        f"Entities: {len(model.entities)}; records: {len(model.current.active_record_ids)}; "
-        f"manual corrections carried over: {len(model.provenance.imported_manual_corrections)}"
-    )
-    echo(f"Store: {state.root}")
-    echo("Status: initialized")
-    return Outcome(EXIT_OK, "initialized", state.root)
+# --- show -------------------------------------------------------------------------------
 
 
 def run_show(*, store_root: Path, revision: int | None, as_json: bool, echo: Echo) -> Outcome:
@@ -164,10 +152,12 @@ class UpdatePlan:
 
 
 def plan_update(
-    state: StoreState, book: EpubBook, *, chapter: int | None, section_id: str | None
+    model: CumulativeStoryModel, book: EpubBook, *, chapter: int | None, section_id: str | None
 ) -> UpdatePlan:
-    """Check that the selection is the next section of the same book; nothing is sent."""
-    model = state.model
+    """Check that the selection is the next section of the same book; nothing is sent.
+
+    Without a selection, the next section in reading order is taken.
+    """
     if book.sha256 != model.book.epub_sha256:
         raise UpdateInputError(
             f"{book.path} has SHA-256 {book.sha256}, but the store was built from "
@@ -187,6 +177,15 @@ def plan_update(
                 "(the section list changed); this store cannot be continued with it"
             )
 
+    last = model.processed_sections[-1]
+    following = [s for s in book.sections if s.order > last.section_order]
+    if chapter is None and section_id is None:
+        if not following:
+            raise UpdateInputError(
+                f"Every section is processed ({last.section_id} is the last); nothing to update"
+            )
+        return UpdatePlan(following[0], _extract_next(book, following[0]), already_processed=False)
+
     selected = find_section(book, chapter=chapter, section_id=section_id)
     processed = {source.section_id: source for source in model.processed_sections}
     if selected.section_id in processed:
@@ -200,8 +199,6 @@ def plan_update(
             )
         return UpdatePlan(selected, fresh, already_processed=True)
 
-    last = model.processed_sections[-1]
-    following = [s for s in book.sections if s.order > last.section_order]
     if not following:
         raise UpdateInputError(f"Every section after {last.section_id} is already processed")
     expected = following[0]
@@ -215,21 +212,85 @@ def plan_update(
             f"{selected.section_id} ({selected.title!r}) would skip {expected.section_id} "
             f"({expected.title!r}), which has not been processed. Sections are processed one at "
             f"a time in reading order; the next one is {expected.section_id} "
-            f"(`--section {expected.section_id}`)"
+            f"(`--section {expected.section_id}`, or no selection at all)"
         )
+    return UpdatePlan(selected, _extract_next(book, selected), already_processed=False)
+
+
+def _extract_next(book: EpubBook, selected: Section) -> ChapterInput:
     if selected.problem:
         raise EpubError(
             f"{selected.section_id}, the next section, cannot be extracted reliably "
             f"({selected.problem}); it cannot be skipped, so updating stops here for now"
         )
     try:
-        chapter_input = extract_section(book, selected)
+        return extract_section(book, selected)
     except EpubError as exc:
         raise EpubError(
             f"{exc}; {selected.section_id} is the next section and cannot be skipped, "
             "so updating stops here for now"
         ) from exc
+
+
+def plan_first_section(
+    book: EpubBook, *, chapter: int | None, section_id: str | None
+) -> UpdatePlan:
+    """The starting section of a new store; sections before it are never covered."""
+    if chapter is None and section_id is None:
+        raise UpdateInputError(
+            "A new store needs its starting section: pass --chapter or --section "
+            "(`story-model chapters` lists them); sections before it are never covered"
+        )
+    selected = find_section(book, chapter=chapter, section_id=section_id)
+    if selected.problem:
+        raise EpubError(
+            f"{selected.section_id} cannot be extracted reliably ({selected.problem}); "
+            "choose another starting section"
+        )
+    try:
+        chapter_input = extract_section(book, selected)
+    except EpubError as exc:
+        raise EpubError(f"{exc}; choose another starting section") from exc
     return UpdatePlan(selected, chapter_input, already_processed=False)
+
+
+def empty_model(book: EpubBook, plan: UpdatePlan) -> CumulativeStoryModel:
+    """Revision 0 of a new store: nothing known yet; book and coverage are final already."""
+    return CumulativeStoryModel(
+        book=BookRef(title=plan.chapter.book_title, epub_sha256=plan.chapter.book_sha256),
+        revision=RevisionInfo(
+            number=0,
+            id="",
+            created_at="",
+            source_run_id="",
+            parent_snapshot_path=None,
+            parent_sha256=None,
+        ),
+        processed_sections=[],
+        coverage=Coverage(
+            start_section_id=plan.section.section_id,
+            omitted_prefix_section_ids=[
+                s.section_id for s in book.sections if s.order < plan.section.order
+            ],
+        ),
+        entities=[],
+        records=RecordCollections.model_validate({name: [] for name in COLLECTIONS}),
+        transitions=[],
+        current=CurrentIndex(active_record_ids=[], resolved_uncertainty_ids=[], identity_groups=[]),
+        provenance=Provenance(manual_corrections=[]),
+    )
+
+
+def _open_store(
+    store_root: Path, book: EpubBook, *, chapter: int | None, section_id: str | None
+) -> tuple[StoreState, UpdatePlan]:
+    """The state to build on and the section to add; a missing store is created by the update."""
+    if (store_root / LATEST_FILE).is_file():
+        state = load_store(store_root)
+        return state, plan_update(state.model, book, chapter=chapter, section_id=section_id)
+    ensure_new_store(store_root)
+    plan = plan_first_section(book, chapter=chapter, section_id=section_id)
+    return new_store_state(store_root, empty_model(book, plan)), plan
 
 
 def run_update(
@@ -246,9 +307,8 @@ def run_update(
     env: Mapping[str, str] | None = None,
 ) -> Outcome:
     started_clock = time.monotonic()
-    state = load_store(store_root)
     book = open_epub(epub_path)
-    plan = plan_update(state, book, chapter=chapter, section_id=section_id)
+    state, plan = _open_store(store_root, book, chapter=chapter, section_id=section_id)
     chapter_input = plan.chapter
     echo(describe_selection(chapter_input))
     if plan.already_processed:
@@ -269,11 +329,11 @@ def run_update(
     run_dir = prepare_output_dir(out)
     context = build_update_context(base, chapter_input, section_order=plan.section.order)
     params = build_update_params(context, prompt_text, config)
-    fmt = text_format(StoryDelta)
+    fmt = text_format()
     write_chapter_files(run_dir, chapter_input)
     write_text(run_dir / "prompt.txt", prompt_text)
     write_json(run_dir / "schema.json", fmt["schema"])
-    write_json(run_dir / "request.json", request_record(params, config, StoryDelta))
+    write_json(run_dir / "request.json", request_record(params, config))
     write_json(run_dir / "context.json", context)
     (run_dir / "base_story_model.json").write_bytes(state.latest_bytes)
     for relpath, data in state.input_files.items():
@@ -281,9 +341,7 @@ def run_update(
         target.parent.mkdir(exist_ok=True)
         target.write_bytes(data)
 
-    run = new_run_record(
-        run_dir, book, chapter_input, config, params, prompt_text, prompt_source, command="update"
-    )
+    run = new_run_record(run_dir, book, chapter_input, config, params, prompt_text, prompt_source)
     run["source"]["section_order"] = plan.section.order
     run["hashes"].update(
         schema_sha256=sha256_json(fmt["schema"]),
@@ -292,7 +350,9 @@ def run_update(
     )
     run.update(
         store={"path": str(state.root)},
-        base_revision={
+        base_revision=None
+        if state.is_new
+        else {
             "number": base.revision.number,
             "id": base.revision.id,
             "sha256": state.latest_sha256,
@@ -309,8 +369,9 @@ def run_update(
         _finish(run, "dry_run", started_clock)
         write_json(run_dir / "run.json", run)
         echo(f"Output: {run_dir}")
-        echo(f"Context: prior revision {base.revision.number} + {chapter_input.section_id}")
-        echo("Status: dry_run (no request sent, store unchanged)")
+        prior = "new store" if state.is_new else f"prior revision {base.revision.number}"
+        echo(f"Context: {prior} + {chapter_input.section_id}")
+        echo(f"Status: dry_run (no request sent, {_unchanged(state)})")
         return Outcome(EXIT_OK, "dry_run", run_dir, warnings)
 
     write_json(run_dir / "run.json", run)
@@ -390,7 +451,7 @@ class _UpdateRun:
         write_json(self.run_dir / "run.json", self.run)
         review = render_update_review(self.chapter, self.run, base, validation, failure)
         write_text(self.run_dir / "review.md", review)
-        self.echo(f"Status: {status} (store unchanged at revision {base.revision.number})")
+        self.echo(f"Status: {status} ({_unchanged(self.state)})")
         return Outcome(UPDATE_EXIT_CODES[status], status, self.run_dir, self.warnings)
 
     def commit(
@@ -419,7 +480,7 @@ class _UpdateRun:
                 "error": {
                     "category": "commit_failed",
                     "type": type(exc).__name__,
-                    "message": f"{exc}; the store still holds revision {base.revision.number}",
+                    "message": f"{exc}; nothing was committed ({_unchanged(state)})",
                 },
             }
             return stop("commit_failed", failure, validation)
@@ -452,9 +513,18 @@ class _UpdateRun:
             echo(f"Output: {run_dir}")
             echo(f"Status: committed_report_failed (revision {after.revision.number})")
             return Outcome(EXIT_OK, "committed_report_failed", run_dir, [*warnings, message])
-        echo(f"Store: {state.root} (revision {base.revision.number} → {after.revision.number})")
+        if state.is_new:
+            echo(f"Store: {state.root} (created at revision {after.revision.number})")
+        else:
+            echo(f"Store: {state.root} (revision {base.revision.number} → {after.revision.number})")
         echo(f"Status: committed ({len(validation.warnings)} warnings; see {run_dir}/review.md)")
         return Outcome(EXIT_OK, "committed", run_dir, warnings)
+
+
+def _unchanged(state: StoreState) -> str:
+    if state.is_new:
+        return "no store created"
+    return f"store unchanged at revision {state.model.revision.number}"
 
 
 def _failure_status(call_status: str, validation: UpdateValidation | None) -> str:
@@ -606,7 +676,7 @@ def run_commit_corrected(*, run_dir: Path, epub_path: Path, echo: Echo) -> Outco
 
     The model's raw delta stays in delta.candidate.json; the corrections, the corrected delta,
     and the original validation go to the store's provenance, and every correction is listed
-    in the model's `provenance.update_manual_corrections`. Nothing is sent to any model.
+    in the model's `provenance.manual_corrections`. Nothing is sent to any model.
     """
     started_clock = time.monotonic()
     run_dir = run_dir.resolve()
@@ -626,15 +696,26 @@ def run_commit_corrected(*, run_dir: Path, epub_path: Path, echo: Echo) -> Outco
         read_json(run_dir / "delta.candidate.json"), read_json(run_dir / CORRECTIONS_FILE)
     )
 
-    state = load_store(Path(run["store"]["path"]))
-    base_sha = run["base_revision"]["sha256"]
-    if state.latest_sha256 != base_sha:
-        raise StaleBaseError(
-            f"The store moved on since this run (expected {base_sha}, found "
-            f"{state.latest_sha256}); its delta no longer applies. Nothing was committed."
-        )
+    store_root = Path(run["store"]["path"])
     book = open_epub(epub_path)
-    plan = plan_update(state, book, chapter=None, section_id=run["source"]["section_id"])
+    section_id = run["source"]["section_id"]
+    if run["base_revision"] is None:
+        if (store_root / LATEST_FILE).is_file():
+            raise StaleBaseError(
+                f"{store_root} was created after this run started a new store there; its delta "
+                "no longer applies. Nothing was committed."
+            )
+        plan = plan_first_section(book, chapter=None, section_id=section_id)
+        state = new_store_state(store_root, empty_model(book, plan))
+    else:
+        state = load_store(store_root)
+        base_sha = run["base_revision"]["sha256"]
+        if state.latest_sha256 != base_sha:
+            raise StaleBaseError(
+                f"The store moved on since this run (expected {base_sha}, found "
+                f"{state.latest_sha256}); its delta no longer applies. Nothing was committed."
+            )
+        plan = plan_update(state.model, book, chapter=None, section_id=section_id)
     saved = ChapterInput.model_validate(read_json(run_dir / "chapter.json"))
     if plan.already_processed or plan.chapter != saved:
         raise RunInputError(
@@ -697,7 +778,11 @@ def validate_update_run(run_dir: Path, echo: Echo) -> Outcome:
     The store is not read or written, and the run's own artifacts are left as they are; the
     result goes to validation.recheck.json.
     """
-    run = read_json(run_dir / "run.json")
+    run_dir = run_dir.resolve()
+    run_path = run_dir / "run.json"
+    if not run_path.is_file() or read_json(run_path).get("command") != "update":
+        raise RunInputError(f"{run_dir} is not an update run directory")
+    run = read_json(run_path)
     required = ("base_story_model.json", "chapter.json")
     for name in required:
         if not (run_dir / name).is_file():
@@ -722,7 +807,8 @@ def validate_update_run(run_dir: Path, echo: Echo) -> Outcome:
             raise RunInputError(f"{path} is missing or does not match the base model's hash")
         base_inputs[source.section_id] = ChapterInput.model_validate_json(path.read_bytes())
 
-    base_report = validate_cumulative(base, base_inputs)
+    # Revision 0 is the empty start of a store an update created; it is not a revision itself.
+    base_errors = validate_cumulative(base, base_inputs).errors if base.revision.number else []
     after_path = run_dir / "story_model.after.json"
     saved_after = (
         CumulativeStoryModel.model_validate_json(after_path.read_bytes())
@@ -753,7 +839,7 @@ def validate_update_run(run_dir: Path, echo: Echo) -> Outcome:
         section=section,
         revision=revision,
     )
-    problems = [f"base: {i.code} at {i.path}: {i.message}" for i in base_report.errors]
+    problems = [f"base: {i.code} at {i.path}: {i.message}" for i in base_errors]
     if (
         saved_after is not None
         and validation.after is not None

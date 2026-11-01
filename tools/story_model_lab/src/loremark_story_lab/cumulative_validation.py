@@ -1,7 +1,7 @@
 """Deterministic checks of a cumulative (v2) model, of one update, and of history.
 
-As in validation.py, a matched quote only proves the text exists in that paragraph, and
-nothing here edits or drops records. Code cannot tell whether two events or questions mean
+A matched quote only proves the text exists in that paragraph, and nothing here edits or
+drops records. Code cannot tell whether two events or questions mean
 the same thing, so such replacements are flagged for manual review instead of judged.
 """
 
@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import ValidationError
 
@@ -28,13 +28,14 @@ from .cumulative_schemas import (
     SectionSource,
     StoryDelta,
     UncertaintyPayload,
+    entity_refs,
 )
 from .epub import text_sha256
 from .merge import IdMap, apply_delta, iter_records, project_current
 from .schemas import ChapterInput
-from .validation import MAX_QUOTE_CHARS, Issue, error_path, find_spans, fold_text
 
 VALIDATOR_VERSION = "2.0"
+MAX_QUOTE_CHARS = 300
 
 ALL_KINDS = {"character", "location", "organization"}
 SPEAKER_KINDS = {"character", "organization"}
@@ -47,11 +48,42 @@ RECORD_ID_PATTERN = re.compile(r"^f\d{6,}$")
 TRANSITION_ID_PATTERN = re.compile(r"^t\d{6,}$")
 LOCAL_ENTITY_PATTERN = re.compile(r"^new_entity_\d{3,}$")
 LOCAL_RECORD_PATTERN = re.compile(r"^new_record_\d{3,}$")
+_QUOTE_FOLD = str.maketrans({"“": '"', "”": '"', "‘": "'", "’": "'", "—": "-", "–": "-"})
 
 SUPPORT_NOTE = (
     "A matched quote only shows the text exists in that paragraph; "
     "it does not show that the quote supports the claim."
 )
+
+
+@dataclass
+class Issue:
+    severity: Literal["error", "warning"]
+    code: str
+    path: str
+    message: str
+    record_id: str | None = None
+
+
+def find_spans(text: str, quote: str) -> list[list[int]]:
+    """All [start, end) code-point ranges where quote occurs in text, overlaps included."""
+    spans = []
+    start = text.find(quote)
+    while start != -1:
+        spans.append([start, start + len(quote)])
+        start = text.find(quote, start + 1)
+    return spans
+
+
+def fold_text(text: str) -> str:
+    return " ".join(text.translate(_QUOTE_FOLD).casefold().split())
+
+
+def error_path(loc: tuple[Any, ...]) -> str:
+    path = ""
+    for part in loc:
+        path += f"[{part}]" if isinstance(part, int) else (f".{part}" if path else str(part))
+    return path or "(root)"
 
 
 @dataclass
@@ -817,9 +849,6 @@ def check_history(base: CumulativeStoryModel, after: CumulativeStoryModel) -> li
     for name in ("book", "coverage"):
         if getattr(after, name) != getattr(base, name):
             error(name, f"{name} changed between revisions")
-    exclude = {"update_manual_corrections"}
-    if after.provenance.model_dump(exclude=exclude) != base.provenance.model_dump(exclude=exclude):
-        error("provenance", "provenance changed between revisions")
     pairs: list[tuple[str, list[Any], list[Any]]] = [
         ("processed_sections", base.processed_sections, after.processed_sections),
         ("entities", base.entities, after.entities),
@@ -830,9 +859,9 @@ def check_history(base: CumulativeStoryModel, after: CumulativeStoryModel) -> li
     ]
     pairs.append(
         (
-            "provenance.update_manual_corrections",
-            base.provenance.update_manual_corrections,
-            after.provenance.update_manual_corrections,
+            "provenance.manual_corrections",
+            base.provenance.manual_corrections,
+            after.provenance.manual_corrections,
         )
     )
     for path, before, now in pairs:
@@ -891,7 +920,9 @@ class UpdateValidation:
 
 
 def check_delta_ids(base: CumulativeStoryModel, delta: StoryDelta) -> list[Issue]:
-    """Local IDs must be unique and well-formed before any stable ID is assigned."""
+    """Local IDs must be unique and well-formed before any stable ID is assigned, and every
+    entity reference must name a prior entity or a new one of this delta: a stable ID the
+    model made up would otherwise bind to whichever new entity receives it."""
     issues: list[Issue] = []
     existing = {e.id for e in base.entities} | {t.id for t in base.transitions}
     existing |= {record.id for _, _, record in iter_records(base)}
@@ -921,12 +952,24 @@ def check_delta_ids(base: CumulativeStoryModel, delta: StoryDelta) -> list[Issue
             LOCAL_ENTITY_PATTERN,
             "new_entity_001",
         )
+    known_entities = {e.id for e in base.entities} | {e.local_id for e in delta.new_entities}
     record_ids: set[str] = set()
     for collection in COLLECTIONS:
         for index, record in enumerate(getattr(delta.new_records, collection)):
-            path = f"new_records.{collection}[{index}].local_id"
-            check(path, record.local_id, LOCAL_RECORD_PATTERN, "new_record_001")
+            path = f"new_records.{collection}[{index}]"
+            check(f"{path}.local_id", record.local_id, LOCAL_RECORD_PATTERN, "new_record_001")
             record_ids.add(record.local_id)
+            for field_path, ref in entity_refs(collection, record.payload):
+                if ref not in known_entities:
+                    issues.append(
+                        Issue(
+                            "error",
+                            "unknown_entity_ref",
+                            f"{path}.payload.{field_path}",
+                            f"{ref!r} is neither an entity of the prior model nor a "
+                            "new_entity_* of this delta",
+                        )
+                    )
     for index, item in enumerate(delta.transitions):
         path = f"transitions[{index}]"
         if item.target_record_id in seen:

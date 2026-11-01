@@ -2,11 +2,11 @@
 
 [![English](https://img.shields.io/badge/English-2563EB?style=for-the-badge)](STORY_MODEL_FORMAT.md) [![简体中文](https://img.shields.io/badge/%E7%AE%80%E4%BD%93%E4%B8%AD%E6%96%87-64748B?style=for-the-badge)](STORY_MODEL_FORMAT.zh-CN.md)
 
-[Back to README](README.md) · [Visual overview](#visual-overview) · [File structure](#file-structure) · [Characters and records](#characters-and-records) · [Events](#events) · [Labels](#labels) · [Revisions](#revisions) · [Single-chapter format](#single-chapter-format)
+[Back to README](README.md) · [Visual overview](#visual-overview) · [File structure](#file-structure) · [Characters and records](#characters-and-records) · [Events](#events) · [Labels](#labels) · [Revisions](#revisions)
 
 A Story Model records **who and what the text introduces, what happens, how entities relate, what remains uncertain, and which passages support each claim**. It also preserves when the reader learned something and how later sections change that knowledge.
 
-The cumulative example is [`stores/86v1/story_model.json`](stores/86v1/story_model.json). [`ch2_story_model.md`](../../ch2_story_model.md) is a readable, static export. This guide primarily describes the cumulative **v2** format; the **v1** single-chapter format is explained at the end.
+The example is [`stores/86v1/story_model.json`](stores/86v1/story_model.json), which the app reads; `story-model show` exports any revision as readable Markdown. Every store is built by `update`, one section at a time, starting from an empty model.
 
 Two labels answer different questions: `assertion: "inferred"` means a claim is inferred from the text; `temporal_context: "past"` means it concerns the narrative's past, including a **flashback**. **`flashback` is not a stored enum value.** A past event can be `explicit`, `reported`, or `inferred`.
 
@@ -19,7 +19,7 @@ flowchart TB
     MODEL["story_model.json<br/>schema_version = 2.0: format version<br/>scope = cumulative: accumulated knowledge"]
     SOURCE["Source and coverage<br/>book: title and EPUB hash<br/>processed_sections[]: sections, reading order, input paths/hashes<br/>coverage: starting section and omitted earlier sections"]
     KNOWLEDGE["Story knowledge<br/>entities[]: stable character / location / organization IDs<br/>records: seven collections of evidence-backed claims"]
-    HISTORY["Revision history<br/>revision: number, ID, timestamp, parent snapshot<br/>transitions[]: replace / retract / resolve decisions<br/>current: computed active-record and identity indexes<br/>provenance: source runs, migration, manual corrections"]
+    HISTORY["Revision history<br/>revision: number, ID, timestamp, parent snapshot<br/>transitions[]: replace / retract / resolve decisions<br/>current: computed active-record and identity indexes<br/>provenance: manual corrections"]
     MODEL --> SOURCE
     MODEL --> KNOWLEDGE
     MODEL --> HISTORY
@@ -42,8 +42,7 @@ Follow the detailed diagrams for [record wrappers and evidence](#record-diagram)
 | `stores/<name>/story_model.json` | The latest committed cumulative model; this is the file to inspect for current accumulated knowledge. |
 | `stores/<name>/revisions/<revision>-<id>.json` | A full snapshot of each committed revision, preserving what was known then. |
 | `stores/<name>/inputs/<section>-<hash>.json` | Normalized section text and paragraph IDs used to check evidence. |
-| `stores/<name>/provenance/` | Initial import and update artifacts, ID mappings, manifests, and correction history. |
-| `runs/<run-id>/story_model.json` | A validated **v1 single-chapter** result from `generate`, before `init`. |
+| `stores/<name>/provenance/<run-id>/` | Each committed update's delta, ID mapping, commit record, manifest, and any manual corrections. |
 | `runs/<run-id>/story_model.after.json` | A candidate cumulative model from an update; its presence alone does not mean it was committed. |
 | An exported `.md` file | A readable view of one revision; exporting again is required to refresh it. |
 
@@ -63,9 +62,9 @@ The tracked example JSON and revision snapshots are readable on their own. Runni
 | `records` | Seven collections: `names`, `aliases`, `attributes`, `relationships`, `events`, `uncertainties`, and `identity_links`. Old records are retained unchanged. |
 | `transitions` | Evidence-backed changes to earlier records: replacement, retraction, or resolution of a question. |
 | `current` | A computed index containing `active_record_ids`, `resolved_uncertainty_ids`, and `identity_groups`. |
-| `provenance` | `initial_run_id`, `migration_version`, `imported_manual_corrections`, and `update_manual_corrections`: origin and audit history. Older stores may omit `update_manual_corrections`. |
+| `provenance` | `manual_corrections`: every evidence location corrected by hand before a revision was committed, with its revision, record, original and corrected value, and reason. |
 
-A **section** may be a chapter, prologue, or interlude. `section-004`, Chapter 1, and revision 1 describe different things: reading-order section ID, numbered chapter, and successful import/update count. Check `processed_sections` and `coverage` before assuming the model covers everything before a chapter.
+A **section** may be a chapter, prologue, or interlude. `section-004`, Chapter 1, and revision 1 describe different things: reading-order section ID, numbered chapter, and committed update count (revision 1 is the store's first section). Check `processed_sections` and `coverage` before assuming the model covers everything before a chapter.
 
 ## Characters and records
 
@@ -88,7 +87,6 @@ Each item in any of the seven `records` collections has these fields:
 | `id` | Stable knowledge-record ID, such as `f000123`. This identifies one claim, not a character or event category. |
 | `introduced_revision` | The revision in which this record was added. |
 | `learned_in_section_id` | The section that revealed the information to the reader, even if the event happened much earlier in the story. |
-| `legacy_id` | Original v1 ID when applicable, such as `r001` or `e001`; otherwise `null`. |
 | `payload` | The claim itself, with fields determined by its collection. |
 | `evidence` | Supporting passages: `{section_id, paragraph_id, quote}`. Paragraph IDs are local to a section, so use both IDs to locate a quote. |
 
@@ -102,7 +100,7 @@ Solid arrows show nested content; dotted arrows show ID references. Every collec
 
 ```mermaid
 flowchart TB
-    RECORD["One records collection item<br/>id: stable claim ID, e.g. f000123<br/>introduced_revision: revision that added it<br/>learned_in_section_id: section where the reader learned it<br/>legacy_id: original v1 r/e ID, or null"]
+    RECORD["One records collection item<br/>id: stable claim ID, e.g. f000123<br/>introduced_revision: revision that added it<br/>learned_in_section_id: section where the reader learned it"]
     PAYLOAD["payload<br/>The name, attribute, relationship, event,<br/>question, or identity claim itself"]
     EVIDENCE["evidence[]<br/>section_id: source section ID<br/>paragraph_id: paragraph within that section<br/>quote: exact contiguous passage, at most 300 characters"]
     ENTITY["entities[]<br/>id: c001 / l001 / g001<br/>kind: character / location / organization<br/>introduced_revision: when the entity was added"]
@@ -235,7 +233,6 @@ This **synthetic example** is one record inside `records.events`; assume `c001` 
   "id": "f000042",
   "introduced_revision": 2,
   "learned_in_section_id": "section-005",
-  "legacy_id": null,
   "payload": {
     "description": "Mira witnessed a fire at the harbor as a child.",
     "participant_ids": ["c001"],
@@ -350,28 +347,8 @@ Targets must be active records from an earlier revision. Replacement stays in th
 
 All three actions deactivate the target record without deleting it. Resolved questions also appear in `current.resolved_uncertainty_ids`; an answer that is itself a new fact needs its own record. The program computes `current` from this history. An unmentioned fact remains active. A flashback adds a `past` record rather than replacing a `current` relationship with a past one.
 
-Use a saved revision to read the knowledge available then; a historical view must not borrow later names, identity links, or answers. Revision numbers count committed imports/updates, so an interlude also creates a revision.
+Use a saved revision to read the knowledge available then; a historical view must not borrow later names, identity links, or answers. Revision numbers count committed updates, so an interlude also creates a revision.
 
-## Single-chapter format
+## Definitions
 
-Before `init`, a successful `generate` run saves this **v1** envelope:
-
-```text
-story_model.json
-├── schema_version: "1.0"
-├── scope: "single_chapter"
-├── source: book/chapter metadata, EPUB location, hashes, paragraph count
-└── model
-    ├── characters[]
-    ├── locations[]
-    ├── organizations[]
-    ├── relationships[]
-    ├── events[]
-    └── uncertainties[]
-```
-
-Each character/location/organization contains `id`, an evidence-backed `name`, evidence-backed `aliases`, and `attributes` directly. Relationships use `r001`-style IDs and events use `e001`-style IDs. Uncertainties contain the question, related entity IDs, and evidence, without their own ID. Evidence is `{paragraph_id, quote}` because there is only one source section. The same assertion and time-context values apply.
-
-V1 has no cumulative `records` wrapper, transitions, current index, or identity-link collection. `init` migrates it to v2: it preserves entity IDs, assigns `f…` record IDs, keeps applicable original IDs in `legacy_id`, and adds section IDs to evidence. Single-chapter IDs do not establish identity across independent runs.
-
-The exact definitions are in [`schemas.py`](src/loremark_story_lab/schemas.py) (v1) and [`cumulative_schemas.py`](src/loremark_story_lab/cumulative_schemas.py) (v2). Extraction rules are in the [single-chapter prompt](src/loremark_story_lab/prompts/extract_story_v1.txt) and [update prompt](src/loremark_story_lab/prompts/update_story_v1.txt).
+The exact definitions are in [`cumulative_schemas.py`](src/loremark_story_lab/cumulative_schemas.py), and the extraction rules in the [update prompt](src/loremark_story_lab/prompts/update_story_v2.txt).

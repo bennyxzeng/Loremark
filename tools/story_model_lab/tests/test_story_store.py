@@ -14,7 +14,6 @@ from loremark_story_lab import story_store
 from loremark_story_lab.artifacts import sha256_bytes
 from loremark_story_lab.cumulative_schemas import CumulativeStoryModel, RevisionInfo
 from loremark_story_lab.cumulative_validation import validate_update
-from loremark_story_lab.incremental_pipeline import run_init
 from loremark_story_lab.story_store import (
     StaleBaseError,
     StoreError,
@@ -22,17 +21,11 @@ from loremark_story_lab.story_store import (
     commit_revision,
     load_revision,
     load_store,
+    manifest_bytes,
     section_source,
 )
 
 pytestmark = pytest.mark.usefixtures("no_network")
-
-
-@pytest.fixture
-def store(tmp_path: Path, v1_run: Path) -> Path:
-    root = tmp_path / "store"
-    run_init(from_run=v1_run, store_root=root, epub_path=None, echo=lambda _: None)
-    return root
 
 
 def candidate(state: StoreState, epub: Path, revision_id: str) -> tuple[CumulativeStoryModel, dict]:
@@ -55,7 +48,8 @@ def candidate(state: StoreState, epub: Path, revision_id: str) -> tuple[Cumulati
         ),
     )
     assert result.passed, result.errors
-    return result.after, {relpath: data}
+    provenance = f"provenance/run-{revision_id}/manifest.json"
+    return result.after, {relpath: data, provenance: manifest_bytes({})}
 
 
 def test_initialized_store_is_verified_on_load(store: Path) -> None:
@@ -184,8 +178,12 @@ def _rewrite_latest(store: Path, edit) -> None:
             "outside the store",
         ),
         (
-            lambda s: (s / "provenance" / "initial" / "candidate.original.json").write_text("{}"),
+            lambda s: (s / "provenance" / "chapter1" / "delta.json").write_text("{}"),
             "Provenance file",
+        ),
+        (
+            lambda s: (s / "provenance" / "chapter1" / "manifest.json").unlink(),
+            "Missing provenance/chapter1/manifest.json of revision 1",
         ),
         (lambda s: (s / "story_model.json").unlink(), "not a story store"),
     ],
@@ -196,6 +194,7 @@ def _rewrite_latest(store: Path, edit) -> None:
         "current",
         "path",
         "provenance",
+        "no-provenance",
         "empty",
     ],
 )

@@ -19,19 +19,16 @@ from loremark_story_lab.cumulative_validation import (
 )
 from loremark_story_lab.incremental_reporting import display_names, render_story_markdown
 from loremark_story_lab.merge import knowledge_view
-from loremark_story_lab.migration import import_v1_run
 from loremark_story_lab.schemas import ChapterInput
-from loremark_story_lab.story_store import section_source, snapshot_relpath
+from loremark_story_lab.story_store import load_store, section_source, snapshot_relpath
 
 Delta = dict[str, Any]
 
 
 @pytest.fixture
-def base(v1_run: Path) -> tuple[CumulativeStoryModel, dict[str, ChapterInput]]:
-    imported = import_v1_run(
-        v1_run, epub_override=None, revision_id="rev1", created_at="2026-10-26T00:00:00Z"
-    )
-    return imported.model, {imported.chapter.section_id: imported.chapter}
+def base(store: Path) -> tuple[CumulativeStoryModel, dict[str, ChapterInput]]:
+    state = load_store(store)
+    return state.model, state.inputs
 
 
 @pytest.fixture
@@ -321,7 +318,7 @@ def _duplicate_target(delta: Delta) -> None:
         (_set("new_entities.0.local_id", "c099"), "local_id_format", "new_entities[0].local_id"),
         (
             _set("new_records.attributes.1.payload.entity_id", "new_entity_009"),
-            "dangling_reference",
+            "unknown_entity_ref",
             "new_records.attributes[1].payload.entity_id",
         ),
         (

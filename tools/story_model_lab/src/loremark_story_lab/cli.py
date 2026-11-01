@@ -1,5 +1,4 @@
-"""Command line entry point: chapters / extract / generate / validate / init / update /
-commit / show."""
+"""Command line entry point: chapters / update / commit / show / validate."""
 
 from __future__ import annotations
 
@@ -14,20 +13,11 @@ from .epub import EpubError, extract_section, open_epub
 from .incremental_pipeline import (
     UpdateInputError,
     run_commit_corrected,
-    run_init,
     run_show,
     run_update,
+    validate_update_run,
 )
-from .migration import MigrationError
-from .pipeline import (
-    EXIT_INPUT,
-    EXIT_OK,
-    EXIT_STALE_BASE,
-    RunInputError,
-    run_extract,
-    run_generate,
-    run_validate,
-)
+from .pipeline import EXIT_INPUT, EXIT_OK, EXIT_STALE_BASE, RunInputError
 from .story_store import StaleBaseError, StoreError
 
 INPUT_ERRORS = (
@@ -36,7 +26,6 @@ INPUT_ERRORS = (
     OutputDirError,
     RunInputError,
     StoreError,
-    MigrationError,
     UpdateInputError,
 )
 
@@ -52,42 +41,28 @@ def _warn(message: str) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="story-model",
-        description="Extract a story model from an EPUB with the Responses API: one chapter "
-        "(generate), or a cumulative model updated one section at a time (init/update/show).",
+        description="Build a story model of an EPUB with the Responses API, one section at a "
+        "time in reading order: the first `update` creates the store, each later one adds the "
+        "next section.",
     )
     commands = parser.add_subparsers(dest="command", required=True)
 
     chapters = commands.add_parser("chapters", help="list sections in reading order")
     chapters.add_argument("--epub", type=Path, required=True)
 
-    extract = commands.add_parser("extract", help="write the chapter input only (offline)")
-    _add_selection(extract)
-
-    generate = commands.add_parser("generate", help="run one chapter through the model")
-    _add_selection(generate)
-    _add_model_options(generate)
-
-    validate = commands.add_parser(
-        "validate", help="re-check a saved generate or update run offline"
-    )
-    validate.add_argument("--run", type=Path, required=True, help="run directory")
-
-    init = commands.add_parser(
-        "init", help="start a cumulative store from a generate run (offline)"
-    )
-    init.add_argument("--from-run", type=Path, required=True, help="v1 generate run directory")
-    init.add_argument("--store", type=Path, required=True, help="new or empty store directory")
-    init.add_argument(
-        "--epub",
-        type=Path,
-        help="EPUB to verify against when the run's recorded path is gone (same SHA-256)",
-    )
-
     update = commands.add_parser(
-        "update", help="add the next section to a cumulative store through the model"
+        "update",
+        help="add the next section to a store through the model, creating the store from the "
+        "chosen section if it does not exist",
     )
-    update.add_argument("--store", type=Path, required=True, help="store directory")
-    _add_selection(update)
+    update.add_argument(
+        "--store", type=Path, required=True, help="store directory (missing or empty: created)"
+    )
+    update.add_argument("--epub", type=Path, required=True)
+    group = update.add_mutually_exclusive_group()
+    group.add_argument("--chapter", type=int, help="chapter number recognized from its title")
+    group.add_argument("--section", help="section ID shown by `story-model chapters`")
+    update.add_argument("--out", type=Path, help="run directory (must be new or empty)")
     _add_model_options(update)
 
     commit = commands.add_parser(
@@ -100,7 +75,10 @@ def build_parser() -> argparse.ArgumentParser:
     show = commands.add_parser("show", help="print a committed revision of a store (offline)")
     show.add_argument("--store", type=Path, required=True, help="store directory")
     show.add_argument("--revision", type=int, help="revision number (default: latest)")
-    show.add_argument("--json", action="store_true", help="full v2 JSON instead of Markdown")
+    show.add_argument("--json", action="store_true", help="full JSON instead of Markdown")
+
+    validate = commands.add_parser("validate", help="re-check a saved update run offline")
+    validate.add_argument("--run", type=Path, required=True, help="update run directory")
     return parser
 
 
@@ -147,14 +125,6 @@ def _model_config(args: argparse.Namespace) -> GenerateConfig:
     )
 
 
-def _add_selection(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--epub", type=Path, required=True)
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--chapter", type=int, help="chapter number recognized from its title")
-    group.add_argument("--section", help="section ID shown by `story-model chapters`")
-    parser.add_argument("--out", type=Path, help="output directory (must be new or empty)")
-
-
 def _list_chapters(epub: Path) -> int:
     book = open_epub(epub)
     _echo(f"Book: {book.title} ({book.language or 'unknown language'})")
@@ -194,23 +164,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if args.command == "chapters":
             return _list_chapters(args.epub)
-        if args.command == "extract":
-            outcome = run_extract(args.epub, args.chapter, args.section, args.out, _echo)
-        elif args.command == "generate":
-            outcome = run_generate(
-                epub_path=args.epub,
-                chapter=args.chapter,
-                section_id=args.section,
-                config=_model_config(args),
-                out=args.out,
-                prompt_file=args.prompt_file,
-                echo=_echo,
-            )
-        elif args.command == "init":
-            outcome = run_init(
-                from_run=args.from_run, store_root=args.store, epub_path=args.epub, echo=_echo
-            )
-        elif args.command == "update":
+        if args.command == "update":
             outcome = run_update(
                 store_root=args.store,
                 epub_path=args.epub,
@@ -228,7 +182,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 store_root=args.store, revision=args.revision, as_json=args.json, echo=_echo
             )
         else:
-            outcome = run_validate(args.run, _echo)
+            outcome = validate_update_run(args.run, _echo)
     except INPUT_ERRORS as exc:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_INPUT

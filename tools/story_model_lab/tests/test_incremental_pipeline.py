@@ -1,4 +1,7 @@
-"""`update` end to end against the real OpenAI SDK, with HTTP served by httpx2.MockTransport."""
+"""`update` end to end against the real OpenAI SDK, with HTTP served by httpx2.MockTransport.
+
+The `store` fixture is a store the first `update` created from Chapter 1 (section-002).
+"""
 
 from __future__ import annotations
 
@@ -15,33 +18,31 @@ from conftest import (
     build_epub,
     build_story_epub,
     chapter_xhtml,
+    create_store,
+    delta_api,
     json_response,
     response_body,
     story_chapter,
     tree_hashes,
-    write_v1_run,
+    update_store,
     xhtml,
 )
 
 from loremark_story_lab import incremental_pipeline, story_store
 from loremark_story_lab.artifacts import read_json, write_json
-from loremark_story_lab.config import resolve_generate_config
-from loremark_story_lab.cumulative_schemas import StoryDelta
 from loremark_story_lab.epub import EpubError
 from loremark_story_lab.incremental_pipeline import (
     UpdateInputError,
     run_commit_corrected,
-    run_init,
     run_show,
-    run_update,
+    validate_update_run,
 )
-from loremark_story_lab.pipeline import Outcome, RunInputError, run_validate
+from loremark_story_lab.pipeline import Outcome, RunInputError
 from loremark_story_lab.prompting import text_format
 from loremark_story_lab.story_store import StaleBaseError, StoreError, load_store
 
 pytestmark = pytest.mark.usefixtures("clean_env", "no_network")
 
-DEEPSEEK_ENV = {"DEEPSEEK_API_KEY": "ds-test-secret", "DEEPSEEK_MODEL": "deepseek-flash"}
 COMMITTED_FILES = {
     "chapter.json",
     "chapter.txt",
@@ -63,17 +64,6 @@ COMMITTED_FILES = {
 }
 
 
-@pytest.fixture
-def store(tmp_path: Path, v1_run: Path) -> Path:
-    root = tmp_path / "store"
-    run_init(from_run=v1_run, store_root=root, epub_path=None, echo=lambda _: None)
-    return root
-
-
-def delta_api(delta: dict[str, Any]) -> FakeApi:
-    return FakeApi(json_response(response_body(json.dumps(delta))))
-
-
 def update(
     store: Path,
     epub: Path,
@@ -84,25 +74,14 @@ def update(
     section: str | None = None,
     dry_run: bool = False,
 ) -> Outcome:
-    config = resolve_generate_config(
-        provider="deepseek",
-        model=None,
-        max_output_tokens=None,
-        timeout=None,
-        dry_run=dry_run,
-        env=DEEPSEEK_ENV,
-    )
-    return run_update(
-        store_root=store,
-        epub_path=epub,
+    return update_store(
+        store,
+        epub,
+        api,
+        out,
         chapter=None if section else chapter,
-        section_id=section,
-        config=config,
-        out=out,
-        prompt_file=None,
-        echo=lambda _: None,
-        client_factory=api,
-        env=DEEPSEEK_ENV,
+        section=section,
+        dry_run=dry_run,
     )
 
 
@@ -139,7 +118,7 @@ def test_dry_run_writes_the_request_and_leaves_the_store(
         "not_attempted",
         None,
     )
-    assert read_json(outcome.run_dir / "schema.json") == text_format(StoryDelta)["schema"]
+    assert read_json(outcome.run_dir / "schema.json") == text_format()["schema"]
     assert read_json(outcome.run_dir / "request.json")["text"]["format"]["name"] == "StoryDelta"
 
 
@@ -330,10 +309,7 @@ def test_unreliable_next_section_is_rejected_before_any_request(tmp_path: Path) 
             ("rest.xhtml#missing", "Interlude: The Lamp"),
         ],
     )
-    store = tmp_path / "store"
-    run_init(
-        from_run=write_v1_run(tmp_path / "run", epub), store_root=store, epub_path=None, echo=print
-    )
+    store = create_store(tmp_path / "store", epub, tmp_path / "run")
     api = delta_api({})
     with pytest.raises(EpubError, match="cannot be extracted reliably"):
         update(store, epub, api, tmp_path / "x")
@@ -432,7 +408,7 @@ def test_validate_rechecks_an_update_run_without_touching_the_store(
     before_store = tree_hashes(store)
     before_run = tree_hashes(run_dir)
 
-    outcome = run_validate(run_dir, lambda _: None)
+    outcome = validate_update_run(run_dir, lambda _: None)
     assert (outcome.status, outcome.exit_code) == ("passed", 0)
     assert tree_hashes(store) == before_store
     assert {k: v for k, v in tree_hashes(run_dir).items() if k in before_run} == before_run
@@ -440,7 +416,7 @@ def test_validate_rechecks_an_update_run_without_touching_the_store(
 
     ch2_delta["new_records"]["names"][0]["evidence"][0]["quote"] = "invented"
     (run_dir / "delta.candidate.json").write_text(json.dumps(ch2_delta), encoding="utf-8")
-    outcome = run_validate(run_dir, lambda _: None)
+    outcome = validate_update_run(run_dir, lambda _: None)
     assert (outcome.status, outcome.exit_code) == ("failed", 4)
     assert tree_hashes(store) == before_store
     assert load_store(store).model.revision.number == 2
@@ -522,7 +498,7 @@ def test_corrected_run_commits_and_records_every_correction(
 
     state = load_store(store)
     assert state.model.revision.number == 2
-    recorded = state.model.provenance.update_manual_corrections
+    recorded = state.model.provenance.manual_corrections
     assert [(c.revision, c.record_id, c.original, c.corrected) for c in recorded] == [
         (2, "f000023", "p0007", "p0006"),
         (2, "f000031", "the storm wrecked harbor", "the storm wrecked the harbor"),
@@ -590,4 +566,170 @@ def test_corrections_do_not_apply_after_the_store_moved(
     write_json(run_dir / "manual_corrections.json", CORRECTIONS)
     assert update(store, story_epub, delta_api(ch2_delta), tmp_path / "other").status == "committed"
     with pytest.raises(StaleBaseError, match="moved on"):
+        commit(run_dir, story_epub)
+
+
+# --- the first update creates the store -------------------------------------------------------
+
+
+def test_first_update_creates_the_store_from_an_empty_model(
+    tmp_path: Path, story_epub: Path, ch1_delta
+) -> None:
+    root = tmp_path / "new"
+    lines: list[str] = []
+    api = delta_api(ch1_delta)
+    outcome = update_store(root, story_epub, api, tmp_path / "run", chapter=1, echo=lines.append)
+
+    assert (outcome.status, outcome.exit_code) == ("committed", 0)
+    assert f"Store: {root.resolve()} (created at revision 1)" in lines
+    user = api.body()["input"][1]["content"]
+    assert user.startswith("PRIOR_STORY_MODEL (revision 0;")
+    assert '"entities":[],' in user and "[p0002]" in user
+    assert "PROLOGUE-SENTINEL" not in api.requests[0].content.decode("utf-8")
+
+    model = load_store(root).model
+    assert model.revision.number == 1
+    assert (model.revision.parent_snapshot_path, model.revision.parent_sha256) == (None, None)
+    assert model.revision.source_run_id == "run"
+    assert model.coverage.start_section_id == "section-002"
+    assert model.coverage.omitted_prefix_section_ids == ["section-001"]
+    assert model.provenance.manual_corrections == []
+    assert [e.id for e in model.entities][:2] == ["c001", "c002"]
+    assert (root / "provenance" / "run" / "manifest.json").is_file()
+
+    run = read_json(outcome.run_dir / "run.json")
+    assert run["base_revision"] is None and run["hashes"]["base_sha256"] is None
+    base = read_json(outcome.run_dir / "base_story_model.json")
+    assert base["revision"]["number"] == 0 and base["entities"] == []
+    assert "第一节" in (outcome.run_dir / "review.md").read_text(encoding="utf-8")
+    assert "新建 store" in (outcome.run_dir / "diff.md").read_text(encoding="utf-8")
+    assert "之前未处理的节：`section-001`" in show(root)
+
+
+def test_new_store_dry_run_and_bad_starts_create_nothing(
+    tmp_path: Path, story_epub: Path, ch1_delta
+) -> None:
+    root = tmp_path / "new"
+    api = delta_api(ch1_delta)
+    outcome = update_store(root, story_epub, api, tmp_path / "dry", chapter=1, dry_run=True)
+    assert outcome.status == "dry_run" and api.requests == []
+    assert not root.exists()
+    assert read_json(outcome.run_dir / "context.json")["PRIOR_STORY_MODEL"]["revision"] == 0
+
+    with pytest.raises(UpdateInputError, match="starting section"):
+        update_store(root, story_epub, api, tmp_path / "x")
+    (tmp_path / "busy").mkdir()
+    (tmp_path / "busy" / "notes.txt").write_text("not a store", encoding="utf-8")
+    with pytest.raises(StoreError, match="neither a story store nor an empty directory"):
+        update_store(tmp_path / "busy", story_epub, api, tmp_path / "x", chapter=1)
+    assert api.requests == [] and not (tmp_path / "x").exists()
+
+
+@pytest.mark.parametrize(
+    ("edit", "code"),
+    [
+        (
+            lambda d: d["new_records"]["names"][0]["payload"].update(entity_id="c001"),
+            "unknown_entity_ref",
+        ),
+        (
+            lambda d: d["transitions"].append(
+                {
+                    "target_record_id": "f000001",
+                    "action": "retract",
+                    "replacement_local_id": None,
+                    "resolution": None,
+                    "reason": "nothing to retract yet",
+                    "evidence": d["new_records"]["names"][0]["evidence"],
+                }
+            ),
+            "target_not_prior",
+        ),
+    ],
+    ids=["made-up-id", "transition"],
+)
+def test_first_delta_cannot_refer_to_a_prior_model(
+    tmp_path: Path, story_epub: Path, ch1_delta, edit, code: str
+) -> None:
+    edit(ch1_delta)
+    root = tmp_path / "new"
+    outcome = update_store(root, story_epub, delta_api(ch1_delta), tmp_path / "run", chapter=1)
+    assert (outcome.status, outcome.exit_code) == ("validation_failed", 4)
+    codes = {i["code"] for i in read_json(outcome.run_dir / "validation.json")["issues"]}
+    assert code in codes
+    assert not root.exists()
+
+
+def test_update_without_a_selection_takes_the_next_section(
+    tmp_path: Path, store: Path, story_epub: Path, ch2_delta
+) -> None:
+    empty = {
+        "new_entities": [],
+        "new_records": {c: [] for c in ch2_delta["new_records"]},
+        "transitions": [],
+    }
+    assert (
+        update_store(store, story_epub, delta_api(ch2_delta), tmp_path / "ch2").status
+        == "committed"
+    )
+    for name in ("interlude", "ch3"):
+        outcome = update_store(store, story_epub, delta_api(empty), tmp_path / name)
+        assert outcome.status == "committed"
+    sections = [s.section_id for s in load_store(store).model.processed_sections]
+    assert sections == ["section-002", "section-003", "section-004", "section-005"]
+    with pytest.raises(UpdateInputError, match="Every section is processed"):
+        update_store(store, story_epub, delta_api(empty), tmp_path / "x")
+
+
+def test_a_first_section_run_can_be_validated_and_committed_after_corrections(
+    tmp_path: Path, story_epub: Path, ch1_delta
+) -> None:
+    good = ch1_delta["new_records"]["names"][0]["evidence"][0]["paragraph_id"]
+    ch1_delta["new_records"]["names"][0]["evidence"][0]["paragraph_id"] = "p0009"
+    root = tmp_path / "new"
+    run_dir = update_store(
+        root, story_epub, delta_api(ch1_delta), tmp_path / "run", chapter=1
+    ).run_dir
+    assert not root.exists()
+    assert validate_update_run(run_dir, lambda _: None).status == "failed"
+
+    write_json(
+        run_dir / "manual_corrections.json",
+        [
+            {
+                "path": "new_records.names[0].evidence[0].paragraph_id",
+                "from": "p0009",
+                "to": good,
+                "reason": "The quote occurs verbatim there",
+                "corrected_by": "test",
+                "corrected_at": "2026-10-26T00:00:00Z",
+            }
+        ],
+    )
+    assert commit(run_dir, story_epub).status == "committed"
+    model = load_store(root).model
+    assert model.revision.number == 1
+    recorded = model.provenance.manual_corrections
+    assert [(c.revision, c.record_id, c.corrected) for c in recorded] == [(1, "f000001", good)]
+
+
+def test_first_section_corrections_do_not_apply_once_the_store_exists(
+    tmp_path: Path, story_epub: Path, ch1_delta
+) -> None:
+    bad = copy.deepcopy(ch1_delta)
+    bad["new_records"]["names"][0]["evidence"][0]["paragraph_id"] = "p0009"
+    root = tmp_path / "new"
+    run_dir = update_store(root, story_epub, delta_api(bad), tmp_path / "run", chapter=1).run_dir
+    write_json(
+        run_dir / "manual_corrections.json",
+        [
+            {
+                **CORRECTIONS[0],
+                "from": "p0009",
+                "to": ch1_delta["new_records"]["names"][0]["evidence"][0]["paragraph_id"],
+            }
+        ],
+    )
+    create_store(root, story_epub, tmp_path / "winner")
+    with pytest.raises(StaleBaseError, match="was created after this run"):
         commit(run_dir, story_epub)

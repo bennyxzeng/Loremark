@@ -19,13 +19,10 @@ from pathlib import Path
 
 class Command(StrEnum):
     CHAPTERS = "chapters"  # list sections in reading order
-    EXTRACT = "extract"  # write the chapter input only (offline)
-    GENERATE = "generate"  # run one chapter through the model
-    VALIDATE = "validate"  # re-check a saved generate or update run (offline)
-    INIT = "init"  # start a cumulative store from a generate run (offline)
-    UPDATE = "update"  # add the next section to a cumulative store through the model
+    UPDATE = "update"  # add the next section through the model; creates a missing store
     COMMIT = "commit"  # commit an update run after manual evidence corrections (offline)
     SHOW = "show"  # print a committed revision of a store (offline)
+    VALIDATE = "validate"  # re-check a saved update run (offline)
 
 
 class Model(StrEnum):
@@ -57,28 +54,27 @@ class Effort(StrEnum):
 
 COMMAND = Command.UPDATE
 
-# chapters, extract, generate, update, init, commit
+# chapters, update, commit
 EPUB = "sample_epub/86v1_chapters.epub"
-# init, update, show
+# update, show; a missing or empty directory is created by the first update
 STORE = "tools/story_model_lab/stores/86v1"
 
-# extract, generate, update: set one of CHAPTER / SECTION and the other to None
-CHAPTER: int | None = 3  # chapter number recognized from its title
+# update: CHAPTER and SECTION both None = the next section of the store. A new store needs
+# one of them: its starting section (earlier sections are never covered).
+CHAPTER: int | None = None  # chapter number recognized from its title
 SECTION: str | None = None  # section ID shown by Command.CHAPTERS, e.g. "section-007"
 OUT: str | None = None  # new or empty directory; None = tools/story_model_lab/runs/<time>-<id>
 
-# generate, update
+# update
 MODEL = Model.DEEPSEEK_FLASH
-EFFORT: Effort | None = None  # None = not sent; the model's default applies
+EFFORT: Effort | None = Effort.HIGH  # None = not sent; the model's default applies
 MAX_OUTPUT_TOKENS: int | None = None  # None = no cap; the provider's limit applies
 TIMEOUT: float | None = None  # seconds per request; None = wait indefinitely
 PROMPT_FILE: str | None = None  # None = built-in prompt
 DRY_RUN = False  # True = write the request files without calling the API
 
-# validate, commit: a run directory
+# commit, validate: an update run directory
 RUN: str | None = None
-# init: the generate run to start the store from
-FROM_RUN: str | None = None
 
 # show
 REVISION: int | None = None  # None = latest
@@ -106,12 +102,13 @@ def load_env_file(path: Path) -> None:
             os.environ[key] = value
 
 
-def _selection() -> dict[str, object]:
-    return {"--epub": EPUB, "--chapter": CHAPTER, "--section": SECTION, "--out": OUT}
-
-
-def _model_options() -> dict[str, object]:
+def _update_options() -> dict[str, object]:
     return {
+        "--store": STORE,
+        "--epub": EPUB,
+        "--chapter": CHAPTER,
+        "--section": SECTION,
+        "--out": OUT,
         "--provider": PROVIDERS[MODEL],
         "--model": MODEL,
         "--prompt-file": PROMPT_FILE,
@@ -127,16 +124,10 @@ def build_argv() -> list[str]:
     match COMMAND:
         case Command.CHAPTERS:
             options = {"--epub": EPUB}
-        case Command.EXTRACT:
-            options = _selection()
-        case Command.GENERATE:
-            options = _selection() | _model_options()
         case Command.UPDATE:
-            options = {"--store": STORE} | _selection() | _model_options()
+            options = _update_options()
         case Command.VALIDATE:
             options = {"--run": RUN}
-        case Command.INIT:
-            options = {"--from-run": FROM_RUN, "--store": STORE, "--epub": EPUB}
         case Command.COMMIT:
             options = {"--run": RUN, "--epub": EPUB}
         case Command.SHOW:

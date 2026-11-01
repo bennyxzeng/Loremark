@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import copy
 import hashlib
 import html
 import json
@@ -15,16 +14,12 @@ from typing import Any
 import httpx2
 import pytest
 
-from loremark_story_lab.artifacts import write_json
-from loremark_story_lab.config import GenerateConfig
-from loremark_story_lab.epub import extract_section, open_epub, select_section, text_sha256
+from loremark_story_lab.config import GenerateConfig, resolve_generate_config
+from loremark_story_lab.epub import extract_section, open_epub, select_section
+from loremark_story_lab.incremental_pipeline import run_update
 from loremark_story_lab.openai_client import ResponsesClient, make_sdk_client
-from loremark_story_lab.schemas import (
-    ChapterInput,
-    ChapterStoryModel,
-    Paragraph,
-    StoryModelEnvelope,
-)
+from loremark_story_lab.pipeline import Echo, Outcome
+from loremark_story_lab.schemas import ChapterInput, Paragraph
 
 FIXTURES = Path(__file__).parent / "fixtures"
 STORY = FIXTURES / "story"
@@ -40,6 +35,7 @@ PROVIDER_ENV_VARS = [
     "DEEPSEEK_MODEL",
     "DEEPSEEK_BASE_URL",
 ]
+DEEPSEEK_ENV = {"DEEPSEEK_API_KEY": "ds-test-secret", "DEEPSEEK_MODEL": "deepseek-flash"}
 
 
 def xhtml(body: str, title: str = "Document") -> str:
@@ -120,29 +116,6 @@ def read_synthetic_paragraphs() -> list[Paragraph]:
         assert match, line
         paragraphs.append(Paragraph(id=match.group(1), text=match.group(2)))
     return paragraphs
-
-
-@pytest.fixture
-def synthetic_chapter() -> ChapterInput:
-    paragraphs = read_synthetic_paragraphs()
-    return ChapterInput(
-        book_sha256="0" * 64,
-        book_title="Synthetic Book",
-        section_id="section-002",
-        chapter_number=3,
-        title="Chapter 3: The Lantern Ferry",
-        source_href="OEBPS/chapter3.xhtml",
-        source_fragment=None,
-        paragraphs=paragraphs,
-        text_sha256=text_sha256(paragraphs),
-        extraction_version="1.0",
-        omitted_image_count=0,
-    )
-
-
-@pytest.fixture
-def synthetic_model() -> dict[str, Any]:
-    return copy.deepcopy(json.loads((FIXTURES / "synthetic_model.json").read_text("utf-8")))
 
 
 @pytest.fixture
@@ -300,49 +273,6 @@ def story_chapter(epub: Path, section_id: str) -> ChapterInput:
     return extract_section(book, select_section(book, chapter=None, section_id=section_id))
 
 
-def write_v1_run(run_dir: Path, epub: Path, *, corrected: bool = True) -> Path:
-    """A finished `generate` run of Chapter 1, as the v1 pipeline would leave it.
-
-    With `corrected`, the run records one manual correction like the real Chapter 1 run.
-    """
-    chapter = story_chapter(epub, "section-002")
-    model = json.loads((STORY / "chapter1_model.json").read_text(encoding="utf-8"))
-    run_dir.mkdir(parents=True)
-    write_json(run_dir / "chapter.json", chapter.model_dump(mode="json"))
-    envelope = StoryModelEnvelope.build(chapter, ChapterStoryModel.model_validate(model))
-    write_json(run_dir / "story_model.json", envelope.model_dump(mode="json"))
-    write_json(run_dir / "candidate.json", model)
-    run: dict[str, Any] = {
-        "run_id": "20261026T000000Z-test01",
-        "command": "generate",
-        "status": "succeeded",
-        "source": {
-            "epub_path": str(epub.resolve()),
-            "book_sha256": chapter.book_sha256,
-            "section_id": chapter.section_id,
-        },
-        "hashes": {"text_sha256": chapter.text_sha256},
-        "request": {"provider": "deepseek", "model": "deepseek-flash"},
-    }
-    if corrected:
-        original = copy.deepcopy(model)
-        original["characters"][0]["aliases"][0]["evidence"][0]["paragraph_id"] = "p0003"
-        write_json(run_dir / "candidate.original.json", original)
-        run["manual_corrections"] = [
-            {
-                "path": "characters[0].aliases[0].evidence[0].paragraph_id",
-                "from": "p0003",
-                "to": "p0004",
-                "reason": "Quote occurs verbatim in p0004, not p0003",
-                "corrected_by": "test",
-                "corrected_at": "2026-10-26T00:00:00Z",
-                "original_candidate": "candidate.original.json",
-            }
-        ]
-    write_json(run_dir / "run.json", run)
-    return run_dir
-
-
 def tree_hashes(root: Path) -> dict[str, str]:
     return {
         path.relative_to(root).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
@@ -351,8 +281,61 @@ def tree_hashes(root: Path) -> dict[str, str]:
     }
 
 
-def story_delta() -> dict[str, Any]:
-    return json.loads((STORY / "chapter2_delta.json").read_text(encoding="utf-8"))
+def story_delta(name: str = "chapter2_delta.json") -> dict[str, Any]:
+    return json.loads((STORY / name).read_text(encoding="utf-8"))
+
+
+def delta_api(delta: dict[str, Any]) -> FakeApi:
+    return FakeApi(json_response(response_body(json.dumps(delta))))
+
+
+def update_store(
+    store: Path,
+    epub: Path,
+    api: FakeApi,
+    out: Path | None,
+    *,
+    chapter: int | None = None,
+    section: str | None = None,
+    provider: str = "deepseek",
+    env: dict[str, str] | None = None,
+    dry_run: bool = False,
+    max_output_tokens: int | None = None,
+    reasoning_effort: str | None = None,
+    echo: Echo = lambda _: None,
+) -> Outcome:
+    """`update` through the real SDK and a mock API; without a selection, the next section."""
+    env = DEEPSEEK_ENV if env is None else env
+    config = resolve_generate_config(
+        provider=provider,
+        model=None,
+        max_output_tokens=max_output_tokens,
+        timeout=None,
+        dry_run=dry_run,
+        reasoning_effort=reasoning_effort,
+        env=env,
+    )
+    return run_update(
+        store_root=store,
+        epub_path=epub,
+        chapter=chapter,
+        section_id=section,
+        config=config,
+        out=out,
+        prompt_file=None,
+        echo=echo,
+        client_factory=api,
+        env=env,
+    )
+
+
+def create_store(root: Path, epub: Path, out: Path) -> Path:
+    """A store created by `update` from Chapter 1 (section-002); the prologue stays uncovered."""
+    outcome = update_store(
+        root, epub, delta_api(story_delta("chapter1_delta.json")), out, section="section-002"
+    )
+    assert outcome.status == "committed", outcome.status
+    return root
 
 
 @pytest.fixture
@@ -361,8 +344,13 @@ def story_epub(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def v1_run(tmp_path: Path, story_epub: Path) -> Path:
-    return write_v1_run(tmp_path / "runs" / "chapter1", story_epub)
+def store(tmp_path: Path, story_epub: Path) -> Path:
+    return create_store(tmp_path / "store", story_epub, tmp_path / "runs" / "chapter1")
+
+
+@pytest.fixture
+def ch1_delta() -> dict[str, Any]:
+    return story_delta("chapter1_delta.json")
 
 
 @pytest.fixture

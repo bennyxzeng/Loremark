@@ -7,30 +7,20 @@ RUN_LIVE_DEEPSEEK=1 + DEEPSEEK_API_KEY + DEEPSEEK_MODEL
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pytest
+from conftest import build_epub, xhtml
 
-from loremark_story_lab.config import resolve_generate_config
-from loremark_story_lab.cumulative_schemas import RevisionInfo, StoryDelta
-from loremark_story_lab.cumulative_validation import validate_update
-from loremark_story_lab.epub import text_sha256
-from loremark_story_lab.migration import migrate_model
+from loremark_story_lab.config import GenerateConfig, resolve_generate_config
+from loremark_story_lab.cumulative_schemas import CumulativeStoryModel, RevisionInfo, StoryDelta
+from loremark_story_lab.cumulative_validation import UpdateValidation, validate_update
+from loremark_story_lab.epub import EpubBook, open_epub
+from loremark_story_lab.incremental_pipeline import empty_model, plan_first_section, plan_update
 from loremark_story_lab.openai_client import ResponsesClient, make_sdk_client
-from loremark_story_lab.prompting import (
-    UPDATE_PROMPT,
-    build_request_params,
-    build_update_context,
-    build_update_params,
-    load_prompt,
-)
-from loremark_story_lab.schemas import (
-    ChapterInput,
-    ChapterStoryModel,
-    Paragraph,
-    StoryModelEnvelope,
-)
+from loremark_story_lab.prompting import build_update_context, build_update_params, load_prompt
+from loremark_story_lab.schemas import ChapterInput
 from loremark_story_lab.story_store import section_source
-from loremark_story_lab.validation import validate_candidate
 
 pytestmark = pytest.mark.live
 
@@ -40,73 +30,53 @@ PROVIDERS = {
 }
 
 
-def _tiny_chapter() -> ChapterInput:
-    texts = [
-        "CHAPTER 1 THE BELL",
-        "Ada Fenn rang the harbor bell at dawn.",
-        "Her cousin Bram, a lighthouse keeper, waved from the cliff.",
-    ]
-    paragraphs = [Paragraph(id=f"p{i:04d}", text=t) for i, t in enumerate(texts, start=1)]
-    return ChapterInput(
-        book_sha256="0" * 64,
-        book_title="Live Smoke",
-        section_id="section-001",
-        chapter_number=1,
-        title="Chapter 1: The Bell",
-        source_href="smoke.xhtml",
-        source_fragment=None,
-        paragraphs=paragraphs,
-        text_sha256="0" * 64,
-        extraction_version="1.0",
-        omitted_image_count=0,
-    )
+def _tiny_book(tmp_path: Path) -> EpubBook:
+    docs = {
+        "ch1.xhtml": xhtml("<h1>Chapter 1</h1><p>The courier called Wren left the city.</p>"),
+        "ch2.xhtml": xhtml(
+            "<h1>Chapter 2</h1><p>Wren, whose real name was Ada Fenn, reached the coast.</p>"
+        ),
+    }
+    nav = [("ch1.xhtml", "Chapter 1"), ("ch2.xhtml", "Chapter 2")]
+    return open_epub(build_epub(tmp_path / "smoke.epub", docs, nav=nav, title="Live Smoke"))
 
 
-@pytest.mark.parametrize("provider", sorted(PROVIDERS))
-def test_live_structured_output(provider: str) -> None:
-    flag, key_env, model_env = PROVIDERS[provider]
-    if os.environ.get(flag) != "1" or not os.environ.get(key_env) or not os.environ.get(model_env):
-        pytest.skip(f"set {flag}=1, {key_env} and {model_env} to run")
-
-    config = resolve_generate_config(
-        provider=provider,
-        model=None,
-        max_output_tokens=None,
-        timeout=None,
-        dry_run=False,
-    )
-    chapter = _tiny_chapter()
+def _update(
+    client: ResponsesClient,
+    config: GenerateConfig,
+    base: CumulativeStoryModel,
+    base_inputs: dict[str, ChapterInput],
+    chapter: ChapterInput,
+    order: int,
+) -> UpdateValidation:
     prompt, _ = load_prompt(None)
-    client = ResponsesClient(make_sdk_client(config, config.api_key()))
-    result = client.generate(build_request_params(chapter, prompt, config))
-
+    context = build_update_context(base, chapter, section_order=order)
+    result = client.generate(build_update_params(context, prompt, config))
     assert result.status == "completed", result.error
-    assert result.parsed is not None
-    assert result.usage is not None
-    report = validate_candidate(result.candidate, chapter)
-    assert report.structure_valid
-    print(f"\n{provider} {result.response_model}: {report.counts}; issues={report.issues}")
-
-
-def _chapter(section_id: str, number: int, texts: list[str]) -> ChapterInput:
-    paragraphs = [Paragraph(id=f"p{i:04d}", text=t) for i, t in enumerate(texts, start=1)]
-    return ChapterInput(
-        book_sha256="0" * 64,
-        book_title="Live Smoke",
-        section_id=section_id,
-        chapter_number=number,
-        title=f"Chapter {number}",
-        source_href=f"smoke{number}.xhtml",
-        source_fragment=None,
-        paragraphs=paragraphs,
-        text_sha256=text_sha256(paragraphs),
-        extraction_version="1.0",
-        omitted_image_count=0,
+    assert isinstance(result.parsed, StoryDelta)
+    number = base.revision.number + 1
+    section, _, _ = section_source(chapter, section_order=order, revision=number)
+    validation = validate_update(
+        base,
+        result.candidate,
+        chapter=chapter,
+        base_inputs=base_inputs,
+        section=section,
+        revision=RevisionInfo(
+            number=number,
+            id=f"live{number}",
+            created_at="now",
+            source_run_id="live",
+            parent_snapshot_path=None if number == 1 else "revisions/000001-live1.json",
+            parent_sha256=None if number == 1 else "0" * 64,
+        ),
     )
+    print(f"\n{result.response_model} revision {number}: {validation.counts}; {validation.issues}")
+    return validation
 
 
 @pytest.mark.parametrize("provider", sorted(PROVIDERS))
-def test_live_story_delta(provider: str) -> None:
+def test_live_story_from_an_empty_model(provider: str, tmp_path: Path) -> None:
     flag, key_env, model_env = PROVIDERS[provider]
     if os.environ.get(flag) != "1" or not os.environ.get(key_env) or not os.environ.get(model_env):
         pytest.skip(f"set {flag}=1, {key_env} and {model_env} to run")
@@ -114,70 +84,16 @@ def test_live_story_delta(provider: str) -> None:
     config = resolve_generate_config(
         provider=provider, model=None, max_output_tokens=None, timeout=None, dry_run=False
     )
-    first = _chapter("section-001", 1, ["CHAPTER 1", "The courier called Wren left the city."])
-    v1 = ChapterStoryModel.model_validate(
-        {
-            "characters": [
-                {
-                    "id": "c001",
-                    "name": {
-                        "text": "Wren",
-                        "evidence": [{"paragraph_id": "p0002", "quote": "The courier called Wren"}],
-                    },
-                    "aliases": [],
-                    "attributes": [],
-                }
-            ],
-            "locations": [],
-            "organizations": [],
-            "relationships": [],
-            "events": [],
-            "uncertainties": [],
-        }
-    )
-    source, _, _ = section_source(first, section_order=1, revision=1)
-    base, _ = migrate_model(
-        StoryModelEnvelope.build(first, v1),
-        first,
-        revision=RevisionInfo(
-            number=1,
-            id="live",
-            created_at="now",
-            source_run_id="live",
-            parent_snapshot_path=None,
-            parent_sha256=None,
-        ),
-        source=source,
-        omitted_prefix=[],
-        corrections=[],
-    )
-    second = _chapter(
-        "section-002", 2, ["CHAPTER 2", "Wren, whose real name was Ada Fenn, reached the coast."]
-    )
-    prompt, _ = load_prompt(None, builtin=UPDATE_PROMPT)
-    params = build_update_params(
-        build_update_context(base, second, section_order=2), prompt, config
-    )
     client = ResponsesClient(make_sdk_client(config, config.api_key()))
-    result = client.generate(params, output_type=StoryDelta)
-
-    assert result.status == "completed", result.error
-    assert isinstance(result.parsed, StoryDelta)
-    section, _, _ = section_source(second, section_order=2, revision=2)
-    validation = validate_update(
-        base,
-        result.candidate,
-        chapter=second,
-        base_inputs={"section-001": first},
-        section=section,
-        revision=RevisionInfo(
-            number=2,
-            id="live2",
-            created_at="now",
-            source_run_id="live",
-            parent_snapshot_path="revisions/000001-live.json",
-            parent_sha256="0" * 64,
-        ),
+    book = _tiny_book(tmp_path)
+    plan = plan_first_section(book, chapter=1, section_id=None)
+    first = _update(client, config, empty_model(book, plan), {}, plan.chapter, plan.section.order)
+    assert first.structure_valid
+    if not first.passed or first.after is None:
+        pytest.skip("the first section did not pass validation; the second is not attempted")
+    following = plan_update(first.after, book, chapter=None, section_id=None)
+    inputs = {plan.chapter.section_id: plan.chapter}
+    second = _update(
+        client, config, first.after, inputs, following.chapter, following.section.order
     )
-    assert validation.structure_valid
-    print(f"\n{provider} {result.response_model}: {validation.counts}; issues={validation.issues}")
+    assert second.structure_valid

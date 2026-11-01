@@ -209,7 +209,6 @@ def apply_delta(
                     id=stable,
                     introduced_revision=number,
                     learned_in_section_id=section.section_id,
-                    legacy_id=None,
                     payload=translate_payload(item.payload, id_map.entities),
                     evidence=list(item.evidence),
                 )
@@ -250,8 +249,8 @@ def apply_delta(
             "transitions": transitions,
             "provenance": base.provenance.model_copy(
                 update={
-                    "update_manual_corrections": [
-                        *base.provenance.update_manual_corrections,
+                    "manual_corrections": [
+                        *base.provenance.manual_corrections,
                         *(
                             UpdateCorrection(
                                 revision=number,

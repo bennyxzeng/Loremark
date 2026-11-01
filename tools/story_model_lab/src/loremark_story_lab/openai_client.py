@@ -1,10 +1,9 @@
 """Responses API adapter (OpenAI, or DeepSeek's compatible endpoint) with failure capture.
 
-The output model is a parameter: ChapterStoryModel for `generate` (the default), StoryDelta
-for cumulative updates. `responses.parse` raises when the output does not fit the schema,
-which would lose the response. Calling it through `with_raw_response` keeps the HTTP body
-available, so status, refusals, usage, and the raw output text are saved before parsing is
-attempted.
+The output model is a parameter (StoryDelta by default). `responses.parse` raises when the
+output does not fit the schema, which would lose the response. Calling it through
+`with_raw_response` keeps the HTTP body available, so status, refusals, usage, and the raw
+output text are saved before parsing is attempted.
 """
 
 from __future__ import annotations
@@ -18,7 +17,7 @@ import openai
 import pydantic
 
 from .config import GenerateConfig
-from .schemas import ChapterStoryModel
+from .cumulative_schemas import StoryDelta
 
 OutputModel = type[pydantic.BaseModel]
 
@@ -58,7 +57,7 @@ class CallResult:
 
 class StoryModelClient(Protocol):
     def generate(
-        self, params: dict[str, Any], output_type: OutputModel = ChapterStoryModel
+        self, params: dict[str, Any], output_type: OutputModel = StoryDelta
     ) -> CallResult: ...
 
 
@@ -84,9 +83,7 @@ class ResponsesClient:
     def __init__(self, sdk: openai.OpenAI) -> None:
         self._sdk = sdk
 
-    def generate(
-        self, params: dict[str, Any], output_type: OutputModel = ChapterStoryModel
-    ) -> CallResult:
+    def generate(self, params: dict[str, Any], output_type: OutputModel = StoryDelta) -> CallResult:
         started = time.monotonic()
         try:
             raw = self._sdk.responses.with_raw_response.parse(text_format=output_type, **params)

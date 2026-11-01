@@ -4,8 +4,8 @@ Knowledge is stored as immutable records. A later section never edits an earlier
 adds new records and explicit transitions (supersede / retract / resolve). `current` is an
 index computed by code from records and transitions, never taken from the model.
 
-As in schemas.py, these models only describe structure. Cross-record rules live in
-cumulative_validation.py.
+These models only describe structure. Cross-record rules live in cumulative_validation.py,
+so a structurally valid but semantically wrong delta is still saved for analysis.
 """
 
 from __future__ import annotations
@@ -108,7 +108,6 @@ class Record(_Strict, Generic[Payload]):
     id: str
     introduced_revision: int
     learned_in_section_id: str
-    legacy_id: str | None
     payload: Payload
     evidence: list[EvidenceV2]
 
@@ -188,17 +187,6 @@ class CurrentIndex(_Strict):
     identity_groups: list[IdentityGroup]
 
 
-class ImportedCorrection(_Strict):
-    """A manual correction recorded in the imported v1 run (`run.json.manual_corrections`)."""
-
-    path: str
-    original: str
-    corrected: str
-    reason: str
-    corrected_by: str
-    corrected_at: str
-
-
 class UpdateCorrection(_Strict):
     """A manual correction of an update's delta, made before that revision was committed.
 
@@ -217,11 +205,8 @@ class UpdateCorrection(_Strict):
 
 
 class Provenance(_Strict):
-    initial_run_id: str
-    imported_manual_corrections: list[ImportedCorrection]
-    migration_version: str
-    # Append-only; absent in stores written before corrections of updates existed.
-    update_manual_corrections: list[UpdateCorrection] = []
+    # Append-only: every manual correction made before a revision was committed.
+    manual_corrections: list[UpdateCorrection]
 
 
 class CumulativeStoryModel(_Strict):

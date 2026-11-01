@@ -4,7 +4,7 @@
     <store>/.lock                     fcntl.flock lock held while committing
     <store>/revisions/NNNNNN-<id>.json  full snapshot of every committed revision
     <store>/inputs/<section>-<hash>.json  normalized text of every processed section
-    <store>/provenance/...            where each revision's knowledge came from
+    <store>/provenance/<run-id>/...   the delta, ID map, and commit record of each revision
 
 A commit writes the inputs, provenance, and snapshot first, then atomically replaces the
 latest file under the lock, after re-checking that the latest file is still the one the
@@ -33,7 +33,6 @@ from .schemas import ChapterInput
 LATEST_FILE = "story_model.json"
 LOCK_FILE = ".lock"
 MANIFEST_FILE = "manifest.json"
-INITIAL_PROVENANCE_DIR = "provenance/initial"
 LOCK_TIMEOUT_SECONDS = 30.0
 
 
@@ -108,12 +107,31 @@ class StoreState:
     root: Path
     model: CumulativeStoryModel
     latest_bytes: bytes
-    latest_sha256: str
-    snapshot_path: str
+    # None while an update creates the store: its base is an empty revision 0 not on disk.
+    latest_sha256: str | None
+    snapshot_path: str | None
     inputs: dict[str, ChapterInput]
     input_files: dict[str, bytes]
     # (revision number, snapshot path, SHA-256), newest first; only these are committed.
     chain: list[tuple[int, str, str]]
+
+    @property
+    def is_new(self) -> bool:
+        return self.latest_sha256 is None
+
+
+def new_store_state(root: Path, empty: CumulativeStoryModel) -> StoreState:
+    """What an update that creates the store builds on: an empty revision 0."""
+    return StoreState(
+        root=root.resolve(),
+        model=empty,
+        latest_bytes=model_bytes(empty),
+        latest_sha256=None,
+        snapshot_path=None,
+        inputs={},
+        input_files={},
+        chain=[],
+    )
 
 
 def _read(root: Path, relpath: str, what: str) -> bytes:
@@ -141,7 +159,10 @@ def load_store(root: Path) -> StoreState:
     root = root.resolve()
     latest_path = root / LATEST_FILE
     if not latest_path.is_file():
-        raise StoreError(f"{root} is not a story store (no {LATEST_FILE}); run `story-model init`")
+        raise StoreError(
+            f"{root} is not a story store (no {LATEST_FILE}); `story-model update` with "
+            "--chapter or --section creates one from that section"
+        )
     latest = latest_path.read_bytes()
     model = _parse_model(latest, str(latest_path))
     latest_sha = sha256_bytes(latest)
@@ -184,6 +205,7 @@ def _parent_chain(
 ) -> list[tuple[int, str, str]]:
     chain = [(model.revision.number, snapshot, sha)]
     current = model
+    _require_provenance(root, current.revision)
     while current.revision.parent_snapshot_path is not None:
         relpath = current.revision.parent_snapshot_path
         data = _read(root, relpath, "parent snapshot")
@@ -198,6 +220,7 @@ def _parent_chain(
             raise StoreError(
                 f"Parent snapshot {relpath} is not revision {current.revision.number - 1}"
             )
+        _require_provenance(root, parent.revision)
         chain.append((parent.revision.number, relpath, sha))
         current = parent
     if current.revision.number != 1:
@@ -205,10 +228,17 @@ def _parent_chain(
     return chain
 
 
+def _require_provenance(root: Path, revision: RevisionInfo) -> None:
+    """Every committed revision keeps the provenance of the update run that made it."""
+    if not (root / "provenance" / revision.source_run_id / MANIFEST_FILE).is_file():
+        raise StoreError(
+            f"Missing provenance/{revision.source_run_id}/{MANIFEST_FILE} of revision "
+            f"{revision.number}"
+        )
+
+
 def _verify_manifests(root: Path) -> None:
     """Every provenance directory lists the SHA-256 of the files it holds."""
-    if not (root / INITIAL_PROVENANCE_DIR / MANIFEST_FILE).is_file():
-        raise StoreError(f"Missing {INITIAL_PROVENANCE_DIR}/{MANIFEST_FILE}")
     for manifest_path in sorted((root / "provenance").glob(f"*/{MANIFEST_FILE}")):
         directory = manifest_path.parent.relative_to(root).as_posix()
         try:
@@ -249,7 +279,10 @@ def load_revision(state: StoreState, number: int) -> CumulativeStoryModel:
 
 def ensure_new_store(root: Path) -> None:
     if root.exists() and (not root.is_dir() or any(root.iterdir())):
-        raise StoreError(f"{root} exists and is not an empty directory; refusing to initialize")
+        raise StoreError(
+            f"{root} exists and is neither a story store nor an empty directory; refusing to "
+            "create a store there"
+        )
 
 
 def manifest_bytes(files: Mapping[str, bytes], **info: object) -> bytes:
