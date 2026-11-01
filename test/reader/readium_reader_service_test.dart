@@ -66,6 +66,44 @@ void main() {
 
       expect(position, isNull);
     });
+
+    // Values from the Android emulator: a 3-page section reports page starts
+    // 0.0, 0.333 and 0.666, with a zero-based currentPage.
+    Locator paged(int currentPage, double progression) => Locator(
+      href: 'OEBPS/ch1.xhtml',
+      type: _xhtml,
+      locations: Locations(
+        progression: progression,
+        additionalProperties: {'currentPage': currentPage, 'totalPages': 3},
+      ),
+    );
+
+    test('reports the last page of a section as exactly 1.0', () {
+      expect(
+        positionFromLocator(paged(2, 0.6664607782581841), _indexOf),
+        const ReaderPosition(1, 1.0),
+      );
+    });
+
+    test('keeps the page start on earlier pages', () {
+      expect(
+        positionFromLocator(paged(1, 0.3329215565163681), _indexOf),
+        const ReaderPosition(1, 0.3329215565163681),
+      );
+    });
+
+    test('a one-page section is finished on its only page', () {
+      final locator = Locator(
+        href: 'OEBPS/cover.xhtml',
+        type: _xhtml,
+        locations: Locations(
+          progression: 0,
+          additionalProperties: {'currentPage': 0, 'totalPages': 1},
+        ),
+      );
+
+      expect(positionFromLocator(locator, _indexOf)?.progression, 1.0);
+    });
   });
 
   group('tocEntriesFromLinks', () {

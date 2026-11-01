@@ -110,8 +110,8 @@ class _ReadiumSession implements EpubReaderSession {
   }
 
   void _onStatus(ReadiumReaderStatus status) {
-    // flutter_readium 0.8.0 never sends this for EPUBs, so the last page of
-    // the book stays below 1.0 until it does.
+    // flutter_readium 0.8.0 never sends this for EPUBs; the last page already
+    // reaches 1.0 through positionFromLocator. Kept for later versions.
     if (status == ReadiumReaderStatus.reachedEndOfPublication) {
       _emit(_normalizer.finish());
     }
@@ -201,6 +201,11 @@ List<TocEntry> tocEntriesFromLinks(
 ];
 
 /// The position [locator] stands for, or null if its href isn't a spine item.
+///
+/// On the last page of a section the progression is exactly 1.0. Readium
+/// reports where the page starts, which never reaches 1.0, so the plugin's
+/// page count is used instead; otherwise the end of the book could never
+/// count as finished.
 ReaderPosition? positionFromLocator(
   Locator locator,
   int? Function(String href) indexOf,
@@ -210,9 +215,21 @@ ReaderPosition? positionFromLocator(
   final locations = locator.locations;
   return ReaderPosition(
     sectionIndex,
-    locations?.progression ?? 0,
+    _isLastPage(locations) ? 1.0 : locations?.progression ?? 0,
     totalProgression: locations?.totalProgression,
   );
+}
+
+/// Whether [locations] is on the last page of its section, from the
+/// zero-based `currentPage` and `totalPages` the plugin adds to full locators.
+bool _isLastPage(Locations? locations) {
+  final properties = locations?.additionalProperties;
+  final currentPage = properties?['currentPage'];
+  final totalPages = properties?['totalPages'];
+  return currentPage is int &&
+      totalPages is int &&
+      totalPages > 0 &&
+      currentPage >= totalPages - 1;
 }
 
 /// The locator that opens the reader at [position], or null if the section
