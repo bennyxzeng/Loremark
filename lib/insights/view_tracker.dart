@@ -74,6 +74,9 @@ class PageView {
   /// ahead leaves it behind the view's own section.
   var frontierSection = 0;
 
+  /// The reader got here by turning a page forward, not by a jump.
+  var turnedForward = false;
+
   // Set when the view ends.
   var end = ViewEnd.lost;
   var endMs = 0;
@@ -344,6 +347,7 @@ class ViewTracker {
             cause: current.resumed ? current.cause : record.cause,
             prevOffset: current.prevOffset,
             resumed: current.resumed,
+            turnedForward: current.turnedForward,
             furthestBefore: current.furthestBefore,
           ),
         ),
@@ -370,18 +374,18 @@ class ViewTracker {
         _segmentStartMs = t;
       }
     }
+    var turnedForward = false;
     if (current != null) {
-      events.add(
-        ViewEnded(
-          _finish(
-            current,
-            t,
-            ViewEnd.moved,
-            nextOffset: units.offsetAt(record.section, record.progression),
-            nextCause: record.cause,
-          ),
-        ),
+      final finished = _finish(
+        current,
+        t,
+        ViewEnd.moved,
+        nextOffset: units.offsetAt(record.section, record.progression),
+        nextSection: record.section,
+        nextCause: record.cause,
       );
+      turnedForward = finished.move == MoveKind.forwardPage;
+      events.add(ViewEnded(finished));
     }
     final idle = _lastActivityMs == null ? 0 : t - _lastActivityMs!;
     if (breakSession ||
@@ -398,6 +402,7 @@ class ViewTracker {
           cause: record.cause,
           prevOffset: from,
           resumed: false,
+          turnedForward: turnedForward,
         ),
       ),
     );
@@ -451,6 +456,7 @@ class ViewTracker {
     required NavigationCause cause,
     required double? prevOffset,
     required bool resumed,
+    bool turnedForward = false,
     double? furthestBefore,
   }) {
     final offset = units.offsetAt(section, progression);
@@ -459,6 +465,7 @@ class ViewTracker {
       offset: offset,
       cause: cause,
       resumed: resumed,
+      turnedForward: turnedForward,
     );
     final view = PageView(
       startMs: t,
@@ -479,7 +486,9 @@ class ViewTracker {
     _inBackground = false;
     _hadBackground = false;
     if (extendsFrontier) _noteFurthest(section, progression, offset);
-    view.frontierSection = _furthest?.sectionIndex ?? section;
+    view
+      ..frontierSection = _furthest?.sectionIndex ?? section
+      ..turnedForward = turnedForward;
     return view;
   }
 
@@ -492,21 +501,19 @@ class ViewTracker {
     required double offset,
     required NavigationCause cause,
     required bool resumed,
+    required bool turnedForward,
   }) {
     // The first position ever seen is where reading starts. A book with no
     // measurable text can't tell a jump from a page, so position decides.
     if (_furthest == null || units.total <= 0) return true;
     if (resumed) return false;
-    final page = pageUnits;
     if (cause == NavigationCause.open) {
       // The reader may have turned a few pages before the log was ready.
-      return offset - _furthestOffset <= config.buttonJumpFactor * page;
+      return offset - _furthestOffset <= config.buttonJumpFactor * pageUnits;
     }
-    if (prevOffset == null || prevOffset > _furthestOffset + page) {
-      return false;
-    }
-    final delta = offset - prevOffset;
-    return delta >= 0 && !_isJump(delta, cause);
+    return turnedForward &&
+        prevOffset != null &&
+        prevOffset <= _furthestOffset + pageUnits;
   }
 
   /// Ends [view] at [t]. [endAt] is when it really ended, for a page left in
@@ -517,6 +524,7 @@ class ViewTracker {
     ViewEnd end, {
     int? endAt,
     double? nextOffset,
+    int? nextSection,
     NavigationCause? nextCause,
   }) {
     var ms = _accruedMs;
@@ -540,7 +548,7 @@ class ViewTracker {
       view
         ..nextOffset = nextOffset
         ..nextCause = nextCause
-        ..move = _classify(view.startOffset, nextOffset, nextCause!);
+        ..move = _classify(view, nextOffset, nextSection!, nextCause!);
       if (view.move == MoveKind.forwardPage) {
         _pageSamples.add(nextOffset - view.startOffset);
         if (_pageSamples.length > config.pageUnitsWindow) {
@@ -556,12 +564,41 @@ class ViewTracker {
   /// A move is a jump if it was a contents or search jump, or if it covered
   /// far more than a page. The page buttons only count beyond several pages,
   /// so a larger font doesn't make every page a jump.
-  MoveKind _classify(double from, double to, NavigationCause cause) {
-    final delta = to - from;
-    final jump = _isJump(delta.abs(), cause);
+  ///
+  /// The page length is only known from forward turns, which a long page
+  /// would never produce under that rule, so until enough are seen a
+  /// longer move inside a section is also a page, if it was read for a
+  /// normal time and isn't absurdly long.
+  MoveKind _classify(
+    PageView view,
+    double to,
+    int toSection,
+    NavigationCause cause,
+  ) {
+    final delta = to - view.startOffset;
+    var jump = _isJump(delta.abs(), cause);
+    if (jump &&
+        delta > 0 &&
+        _looksLikeFirstPage(view, delta, toSection, cause)) {
+      jump = false;
+    }
     if (delta > 0) return jump ? MoveKind.forwardJump : MoveKind.forwardPage;
     return jump ? MoveKind.backwardJump : MoveKind.backwardPage;
   }
+
+  bool _looksLikeFirstPage(
+    PageView view,
+    double delta,
+    int toSection,
+    NavigationCause cause,
+  ) =>
+      _pageSamples.length < config.minPageUnitSamples &&
+      cause != NavigationCause.tocJump &&
+      cause != NavigationCause.searchJump &&
+      toSection == view.section &&
+      view.dwellSec >= config.minDwell.inMilliseconds / 1000 &&
+      view.dwellSec <= config.maxDwell.inMilliseconds / 1000 &&
+      delta <= config.bootstrapPageFactor * _defaultPage;
 
   bool _isJump(double distance, NavigationCause cause) {
     final page = pageUnits;

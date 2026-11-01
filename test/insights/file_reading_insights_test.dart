@@ -238,6 +238,35 @@ void main() {
       await insights.close();
     });
 
+    test('a reader with long pages gets minutes too', () async {
+      final insights = await FileReadingInsights.open(
+        bookId: 'book1',
+        epubPath: epubPath,
+        root: root,
+        clock: clock.call,
+        // A tablet with small type: 350 words a page.
+        units: BookUnits(
+          counts: List.filled(10, 14000),
+          linear: List.filled(10, true),
+        ),
+      );
+
+      for (var i = 0; i < 22; i++) {
+        insights.recordPosition(
+          ReaderPosition(0, i / 40),
+          NavigationCause.swipe,
+        );
+        clock.advanceSeconds(60);
+      }
+
+      final summary = insights.summary;
+      expect(summary.paceIsPersonal, isTrue);
+      // 350 words a minute, pulled a little towards the default.
+      expect(summary.unitsPerMinute, inInclusiveRange(300, 350));
+      expect(insights.timeLeft(const ReaderPosition(0, 0.5)), isNotNull);
+      await insights.close();
+    });
+
     test('the chapter runs to the next chapter\'s section', () async {
       final insights = await open();
       read(insights, 0, 0, 9, 40);

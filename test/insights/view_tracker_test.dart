@@ -3,6 +3,7 @@ import 'package:loremark/insights/insights_config.dart';
 import 'package:loremark/insights/book_units.dart';
 import 'package:loremark/insights/reading_insights.dart';
 import 'package:loremark/insights/reading_log.dart';
+import 'package:loremark/insights/reading_timeline.dart';
 import 'package:loremark/insights/view_tracker.dart';
 import 'package:loremark/reader/reader_position.dart';
 
@@ -229,12 +230,13 @@ void main() {
   });
 
   group('moves', () {
+    // Six pages are read first, so the page length is known.
     PageView after(NavigationCause cause, int section, double progression) {
       final script = LogScript()
           .open()
-          .page(2, 5, 30)
+          .read(2, 0, 6, 30)
           .pos(section, progression, cause);
-      return ended(run(script)).single;
+      return ended(run(script)).last;
     }
 
     test('a page forward or back is a page', () {
@@ -318,6 +320,95 @@ void main() {
       // Quarter-section turns are 500 units, a jump for a swipe but a page
       // for the buttons, and they teach the tracker.
       expect(big.pageUnits, 500);
+    });
+  });
+
+  group('learning a long page', () {
+    // Ten sections of 14,000 words, as on a tablet with small type: a page
+    // of 350 words is a 40th of a section.
+    BookUnits bigBook() => BookUnits(
+      counts: List.filled(10, 14000),
+      linear: List.filled(10, true),
+    );
+
+    LogScript swipes(int count, {num dwell = 60}) {
+      final script = LogScript(pagesPerSection: 40).open();
+      for (var i = 0; i < count; i++) {
+        script.page(0, i, dwell, NavigationCause.swipe);
+      }
+      return script;
+    }
+
+    test('swipes over more than 1.5 default pages still teach the length', () {
+      final tracker = ViewTracker(bigBook(), const InsightsConfig());
+
+      final views = ended(run(swipes(22), tracker));
+
+      expect(tracker.pageUnits, 350);
+      expect(views.map((v) => v.move), everyElement(MoveKind.forwardPage));
+    });
+
+    test('and pace is learned from them', () {
+      final timeline = ReadingTimeline(const InsightsConfig());
+      final events = run(
+        swipes(22),
+        ViewTracker(bigBook(), const InsightsConfig()),
+      );
+      events.forEach(timeline.onEvent);
+
+      expect(timeline.samples.length, greaterThanOrEqualTo(18));
+    });
+
+    test('a real jump in the first minutes is not a page', () {
+      final tracker = ViewTracker(bigBook(), const InsightsConfig());
+      // 3,000 words in five seconds.
+      final script = LogScript(pagesPerSection: 14000)
+          .open()
+          .page(0, 0, 5, NavigationCause.swipe)
+          .page(0, 3000, 5, NavigationCause.swipe)
+          .page(0, 3350, 5, NavigationCause.swipe);
+
+      final views = ended(run(script, tracker));
+
+      expect(views.first.move, MoveKind.forwardJump);
+      expect(tracker.pageUnits, 200);
+    });
+
+    test('a fling over a section border or a contents jump is not a page', () {
+      final tracker = ViewTracker(bigBook(), const InsightsConfig());
+      final script = LogScript(pagesPerSection: 40)
+          .open()
+          .page(0, 38, 60, NavigationCause.swipe)
+          .page(1, 5, 60, NavigationCause.swipe)
+          .page(1, 7, 60, NavigationCause.tocJump)
+          .page(1, 8, 60, NavigationCause.swipe);
+
+      final views = ended(run(script, tracker));
+
+      expect(views.first.move, MoveKind.forwardJump);
+      expect(views[1].move, MoveKind.forwardJump);
+      expect(tracker.pageUnits, 200);
+    });
+
+    test('once the length is known, the usual limits apply again', () {
+      final tracker = ViewTracker(bigBook(), const InsightsConfig());
+      run(swipes(8), tracker);
+      expect(tracker.pageUnits, 350);
+
+      final jump = ended(
+        run(
+          LogScript(pagesPerSection: 40)
+              .open()
+              .page(2, 0, 60, NavigationCause.swipe)
+              .page(2, 5, 60, NavigationCause.swipe),
+          tracker,
+        ),
+      );
+
+      expect(
+        jump.firstWhere((v) => v.end == ViewEnd.moved).move,
+        MoveKind.forwardJump,
+      );
     });
   });
 

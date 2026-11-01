@@ -29,6 +29,7 @@ class InsightsConfig {
     this.defaultCjkPageUnits = 450,
     this.pageUnitsWindow = 50,
     this.minPageUnitSamples = 5,
+    this.bootstrapPageFactor = 4,
     this.swipeJumpFactor = 1.5,
     this.buttonJumpFactor = 4,
     this.sessionGap = const Duration(minutes: 10),
@@ -139,6 +140,13 @@ class InsightsConfig {
   final double defaultCjkPageUnits;
   final int pageUnitsWindow;
   final int minPageUnitSamples;
+
+  /// Until [minPageUnitSamples] turns are seen, a forward move within a
+  /// section, read for a normal time, is taken as one page up to this many
+  /// times the assumed page. Otherwise a reader whose pages hold more than
+  /// the swipe limit allows (a tablet, small type) would never have a turn
+  /// counted and so never teach us the page length.
+  final double bootstrapPageFactor;
 
   /// A swipe or other unexplained move longer than this many pages is a jump.
   final double swipeJumpFactor;

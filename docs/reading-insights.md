@@ -24,7 +24,11 @@ text. `ViewTracker` sessionizes idle gaps and excludes background time. Dwells
 below three seconds are flip-throughs; time above two minutes is capped.
 Pace uses first-read forward page turns, a trimmed ratio of total time to text
 units, and a prior from the reader's other books with the same word/character units. Contents/search jumps and
-revisits do not establish pace. The estimate is approximate: EPUB progression
+revisits do not establish pace. A page's length is the median of recent
+forward turns. Until five are seen, a longer move within a section that was
+read for a normal time (up to four default pages) also counts as one, so a
+tablet or small type, with pages beyond the usual swipe limit, can still
+teach it. The estimate is approximate: EPUB progression
 is a location fraction, not a measured word boundary or eye-tracking signal.
 
 Confusion detection is deliberately explainable: repeated backward visits to
