@@ -183,6 +183,11 @@ x86_64, Windows 11 host), debug build, seed 403, a generated 12-chapter book:
 | App network traffic | pass: the app's UID sent and received **0 bytes** over the whole session |
 | Capture policy | **inconclusive** on this Windows host: the emulator's `-tcpdump` file did not contain the harness's DNS probe lookups, so it could not be shown to cover the session (see below) |
 
+GitHub Actions (ubuntu-latest emulator, API 36), same seed: 20 of 20 reopened
+within one page, 19 on the exact page. In trial 7 the app was killed while the
+last page turn was still being saved and reopened one page early. Offline and
+app traffic passed; the capture was inconclusive there too.
+
 Each force-quit trial takes 20 to 30 seconds, so the full run is about 12
 minutes.
 
