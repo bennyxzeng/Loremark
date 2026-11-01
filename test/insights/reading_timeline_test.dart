@@ -313,8 +313,9 @@ void main() {
       while (samples.length < count) {
         final units = 150.0 + random.nextInt(100);
         var sec = units * secPerUnit * exp(sigma * normal());
-        if (random.nextDouble() < interruptions)
+        if (random.nextDouble() < interruptions) {
           sec *= 2 + random.nextDouble() * 4;
+        }
         // What paceSampleOf would let through.
         if (sec < 3 || sec > 120) continue;
         samples.add(PaceSample(t: samples.length, units: units, sec: sec));
