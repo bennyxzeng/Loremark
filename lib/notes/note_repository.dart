@@ -33,12 +33,31 @@ class NoteRepository {
 
   NoteRepository(this.bookDirectory);
 
-  /// This creates a repository for a book inside the app's documents folder.
-  /// Ex. For the book id 'glass-harbor' the notes are saved in
-  /// `<app documents>/books/glass-harbor/notes.json`.
+  /// This only allows book ids made of letters, numbers, `_`, and `-`.
+  /// Book ids are SHA-256 hashes, so this only blocks ids like '../other'
+  /// that could save notes outside the library folder.
+  static final _validId = RegExp(r'^[A-Za-z0-9_-]+$');
+
+  /// This creates a repository for a book inside the library folder,
+  /// the same folder `BookRepository` and `ReadingPositionStore` use.
+  /// Parameters:
+  /// - libraryRoot: The library folder.
+  /// - bookId: The id of the book. (Ex. 'abc123' saves to `<library>/notes/abc123/notes.json`)
+  /// Throws an [ArgumentError] if the book id is not a valid id.
+  factory NoteRepository.inLibrary(Directory libraryRoot, String bookId) {
+    if (!_validId.hasMatch(bookId)) {
+      throw ArgumentError.value(bookId, 'bookId', 'Not a valid book id');
+    }
+    return NoteRepository(Directory('${libraryRoot.path}/notes/$bookId'));
+  }
+
+  /// This creates a repository for a book inside the app's library folder on the device.
   static Future<NoteRepository> forBook(String bookId) async {
-    final documents = await getApplicationDocumentsDirectory();
-    return NoteRepository(Directory('${documents.path}/books/$bookId'));
+    final support = await getApplicationSupportDirectory();
+    return NoteRepository.inLibrary(
+      Directory('${support.path}/library'),
+      bookId,
+    );
   }
 
   File get _notesFile => File('${bookDirectory.path}/notes.json');

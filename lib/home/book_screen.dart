@@ -53,7 +53,12 @@ class _BookScreenState extends State<BookScreen> {
                     readerService: const ReadiumReaderService(),
                   ),
                   const AskScreen(),
-                  const NotesScreen(),
+                  // Tapping a note goes back to the Read tab. Jumping to the
+                  // exact passage comes with the Readium notes hookup.
+                  NotesScreen(
+                    book: widget.book,
+                    onOpenNote: (_) => _selectTab(0),
+                  ),
                   _buildStoryMapTab(),
                 ],
               ),

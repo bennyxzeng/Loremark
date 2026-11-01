@@ -82,4 +82,17 @@ void main() {
 
     expect(File('${bookDirectory.path}/notes.json.tmp').existsSync(), isFalse);
   });
+
+  test('keeps each book\'s notes in its own folder in the library', () {
+    final inLibrary = NoteRepository.inLibrary(bookDirectory, 'abc123');
+
+    expect(inLibrary.bookDirectory.path, '${bookDirectory.path}/notes/abc123');
+  });
+
+  test('rejects a book id that could reach outside the library', () {
+    expect(
+      () => NoteRepository.inLibrary(bookDirectory, '../other'),
+      throwsArgumentError,
+    );
+  });
 }

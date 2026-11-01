@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 
+import '../home/empty_state.dart';
 import 'add_note_sheet.dart';
 import 'annotation_service.dart';
 import 'highlight_colors.dart';
 import 'note.dart';
 
-/// This is the Notes tab. It lists every note and highlight of the book by chapter
-/// and lets the reader search, filter, edit, and delete them.
+/// This is the list shown in the Notes tab. It lists every note and highlight of
+/// the book by chapter and lets the reader search, filter, edit, and delete them.
 /// (See Use Case #3, steps 6, 6a, 6b, and 6c)
-class NotesScreen extends StatefulWidget {
+class NoteList extends StatefulWidget {
   /// This is the service that holds and saves the notes of the book.
   final AnnotationService service;
 
@@ -16,13 +17,13 @@ class NotesScreen extends StatefulWidget {
   /// at that passage. (Optional)
   final ValueChanged<Note>? onOpenNote;
 
-  const NotesScreen({super.key, required this.service, this.onOpenNote});
+  const NoteList({super.key, required this.service, this.onOpenNote});
 
   @override
-  State<NotesScreen> createState() => _NotesScreenState();
+  State<NoteList> createState() => _NoteListState();
 }
 
-class _NotesScreenState extends State<NotesScreen> {
+class _NoteListState extends State<NoteList> {
   // This controls the search box at the top of the tab.
   final _searchController = TextEditingController();
   // This is the chapter the reader filtered by, or null for every chapter.
@@ -109,9 +110,14 @@ class _NotesScreenState extends State<NotesScreen> {
           );
         }
         if (service.notes.isEmpty) {
-          return const _Message(
-            'No notes yet. Select a passage in the Read tab to add a note '
-            'or a highlight.',
+          // This uses the same empty state as the other tabs so the app looks the same everywhere.
+          return const EmptyState(
+            label: 'IN THE MARGINS',
+            title: 'Notes & theories',
+            icon: Icons.edit_note,
+            message:
+                'No notes yet.\n'
+                'Your notes and highlights for this book will appear here.',
           );
         }
 

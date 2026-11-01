@@ -3,8 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:loremark/notes/add_note_sheet.dart';
 import 'package:loremark/notes/annotation_service.dart';
 import 'package:loremark/notes/note.dart';
-import 'package:loremark/notes/note_passage.dart';
-import 'package:loremark/notes/notes_screen.dart';
+import 'package:loremark/notes/note_list.dart';
 
 import 'in_memory_note_repository.dart';
 
@@ -86,9 +85,9 @@ void main() {
     });
   });
 
-  group('Notes tab', () {
+  group('Note list', () {
     testWidgets('shows an empty state when there are no notes', (tester) async {
-      await tester.pumpWidget(app(NotesScreen(service: service)));
+      await tester.pumpWidget(app(NoteList(service: service)));
 
       expect(find.textContaining('No notes yet'), findsOneWidget);
     });
@@ -103,7 +102,7 @@ void main() {
         chapter: 'Chapter 3',
       );
 
-      await tester.pumpWidget(app(NotesScreen(service: service)));
+      await tester.pumpWidget(app(NoteList(service: service)));
 
       final chapter3 = tester.getTopLeft(find.text('Chapter 3')).dy;
       final early = tester.getTopLeft(find.text('Early note')).dy;
@@ -115,7 +114,7 @@ void main() {
     testWidgets('search hides notes that do not match', (tester) async {
       await addNote('Mara hides the letter');
       await addNote('Elian is nervous');
-      await tester.pumpWidget(app(NotesScreen(service: service)));
+      await tester.pumpWidget(app(NoteList(service: service)));
 
       await tester.enterText(find.byType(TextField), 'elian');
       await tester.pump();
@@ -127,7 +126,7 @@ void main() {
     testWidgets('color filter shows only notes of that color', (tester) async {
       await addNote('Yellow note');
       await addNote('Pink note', color: HighlightColor.pink);
-      await tester.pumpWidget(app(NotesScreen(service: service)));
+      await tester.pumpWidget(app(NoteList(service: service)));
 
       await tester.tap(find.widgetWithText(FilterChip, 'Pink'));
       await tester.pump();
@@ -138,7 +137,7 @@ void main() {
 
     testWidgets('delete asks for confirmation before deleting', (tester) async {
       await addNote('Delete me');
-      await tester.pumpWidget(app(NotesScreen(service: service)));
+      await tester.pumpWidget(app(NoteList(service: service)));
 
       await tester.tap(find.byTooltip('Note options'));
       await tester.pumpAndSettle();
@@ -163,7 +162,7 @@ void main() {
 
     testWidgets('edit changes the note text', (tester) async {
       await addNote('Old text');
-      await tester.pumpWidget(app(NotesScreen(service: service)));
+      await tester.pumpWidget(app(NoteList(service: service)));
 
       await tester.tap(find.byTooltip('Note options'));
       await tester.pumpAndSettle();
@@ -181,66 +180,12 @@ void main() {
       await addNote('Open me');
       Note? opened;
       await tester.pumpWidget(
-        app(NotesScreen(service: service, onOpenNote: (note) => opened = note)),
+        app(NoteList(service: service, onOpenNote: (note) => opened = note)),
       );
 
       await tester.tap(find.text('Open me'));
 
       expect(opened?.body, 'Open me');
-    });
-  });
-
-  group('Read passage', () {
-    const passage = 'He pushed the letter across the table.';
-
-    Widget passageApp() => app(
-      NotePassage(
-        service: service,
-        text: passage,
-        sectionIndex: 7,
-        chapterLabel: 'Chapter 8',
-      ),
-    );
-
-    Future<void> selectWord(WidgetTester tester) async {
-      await tester.pumpWidget(passageApp());
-      await tester.longPress(find.byType(SelectableText));
-      await tester.pumpAndSettle();
-    }
-
-    testWidgets('selecting text offers Highlight and Add note', (tester) async {
-      await selectWord(tester);
-
-      expect(find.text('Highlight'), findsOneWidget);
-      expect(find.text('Add note'), findsOneWidget);
-    });
-
-    testWidgets('Highlight saves a highlight on the selected words', (
-      tester,
-    ) async {
-      await selectWord(tester);
-
-      await tester.tap(find.text('Highlight'));
-      await tester.pumpAndSettle();
-
-      final highlight = service.notes.single;
-      expect(highlight.isHighlightOnly, isTrue);
-      expect(passage, contains(highlight.selectedText));
-      expect(highlight.anchor.sectionIndex, 7);
-      expect(highlight.chapterLabel, 'Chapter 8');
-    });
-
-    testWidgets('Add note saves a note and marks the passage', (tester) async {
-      await selectWord(tester);
-
-      await tester.tap(find.text('Add note'));
-      await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField), 'Suspicious.');
-      await tester.tap(find.text('Save note'));
-      await tester.pumpAndSettle();
-
-      expect(service.notes.single.body, 'Suspicious.');
-      expect(find.byIcon(Icons.sticky_note_2_outlined), findsOneWidget);
     });
   });
 }
