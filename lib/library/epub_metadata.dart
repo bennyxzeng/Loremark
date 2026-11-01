@@ -1,8 +1,8 @@
-import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:archive/archive.dart';
 import 'package:xml/xml.dart';
+
+import 'epub_package.dart';
 
 /// What the library shows for a book, read from the EPUB's package document.
 class EpubMetadata {
@@ -28,20 +28,8 @@ EpubMetadata readEpubMetadata(
   Uint8List bytes, {
   required String fallbackTitle,
 }) {
-  final Archive archive;
-  try {
-    archive = ZipDecoder().decodeBytes(bytes);
-  } on Object {
-    throw const FormatException('Not a zip archive');
-  }
-
-  final container = _parseXml(archive, 'META-INF/container.xml');
-  final opfPath = container
-      .findAllElements('rootfile', namespaceUri: '*')
-      .firstOrNull
-      ?.getAttribute('full-path');
-  if (opfPath == null) throw const FormatException('No package document');
-  final opf = _parseXml(archive, opfPath);
+  final package = EpubPackage.fromBytes(bytes);
+  final opf = package.opf;
 
   String? text(String name) {
     final value = opf
@@ -53,8 +41,10 @@ EpubMetadata readEpubMetadata(
   }
 
   final coverHref = _coverHref(opf);
-  final coverPath = coverHref == null ? null : _resolve(opfPath, coverHref);
-  final cover = coverPath == null ? null : archive.findFile(coverPath)?.content;
+  final coverPath = coverHref == null ? null : package.resolve(coverHref);
+  final cover = coverPath == null
+      ? null
+      : package.archive.findFile(coverPath)?.content;
 
   return EpubMetadata(
     title: text('title') ?? fallbackTitle,
@@ -64,16 +54,6 @@ EpubMetadata readEpubMetadata(
         ? null
         : coverPath!.split('.').last.toLowerCase(),
   );
-}
-
-XmlDocument _parseXml(Archive archive, String path) {
-  final file = archive.findFile(path);
-  if (file == null) throw FormatException('Missing $path');
-  try {
-    return XmlDocument.parse(utf8.decode(file.content, allowMalformed: true));
-  } on XmlException {
-    throw FormatException('Unreadable $path');
-  }
 }
 
 /// The manifest href of the cover image: EPUB 3 marks it with a
@@ -96,21 +76,4 @@ String? _coverHref(XmlDocument opf) {
       .where((item) => item.getAttribute('id') == coverId)
       .firstOrNull
       ?.getAttribute('href');
-}
-
-/// Resolves [href], relative to the package document at [opfPath], to a path
-/// inside the archive.
-String _resolve(String opfPath, String href) {
-  final base = opfPath.contains('/')
-      ? opfPath.substring(0, opfPath.lastIndexOf('/') + 1)
-      : '';
-  final parts = <String>[];
-  for (final part in Uri.decodeFull('$base$href').split('/')) {
-    if (part == '..') {
-      if (parts.isNotEmpty) parts.removeLast();
-    } else if (part != '.' && part.isNotEmpty) {
-      parts.add(part);
-    }
-  }
-  return parts.join('/');
 }
