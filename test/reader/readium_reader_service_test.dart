@@ -218,6 +218,57 @@ void main() {
     });
   });
 
+  group('locatorForPassage', () {
+    final readingOrder = [
+      for (final href in _hrefs) Link(href: href, type: _xhtml),
+    ];
+    const target = PassageTarget(
+      sectionIndex: 2,
+      progression: 0.25,
+      highlight: 'a grey cat',
+      before: 'There was ',
+      after: ' on the wall',
+    );
+
+    test('carries the href, progression and text quote', () {
+      final locator = locatorForPassage(target, readingOrder, _indexOf);
+
+      expect(locator?.href, 'OEBPS/Chap%20ter%203%20%C3%A9.xhtml');
+      expect(locator?.type, _xhtml);
+      expect(locator?.locations?.progression, 0.25);
+      expect(locator?.text?.highlight, 'a grey cat');
+      expect(locator?.text?.before, 'There was ');
+      expect(locator?.text?.after, ' on the wall');
+    });
+
+    test('keeps the quote through the JSON sent to the native view', () {
+      final locator = locatorForPassage(target, readingOrder, _indexOf);
+
+      final decoded = Locator.fromJson(locator!.toJson());
+
+      expect(decoded?.text?.highlight, 'a grey cat');
+      expect(decoded?.text?.before, 'There was ');
+      expect(decoded?.locations?.progression, 0.25);
+    });
+
+    test('is null for a section missing from the reading order', () {
+      final locator = locatorForPassage(
+        const PassageTarget(sectionIndex: 5, progression: 0.5, highlight: 'x'),
+        readingOrder,
+        _indexOf,
+      );
+
+      expect(locator, isNull);
+    });
+  });
+
+  group('passageHighlightStyle', () {
+    test('always has a tint, which Android needs to draw anything', () {
+      expect(passageHighlightStyle.tint, isNotNull);
+      expect(passageHighlightStyle.toJson()['tint'], isA<String>());
+    });
+  });
+
   // These use the real `spineIndexOf`, so they pass once it is implemented.
   group('with the real spineIndexOf', () {
     const spine = [

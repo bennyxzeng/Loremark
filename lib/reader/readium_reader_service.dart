@@ -184,6 +184,30 @@ class _ReadiumSession implements EpubReaderSession {
   }
 
   @override
+  Future<void> showPassage(PassageTarget target) async {
+    final locator = locatorForPassage(
+      target,
+      _publication.readingOrder,
+      _indexOf,
+    );
+    if (locator == null) return;
+    // Readium draws a decoration only where the text quote is found, and finds
+    // it again whichever page loads, so the order of the two calls is free.
+    await _readium.applyDecorations(passageHighlightGroup, [
+      ReaderDecoration(
+        id: 'hit',
+        locator: locator,
+        style: passageHighlightStyle,
+      ),
+    ]);
+    await _readium.goToLocator(locator);
+  }
+
+  @override
+  Future<void> clearPassageHighlight() =>
+      _readium.applyDecorations(passageHighlightGroup, const []);
+
+  @override
   Future<void> goForward() => _readium.goForward();
 
   @override
@@ -295,4 +319,42 @@ Locator? locatorFromPosition(
     );
   }
   return null;
+}
+
+/// The decoration group of the search highlight. Applying a new list under the
+/// same id replaces the old decorations, and an empty list clears them.
+const passageHighlightGroup = 'loremark-search';
+
+/// A translucent amber with the stronger "current result" look.
+///
+/// The tint must always be set: flutter_readium 0.8.0 leaves it out of the JSON
+/// when null, and Android then drops the whole decoration without a trace.
+const passageHighlightStyle = ReaderDecorationStyle(
+  style: DecorationStyle.highlight,
+  tint: Color(0x66FFC107),
+  isActive: true,
+);
+
+/// The locator that jumps to and highlights [target], or null if its section
+/// isn't in [readingOrder], as for a non-linear spine item.
+///
+/// Readium looks the text quote up first and only falls back to the
+/// progression when the quote isn't found, so both are set.
+Locator? locatorForPassage(
+  PassageTarget target,
+  List<Link> readingOrder,
+  int? Function(String href) indexOf,
+) {
+  final base = locatorFromPosition(
+    ReaderPosition(target.sectionIndex, target.progression),
+    readingOrder,
+    indexOf,
+  );
+  return base?.copyWith(
+    text: LocatorText(
+      before: target.before,
+      highlight: target.highlight,
+      after: target.after,
+    ),
+  );
 }

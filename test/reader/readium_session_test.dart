@@ -78,8 +78,24 @@ class _FakeReadiumPlatform extends FlutterReadiumPlatform
   @override
   void setDefaultPreferences(EPUBPreferences preferences) {}
 
+  /// The decorations last applied per group, as `applyDecorations` got them.
+  final decorations = <String, List<ReaderDecoration>>{};
+
+  /// Every goToLocator argument, in order.
+  final goToLocators = <Locator>[];
+
+  @override
+  Future<void> applyDecorations(
+    String id,
+    List<ReaderDecoration> decorations,
+  ) async {
+    calls.add('decorate $id ${decorations.length}');
+    this.decorations[id] = decorations;
+  }
+
   @override
   Future<bool> goToLocator(Locator locator) async {
+    goToLocators.add(locator);
     calls.add('goTo ${locator.href}');
     return true;
   }
@@ -321,6 +337,87 @@ void main() {
       await session.goBackward();
 
       expect(fake.calls.skip(1), ['goTo ${_hrefs[2]}', 'forward', 'backward']);
+    });
+  });
+
+  group('showPassage', () {
+    const target = PassageTarget(
+      sectionIndex: 2,
+      progression: 0.4,
+      highlight: 'a grey cat',
+      before: 'There was ',
+      after: ' on the wall',
+    );
+
+    test('jumps with the text quote, href and progression', () async {
+      final session = await open(bookA);
+
+      await session.showPassage(target);
+
+      final locator = fake.goToLocators.single;
+      expect(locator.href, _hrefs[2]);
+      expect(locator.locations?.progression, 0.4);
+      expect(locator.text?.highlight, 'a grey cat');
+      expect(locator.text?.before, 'There was ');
+      expect(locator.text?.after, ' on the wall');
+    });
+
+    test(
+      'highlights it in one group, with the same locator and a tint',
+      () async {
+        final session = await open(bookA);
+
+        await session.showPassage(target);
+
+        final decoration = fake.decorations[passageHighlightGroup]!.single;
+        expect(decoration.locator.toJson(), fake.goToLocators.single.toJson());
+        expect(decoration.style.style, DecorationStyle.highlight);
+        // Android drops a decoration without a tint, so the JSON must carry it.
+        expect(decoration.style.toJson(), contains('tint'));
+      },
+    );
+
+    test('a second passage replaces the first in the same group', () async {
+      final session = await open(bookA);
+
+      await session.showPassage(target);
+      await session.showPassage(
+        const PassageTarget(
+          sectionIndex: 1,
+          progression: 0.1,
+          highlight: 'the harbor',
+        ),
+      );
+
+      expect(fake.decorations.keys, [passageHighlightGroup]);
+      expect(fake.decorations[passageHighlightGroup], hasLength(1));
+      expect(
+        fake.decorations[passageHighlightGroup]!.single.locator.text?.highlight,
+        'the harbor',
+      );
+    });
+
+    test('a section outside the reading order does nothing', () async {
+      final session = await open(bookA);
+
+      await session.showPassage(
+        const PassageTarget(
+          sectionIndex: 9,
+          progression: 0.5,
+          highlight: 'a footnote',
+        ),
+      );
+
+      expect(fake.calls, ['open a.epub']);
+    });
+
+    test('clearing applies an empty list to the group', () async {
+      final session = await open(bookA);
+      await session.showPassage(target);
+
+      await session.clearPassageHighlight();
+
+      expect(fake.decorations[passageHighlightGroup], isEmpty);
     });
   });
 
