@@ -51,6 +51,7 @@ class _BookScreenState extends State<BookScreen> {
                   ReadScreen(
                     book: widget.book,
                     readerService: const ReadiumReaderService(),
+                    // Wired to openPassageSearch in the integration commit.
                   ),
                   const AskScreen(),
                   const NotesScreen(),
