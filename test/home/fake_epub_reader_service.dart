@@ -34,6 +34,9 @@ class FakeEpubReaderService implements EpubReaderService {
   /// If set, [open] waits for it to complete first.
   Completer<void>? gate;
 
+  /// Like [gate], but for one book, so opens can finish out of order.
+  final Map<String, Completer<void>> pathGates = {};
+
   final List<TocEntry> toc;
   final List<String> openedPaths = [];
 
@@ -44,17 +47,24 @@ class FakeEpubReaderService implements EpubReaderService {
   Future<EpubReaderSession> open(String epubPath) async {
     openedPaths.add(epubPath);
     await gate?.future;
+    await pathGates[epubPath]?.future;
     if (error case final error?) {
       throw error;
     }
-    final session = FakeEpubReaderSession(toc: toc);
+    final session = FakeEpubReaderSession(toc: toc, epubPath: epubPath);
     sessions.add(session);
     return session;
   }
 }
 
 class FakeEpubReaderSession implements EpubReaderSession {
-  FakeEpubReaderSession({this.toc = FakeEpubReaderService.defaultToc});
+  FakeEpubReaderSession({
+    this.toc = FakeEpubReaderService.defaultToc,
+    this.epubPath,
+  });
+
+  /// The file this session was opened from.
+  final String? epubPath;
 
   final List<TocEntry> toc;
   final StreamController<ReaderPosition> _positions =

@@ -151,6 +151,37 @@ void main() {
       expect(service.sessions, hasLength(2));
       expect(find.text('Fake reader view'), findsOneWidget);
     });
+
+    testWidgets('shows only the newest book when the book changes mid-open', (
+      tester,
+    ) async {
+      // The first book is slow, so the second finishes opening before it.
+      service.pathGates['glass.epub'] = Completer<void>();
+      await tester.pumpWidget(screen());
+      await tester.pumpWidget(
+        screen(
+          forBook: makeBook(id: 'xyz', path: 'other.epub'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final second = service.sessions.single;
+      expect(second.epubPath, 'other.epub');
+      expect(find.text('Fake reader view'), findsOneWidget);
+
+      service.pathGates['glass.epub']!.complete();
+      await tester.pumpAndSettle();
+
+      final first = service.sessions.singleWhere(
+        (session) => session.epubPath == 'glass.epub',
+      );
+      expect(first.closeCalls, 1);
+      expect(first.builtViews, isEmpty);
+      expect(first.hasListener, isFalse);
+      expect(second.closeCalls, 0);
+      expect(second.builtViews, hasLength(1));
+      expect(second.hasListener, isTrue);
+      expect(find.text('Fake reader view'), findsOneWidget);
+    });
   });
 
   group('positions', () {
