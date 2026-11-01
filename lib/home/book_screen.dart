@@ -121,7 +121,7 @@ class _BookScreenState extends State<BookScreen> {
         // Plain text rather than a spinner: an endless animation would keep
         // widget tests from settling.
         if (model == null) {
-          return const Center(child: Text('Loading story modelâ€¦'));
+          return const Center(child: Text('Loading story model…'));
         }
         return StoryMapScreen(model: model);
       },
