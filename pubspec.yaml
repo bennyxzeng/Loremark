@@ -39,6 +39,7 @@ dependencies:
   archive: ^4.5.2
   xml: ^7.1.0
   crypto: ^3.0.8
+  flutter_readium: 0.8.0
 
 dev_dependencies:
   flutter_test:
