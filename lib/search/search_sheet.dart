@@ -294,7 +294,7 @@ class _SearchSheetState extends State<SearchSheet> {
       return _Notice(
         key: const ValueKey('search-empty'),
         message: 'No matches in completed sections',
-        footer: hidden > 0 ? _HiddenMatches(count: hidden) : null,
+        footer: hidden > 0 ? const _HiddenMatches() : null,
       );
     }
     final groups = _groupByChapter(hits);
@@ -314,7 +314,7 @@ class _SearchSheetState extends State<SearchSheet> {
           ),
           for (final hit in group.hits) _HitTile(hit: hit),
         ],
-        if (hidden > 0) _HiddenMatches(count: hidden),
+        if (hidden > 0) const _HiddenMatches(),
       ],
     );
   }
@@ -376,22 +376,20 @@ class _Notice extends StatelessWidget {
   }
 }
 
-/// How many matches wait past the reader's position, with no detail.
+/// That more matches wait past the reader's position. No count: how often a
+/// name or a word like "died" comes up later is itself a hint.
 class _HiddenMatches extends StatelessWidget {
-  const _HiddenMatches({required this.count});
-
-  final int count;
+  const _HiddenMatches();
 
   @override
   Widget build(BuildContext context) {
-    final noun = count == 1 ? 'match' : 'matches';
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(22, 16, 22, 0),
+    return const Padding(
+      padding: EdgeInsets.fromLTRB(22, 16, 22, 0),
       child: Text(
-        "$count more $noun in chapters you haven't reached yet",
-        key: const ValueKey('search-hidden'),
+        "There's more in chapters you haven't reached yet",
+        key: ValueKey('search-hidden'),
         textAlign: TextAlign.center,
-        style: const TextStyle(fontSize: 12, color: LoremarkColors.muted),
+        style: TextStyle(fontSize: 12, color: LoremarkColors.muted),
       ),
     );
   }

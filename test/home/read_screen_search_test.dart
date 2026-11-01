@@ -347,7 +347,7 @@ void main() {
       expect(highlightedParts(tester), ['ort']);
     });
 
-    testWidgets('tell how many matches are in chapters not yet reached', (
+    testWidgets('say that more matches exist past the cutoff, not how many', (
       tester,
     ) async {
       search.onSearch = (_) =>
@@ -358,23 +358,10 @@ void main() {
       await type(tester, 'cat');
 
       expect(
-        find.text("3 more matches in chapters you haven't reached yet"),
+        find.text("There's more in chapters you haven't reached yet"),
         findsOneWidget,
       );
-    });
-
-    testWidgets('say "match" for exactly one hidden match', (tester) async {
-      search.onSearch = (_) =>
-          SearchResults(hits: [fakeHit(sectionIndex: 1)], hiddenMatches: 1);
-      await openBook(tester);
-      await openSheet(tester);
-
-      await type(tester, 'cat');
-
-      expect(
-        find.text("1 more match in chapters you haven't reached yet"),
-        findsOneWidget,
-      );
+      expect(find.textContaining('3'), findsNothing);
     });
 
     testWidgets('show no footer without hidden matches', (tester) async {
