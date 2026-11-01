@@ -258,8 +258,8 @@ class _SearchSheetState extends State<SearchSheet> {
     final entry = _entryFor(cutoff.sectionIndex);
     final title = entry?.title.trim() ?? '';
     return title.isEmpty
-        ? "Searching what you've read"
-        : "Searching what you've read, up to $title";
+        ? "Searching completed sections"
+        : "Searching completed sections, through $title";
   }
 
   Widget _buildBody() {
@@ -285,7 +285,7 @@ class _SearchSheetState extends State<SearchSheet> {
     final query = _searchedQuery;
     if (query == null) {
       return const _Notice(
-        message: 'Find a name, a place, or a line from what you have read.',
+        message: 'Find a name, a place, or a line from completed sections.',
       );
     }
     final hits = _results.hits;
@@ -293,7 +293,7 @@ class _SearchSheetState extends State<SearchSheet> {
     if (hits.isEmpty) {
       return _Notice(
         key: const ValueKey('search-empty'),
-        message: "No matches in what you've read so far",
+        message: 'No matches in completed sections',
         footer: hidden > 0 ? _HiddenMatches(count: hidden) : null,
       );
     }

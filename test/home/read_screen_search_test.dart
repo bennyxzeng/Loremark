@@ -160,7 +160,7 @@ void main() {
   });
 
   group('cutoff', () {
-    testWidgets('is the current position when there is no furthest', (
+    testWidgets('excludes the current fractional renderer section', (
       tester,
     ) async {
       final session = await openBook(tester);
@@ -169,10 +169,12 @@ void main() {
 
       await type(tester, 'cat');
 
-      expect(search.lastCutoff, const ReaderPosition(2, 0.5));
+      expect(search.lastCutoff, const ReaderPosition(1, 1));
     });
 
-    testWidgets('is the furthest position after turning back', (tester) async {
+    testWidgets('uses completed sections before the furthest position', (
+      tester,
+    ) async {
       final session = await openBook(
         tester,
         furthestPosition: () => const ReaderPosition(4, 0.2),
@@ -182,7 +184,7 @@ void main() {
 
       await type(tester, 'cat');
 
-      expect(search.lastCutoff, const ReaderPosition(4, 0.2));
+      expect(search.lastCutoff, const ReaderPosition(3, 1));
     });
 
     testWidgets('is the start of the book before any position', (tester) async {
@@ -200,7 +202,7 @@ void main() {
       await openSheet(tester);
 
       expect(
-        find.text("Searching what you've read, up to Section 1.1"),
+        find.text("Searching completed sections, through Chapter One"),
         findsOneWidget,
       );
     });
@@ -211,7 +213,7 @@ void main() {
       await openBook(tester);
       await openSheet(tester);
 
-      expect(find.text("Searching what you've read"), findsOneWidget);
+      expect(find.text("Searching completed sections"), findsOneWidget);
     });
 
     testWidgets('re-runs the query when the reader moves', (tester) async {
@@ -224,7 +226,7 @@ void main() {
       await emit(tester, session, const ReaderPosition(4, 0.1));
 
       expect(search.searches, hasLength(2));
-      expect(search.lastCutoff, const ReaderPosition(4, 0.1));
+      expect(search.lastCutoff, const ReaderPosition(3, 1));
       expect(search.searches.last.query, 'cat');
     });
   });
@@ -392,10 +394,7 @@ void main() {
 
       await type(tester, 'dragon');
 
-      expect(
-        find.text("No matches in what you've read so far"),
-        findsOneWidget,
-      );
+      expect(find.text("No matches in completed sections"), findsOneWidget);
     });
 
     testWidgets('still count hidden matches when nothing visible matches', (

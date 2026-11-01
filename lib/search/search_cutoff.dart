@@ -24,3 +24,21 @@ bool _isLater(ReaderPosition a, ReaderPosition b) =>
     a.sectionIndex != b.sectionIndex
     ? a.sectionIndex > b.sectionIndex
     : a.progression > b.progression;
+
+/// Safe UI boundary for a renderer whose page progression is not a text offset.
+/// Images, headings and layout can make page percentages differ from character
+/// percentages. Until Readium exposes an exact text boundary, only completed
+/// spine sections are searchable. Precise callers may still use [searchCutoff].
+ReaderPosition completedSectionCutoff({
+  ReaderPosition? current,
+  ReaderPosition? furthest,
+}) {
+  final reached = searchCutoff(current: current, furthest: furthest);
+  if (reached.sectionIndex < 0) return const ReaderPosition(0, 0);
+  if (reached.progression == 1) {
+    return ReaderPosition(reached.sectionIndex, 1);
+  }
+  return reached.sectionIndex == 0
+      ? const ReaderPosition(0, 0)
+      : ReaderPosition(reached.sectionIndex - 1, 1);
+}

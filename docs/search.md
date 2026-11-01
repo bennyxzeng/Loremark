@@ -149,3 +149,15 @@ Measured on this Windows host with Flutter 3.47.7 / Dart VM JIT, using the seede
 - Phrase checks run on the best 60 to 2,000 candidates, so a phrase that is common may rank imperfectly in a very long book.
 - Plain text positions are not the page's scroll positions, so a jump relies on the quote; if the page text differs a lot (ruby text), the reader lands near the passage without the highlight.
 - The passage is the unit: a hit is a whole paragraph, even a long one.
+
+
+## Renderer boundary limitation
+
+The production Read tab searches **completed spine sections only**. Readium's page
+progression is a layout percentage, not an exact character offset: images and
+reflow can otherwise expose text not yet seen in a partially read section.
+`completedSectionCutoff` rounds the current/furthest renderer position down to the
+last completed section; a reported progression of exactly 1 unlocks that section.
+The engine's fractional cutoff remains available for callers with an exact text
+boundary. Until that boundary is available, within-current-section search is
+intentionally unavailable. A spine section is not necessarily a whole TOC chapter.

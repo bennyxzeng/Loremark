@@ -265,7 +265,7 @@ class _ReadScreenState extends State<ReadScreen> {
   /// Recomputes what search may look at, from the reader's position and the
   /// furthest one they reached.
   void _updateCutoff() {
-    _cutoff.value = searchCutoff(
+    _cutoff.value = completedSectionCutoff(
       current: _position,
       furthest: widget.furthestPosition?.call(),
     );
