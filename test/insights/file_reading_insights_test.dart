@@ -148,6 +148,22 @@ void main() {
       await insights.close();
     });
 
+    test('counts the book once, then opens from the saved counts', () async {
+      final first = await open();
+      await first.close();
+      expect(
+        File('${root.path}/reading_log/book1.units.json').existsSync(),
+        isTrue,
+      );
+
+      // The EPUB is not needed again, so estimates still work without it.
+      final second = await open(path: '${temp.path}/missing.epub');
+      read(second, 0, 0, 12, 20);
+
+      expect(second.timeLeft(const ReaderPosition(0, 0.5)), isNotNull);
+      await second.close();
+    });
+
     test('works when the library folder cannot be written', () async {
       final blocker = File('${temp.path}/blocker')..writeAsStringSync('x');
       final insights = await FileReadingInsights.open(

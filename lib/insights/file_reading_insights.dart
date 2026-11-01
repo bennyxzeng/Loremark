@@ -17,8 +17,8 @@ import 'reading_timeline.dart';
 
 /// [ReadingInsights] for one book, kept in files under the library folder:
 /// `reading_log/<book id>.jsonl` is the event log, `<book id>.stats.json` a
-/// summary for the reader's other books, and `settings.json` the hints
-/// switch.
+/// summary for the reader's other books, `<book id>.units.json` the counted
+/// size of the book, and `settings.json` the hints switch.
 ///
 /// Opening a book reads its log and replays it through the same code that
 /// follows the reader live, so nothing but the log has to survive a restart.
@@ -54,7 +54,9 @@ class FileReadingInsights extends ChangeNotifier implements ReadingInsights {
     final log = ReadingLog(file, bookId: bookId, clock: now);
 
     final results = await Future.wait<Object?>([
-      units != null ? Future.value(units) : _countUnits(epubPath),
+      units != null
+          ? Future.value(units)
+          : _countUnits(epubPath, library, bookId),
       log.read().catchError((Object error) {
         debugPrint('Reading log unreadable: $error');
         return const ParsedLog();
@@ -98,9 +100,17 @@ class FileReadingInsights extends ChangeNotifier implements ReadingInsights {
     return Directory('${support.path}/library');
   }
 
-  static Future<BookUnits> _countUnits(String epubPath) async {
+  static Future<BookUnits> _countUnits(
+    String epubPath,
+    Directory library,
+    String bookId,
+  ) async {
     try {
-      return await BookUnits.load(epubPath);
+      return await BookUnits.loadCached(
+        epubPath,
+        cache: File('${library.path}/reading_log/$bookId.units.json'),
+        bookId: bookId,
+      );
     } on Object catch (error) {
       // Without section sizes there are no estimates, but time and days are
       // still logged.

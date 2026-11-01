@@ -1,9 +1,16 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
+
+import 'package:flutter/foundation.dart';
 
 import '../reader/epub_sections.dart';
 import '../reader/reader_position.dart';
 import 'insights_config.dart';
+
+/// The format of a units cache file. Raise it when counting changes, so old
+/// files are counted again.
+const unitsCacheVersion = 1;
 
 /// How much there is to read in each section of a book.
 ///
@@ -51,6 +58,72 @@ class BookUnits {
       linear: [for (final item in spineFromBytes(bytes)) item.linear],
     );
   });
+
+  /// [load], but remembered in [cache] under [bookId], the hash of the EPUB,
+  /// so only the first open of a book unzips and counts it. A missing,
+  /// damaged or old cache is counted afresh and replaced; a cache that can't
+  /// be written costs only the next open some time.
+  static Future<BookUnits> loadCached(
+    String epubPath, {
+    required File cache,
+    required String bookId,
+  }) async {
+    final cached = await _readCache(cache, bookId);
+    if (cached != null) return cached;
+    final units = await load(epubPath);
+    await _writeCache(cache, bookId, units);
+    return units;
+  }
+
+  static Future<BookUnits?> _readCache(File cache, String bookId) async {
+    try {
+      final json = jsonDecode(await cache.readAsString());
+      if (json is! Map ||
+          json['version'] != unitsCacheVersion ||
+          json['id'] != bookId) {
+        return null;
+      }
+      final counts = (json['counts'] as List).cast<int>();
+      final linear = (json['linear'] as List).cast<bool>();
+      final cjk = json['cjk'] as int;
+      final total = counts.fold(0, (a, b) => a + b);
+      if (counts.isEmpty ||
+          counts.length != linear.length ||
+          counts.any((count) => count < 0) ||
+          cjk < 0 ||
+          cjk > total) {
+        return null;
+      }
+      return BookUnits(counts: counts, linear: linear, cjkUnits: cjk);
+    } on Object {
+      // Missing, unreadable or not what we wrote: count the book again.
+      return null;
+    }
+  }
+
+  static Future<void> _writeCache(
+    File cache,
+    String bookId,
+    BookUnits units,
+  ) async {
+    try {
+      await cache.parent.create(recursive: true);
+      final temp = File('${cache.path}.tmp');
+      await temp.writeAsString(
+        jsonEncode({
+          'version': unitsCacheVersion,
+          'id': bookId,
+          'counts': units.counts,
+          'linear': units.linear,
+          'cjk': units.cjkUnits,
+        }),
+        flush: true,
+      );
+      await temp.rename(cache.path);
+    } on Object catch (error) {
+      debugPrint('Could not save the unit counts of $bookId: $error');
+    }
+  }
 
   /// Units in each spine item.
   final List<int> counts;

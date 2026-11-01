@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -176,6 +177,125 @@ void main() {
       await bad.writeAsString('not a zip');
 
       await expectLater(BookUnits.load(bad.path), throwsA(anything));
+    });
+
+    group('loadCached', () {
+      late File epub;
+      late File cache;
+
+      setUp(() async {
+        epub = File('${temp.path}/book.epub');
+        await epub.writeAsBytes(
+          buildEpub(
+            chapters: [
+              const EpubChapter(
+                id: 'a',
+                fileName: 'a.xhtml',
+                body: '<p>One two three.</p><p>Four five.</p>',
+              ),
+              const EpubChapter(
+                id: 'b',
+                fileName: 'b.xhtml',
+                body: '<p>我喜欢读书。</p>',
+                linear: false,
+              ),
+            ],
+          ),
+        );
+        cache = File('${temp.path}/reading_log/book1.units.json');
+      });
+
+      Future<BookUnits> load() =>
+          BookUnits.loadCached(epub.path, cache: cache, bookId: 'book1');
+
+      test('counts the book once and remembers it', () async {
+        expect(cache.existsSync(), isFalse);
+
+        final first = await load();
+
+        expect(first.counts, [5, 5]);
+        expect(cache.existsSync(), isTrue);
+        expect(File('${cache.path}.tmp').existsSync(), isFalse);
+        // The EPUB is not read again: it can be gone.
+        await epub.delete();
+        final second = await load();
+        expect(second.counts, [5, 5]);
+        expect(second.linear, [true, false]);
+        expect(second.cjkUnits, 5);
+      });
+
+      test('counts again when the cache is for another book', () async {
+        await load();
+        final other = BookUnits.loadCached(
+          epub.path,
+          cache: cache,
+          bookId: 'book2',
+        );
+
+        expect((await other).counts, [5, 5]);
+        expect(
+          jsonDecode(cache.readAsStringSync()),
+          containsPair('id', 'book2'),
+        );
+      });
+
+      test('counts again after a change of format version', () async {
+        await load();
+        final json = jsonDecode(cache.readAsStringSync()) as Map;
+        json['version'] = unitsCacheVersion + 1;
+        json['counts'] = [1, 1];
+        cache.writeAsStringSync(jsonEncode(json));
+
+        expect((await load()).counts, [5, 5]);
+        expect(
+          jsonDecode(cache.readAsStringSync()),
+          containsPair('version', unitsCacheVersion),
+        );
+      });
+
+      for (final damaged in [
+        '',
+        '{"version":1,',
+        'null',
+        '{"version":1,"id":"book1","counts":[1,2],"linear":[true],"cjk":0}',
+        '{"version":1,"id":"book1","counts":[1,-2],"linear":[true,true],"cjk":0}',
+        '{"version":1,"id":"book1","counts":["a"],"linear":[true],"cjk":0}',
+        '{"version":1,"id":"book1","counts":[],"linear":[],"cjk":0}',
+        '{"version":1,"id":"book1","counts":[1,2],"linear":[true,true],"cjk":9}',
+      ]) {
+        test('counts again when the cache says $damaged', () async {
+          await cache.parent.create(recursive: true);
+          await cache.writeAsString(damaged);
+
+          final units = await load();
+
+          expect(units.counts, [5, 5]);
+          // And the cache is whole again.
+          epub.deleteSync();
+          expect((await load()).counts, [5, 5]);
+        });
+      }
+
+      test('a book that cannot be counted is not cached', () async {
+        await epub.writeAsString('not a zip');
+
+        await expectLater(load(), throwsA(anything));
+
+        expect(cache.existsSync(), isFalse);
+      });
+
+      test('an unwritable cache only costs the next count', () async {
+        final blocker = File('${temp.path}/blocker')..writeAsStringSync('x');
+        final stuck = File('${blocker.path}/book1.units.json');
+
+        final units = await BookUnits.loadCached(
+          epub.path,
+          cache: stuck,
+          bookId: 'book1',
+        );
+
+        expect(units.counts, [5, 5]);
+      });
     });
   });
 }

@@ -13,7 +13,10 @@ No book text or reading events are sent to a service.
 `FileReadingInsights.open(bookId:, epubPath:)` implements `ReadingInsights`.
 `ReadScreen` records each position with a navigation cause, and pauses the log
 when the app, Read tab, or reader text is covered. On disposal it flushes and
-closes the service. Log failures leave the book usable, without estimates.
+closes the service. Log failures leave the book usable, without estimates. The reader appears as
+soon as the book and its saved position are ready; the insights open alongside
+and attach when they arrive (the page then showing is logged as the open), so a
+large book never delays the text.
 Other consumers can listen to `signals` (`Stream<ConfusionSignal>`), read
 `furthest`, or add a listener for summary changes. Close the service when its
 book closes; only one instance per book should write at a time.
@@ -62,6 +65,9 @@ Under the application support directory's `library/reading_log/`:
 
 - `<book id>.jsonl`: versioned append-only position/lifecycle events.
 - `<book id>.stats.json`: atomic summary used by other books for pace and totals.
+- `<book id>.units.json`: the counted size of each section, keyed by book id
+  (the EPUB's hash) and a format version, so later opens skip unzipping and
+  counting. A missing, damaged or old file is counted again.
 - `settings.json`: persisted Reading hints setting.
 
 Writes queue in order and coalesce same-turn events. Hiding/closing flushes to

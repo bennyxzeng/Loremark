@@ -498,6 +498,71 @@ void main() {
       expect(store.saves, [('abc', start)]);
     });
 
+    testWidgets('the reader is built while the insights are still opening', (
+      tester,
+    ) async {
+      final gate = Completer<ReadingInsights>();
+      await tester.pumpWidget(screen(openInsights: () => gate.future));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Fake reader view'), findsOneWidget);
+      expect(service.sessions.single.builtViews, hasLength(1));
+      expect(find.byTooltip('Reading insights'), findsNothing);
+
+      gate.complete(insights);
+      await tester.pumpAndSettle();
+
+      expect(find.byTooltip('Reading insights'), findsOneWidget);
+    });
+
+    testWidgets('insights that arrive late record where the reader is', (
+      tester,
+    ) async {
+      final gate = Completer<ReadingInsights>();
+      final session = await openBook(tester, openInsights: () => gate.future);
+      await emit(tester, session, start);
+      await emit(tester, session, const ReaderPosition(1, 0.1));
+      await emit(tester, session, const ReaderPosition(1, 0.2));
+
+      gate.complete(insights);
+      await tester.pumpAndSettle();
+
+      // What came before is not in the log, but the page now showing is.
+      expect(insights.positions, [
+        (const ReaderPosition(1, 0.2), NavigationCause.open),
+      ]);
+      await emit(tester, session, const ReaderPosition(1, 0.3));
+      expect(insights.causes, [NavigationCause.open, NavigationCause.swipe]);
+      expect(insights.shownCalls, 0);
+    });
+
+    testWidgets('insights that arrive before any position leave it to the '
+        'first one', (tester) async {
+      final gate = Completer<ReadingInsights>();
+      final session = await openBook(tester, openInsights: () => gate.future);
+
+      gate.complete(insights);
+      await tester.pumpAndSettle();
+      expect(insights.positions, isEmpty);
+      await emit(tester, session, start);
+
+      expect(insights.positions, [(start, NavigationCause.open)]);
+    });
+
+    testWidgets('attaching the insights does not rebuild the reader view', (
+      tester,
+    ) async {
+      final gate = Completer<ReadingInsights>();
+      final session = await openBook(tester, openInsights: () => gate.future);
+      final before = tester.element(find.text('Fake reader view'));
+
+      gate.complete(insights);
+      await tester.pumpAndSettle();
+
+      expect(tester.element(find.text('Fake reader view')), same(before));
+      expect(session.builtViews, hasLength(1));
+    });
+
     testWidgets('closes the insights with the screen', (tester) async {
       await openBook(tester);
       expect(insights.closeCalls, 0);

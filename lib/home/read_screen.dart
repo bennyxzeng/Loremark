@@ -209,6 +209,8 @@ class _ReadScreenState extends State<ReadScreen> {
     final book = widget.book;
     final sessionFuture = _openSession(book);
     final savedFuture = _loadSavedPosition(book);
+    // Counting the book and replaying its log can take seconds on a phone,
+    // and the text must not wait for statistics. They attach when ready.
     final insightsFuture = _openInsights(book);
 
     final EpubReaderSession session;
@@ -216,7 +218,7 @@ class _ReadScreenState extends State<ReadScreen> {
       session = await sessionFuture;
     } on Object catch (error) {
       debugPrint('Could not open ${book.title}: $error');
-      unawaited(_closeInsights(await insightsFuture));
+      unawaited(insightsFuture.then(_closeInsights));
       if (mounted && generation == _generation) {
         setState(() => _error = error);
       }
@@ -225,23 +227,49 @@ class _ReadScreenState extends State<ReadScreen> {
     // Neither of these throws, so skipping them above can't leave an
     // unhandled error.
     final (:store, :position) = await savedFuture;
-    final insights = await insightsFuture;
     if (!mounted || generation != _generation) {
       unawaited(_close(session));
-      unawaited(_closeInsights(insights));
+      unawaited(insightsFuture.then(_closeInsights));
       return;
     }
 
     setState(() {
       _session = session;
       _store = store;
-      _insights = insights;
-      _insightsVisible = true;
-      _updateVisibility();
       _position = position;
       _positionSubscription = session.positions.listen(_onPosition);
       _view = session.buildView(initialPosition: position);
     });
+    unawaited(_attachInsights(generation, insightsFuture));
+  }
+
+  /// Hands the opened insights to the reader, which is already on screen.
+  ///
+  /// Positions that came before are not in the log. The one the reader is on
+  /// is recorded as the open, unless none has arrived yet, in which case the
+  /// first one will be.
+  Future<void> _attachInsights(
+    int generation,
+    Future<ReadingInsights?> future,
+  ) async {
+    final insights = await future;
+    if (insights == null) return;
+    if (!mounted || generation != _generation) {
+      await _closeInsights(insights);
+      return;
+    }
+    setState(() {
+      _insights = insights;
+      _insightsVisible = true;
+      _updateVisibility();
+    });
+    final position = _position;
+    if (_insightsVisible && !_firstPosition && position != null) {
+      _tellInsights(
+        (insights) => insights.recordPosition(position, NavigationCause.open),
+      );
+    }
+    _updateCutoff();
   }
 
   /// Wraps [EpubReaderService.open] so a synchronous throw is also a failed
@@ -594,13 +622,11 @@ class _ReadScreenState extends State<ReadScreen> {
 
   Widget _buildReader(EpubReaderSession session, Widget view) {
     final insights = _insights;
-    if (insights == null) {
-      return _buildReaderBody(session, view, null);
-    }
     // Insights change on their own (a new estimate, a nudge), not only when
-    // the reader moves.
+    // the reader moves. The builder is there even before they attach, so
+    // that attaching doesn't rebuild the reader's platform view.
     return ListenableBuilder(
-      listenable: insights,
+      listenable: insights ?? const _NeverChanges(),
       builder: (context, _) => _buildReaderBody(session, view, insights),
     );
   }
@@ -664,6 +690,17 @@ class _ReadScreenState extends State<ReadScreen> {
       ],
     );
   }
+}
+
+/// Stands in for the insights while they are still opening.
+class _NeverChanges implements Listenable {
+  const _NeverChanges();
+
+  @override
+  void addListener(VoidCallback listener) {}
+
+  @override
+  void removeListener(VoidCallback listener) {}
 }
 
 /// The chapter being read, with the buttons for its insights and contents.
