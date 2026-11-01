@@ -27,8 +27,8 @@ bool _isLater(ReaderPosition a, ReaderPosition b) =>
 
 /// Safe UI boundary for a renderer whose page progression is not a text offset.
 /// Images, headings and layout can make page percentages differ from character
-/// percentages. Until Readium exposes an exact text boundary, only completed
-/// spine sections are searchable. Precise callers may still use [searchCutoff].
+/// percentages, so a renderer position only unlocks completed spine sections.
+/// [pageCutoff] adds the exact page starts the reader can locate.
 ReaderPosition completedSectionCutoff({
   ReaderPosition? current,
   ReaderPosition? furthest,
@@ -42,3 +42,19 @@ ReaderPosition completedSectionCutoff({
       ? const ReaderPosition(0, 0)
       : ReaderPosition(reached.sectionIndex - 1, 1);
 }
+
+/// The Read tab's search boundary: everything before the start of the
+/// furthest page the reader reached.
+///
+/// [furthestPageText] is a text position (`EpubReaderSession.pageTextStarts`),
+/// exact to the character. [current] and [furthest] are renderer positions,
+/// which only count whole finished sections ([completedSectionCutoff]); they
+/// cover pages whose start couldn't be located. The later of the two wins.
+ReaderPosition pageCutoff({
+  ReaderPosition? current,
+  ReaderPosition? furthest,
+  ReaderPosition? furthestPageText,
+}) => searchCutoff(
+  current: completedSectionCutoff(current: current, furthest: furthest),
+  furthest: furthestPageText,
+);

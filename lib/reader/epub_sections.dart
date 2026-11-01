@@ -7,6 +7,7 @@ import 'dart:typed_data';
 import 'package:xml/xml.dart';
 
 import '../library/epub_package.dart';
+import 'css_selector.dart';
 
 /// One `itemref` of an EPUB spine.
 class SpineItem {
@@ -50,6 +51,39 @@ Future<List<SpineItem>> readSpine(String epubPath) =>
 Future<List<String>> readSectionTexts(String epubPath) =>
     Isolate.run(() => sectionTextsFromBytes(File(epubPath).readAsBytesSync()));
 
+/// The XHTML of the spine item at [path] in the EPUB at [epubPath], read off
+/// the UI isolate, or null if it is missing or the file is not an EPUB.
+Future<String?> readSectionMarkup(String epubPath, String path) =>
+    Isolate.run(() {
+      try {
+        final bytes = File(epubPath).readAsBytesSync();
+        return _markup(EpubPackage.fromBytes(bytes), path);
+      } on Object {
+        return null;
+      }
+    });
+
+/// Where the element [cssSelector] picks out starts in the plain text of a
+/// section with markup [xhtml], as a fraction of that text: the same text
+/// [sectionTextsFromBytes] gives the section, so search can use it as a
+/// cutoff progression.
+///
+/// Null if the markup is not well-formed XML, nothing matches, the element
+/// is outside the body, or the section has no text.
+double? textProgressionOf(String xhtml, String cssSelector) {
+  final XmlDocument document;
+  try {
+    document = _parseXhtml(xhtml);
+  } on XmlException {
+    return null;
+  }
+  final target = querySelector(document, cssSelector);
+  if (target == null) return null;
+  final (:text, :targetOffset) = _walkBody(document, target: target);
+  if (targetOffset == null || text.isEmpty) return null;
+  return targetOffset / text.length;
+}
+
 /// The index in [spine] of the item [href] points to, or null.
 ///
 /// [href] may have a leading `/`, a `#fragment` or `?query`, and
@@ -83,20 +117,26 @@ List<SpineItem> _spine(EpubPackage package) => [
 /// The text of the file at [path], or an empty string if it is missing or
 /// unreadable, so one bad chapter does not lose the book.
 String _sectionText(EpubPackage package, String path) {
-  final file = package.archive.findFile(path);
-  if (path.isEmpty || file == null) return '';
   try {
-    final xhtml = utf8
-        .decode(file.content, allowMalformed: true)
-        .replaceFirst('\uFEFF', '');
+    final xhtml = _markup(package, path);
+    if (xhtml == null) return '';
     try {
-      return _bodyText(xhtml);
+      return _walkBody(_parseXhtml(xhtml)).text;
     } on XmlException {
       return _stripTags(xhtml);
     }
   } on Object {
     return '';
   }
+}
+
+/// The decoded markup of the file at [path], or null if it is missing.
+String? _markup(EpubPackage package, String path) {
+  final file = package.archive.findFile(path);
+  if (path.isEmpty || file == null) return null;
+  return utf8
+      .decode(file.content, allowMalformed: true)
+      .replaceFirst('\uFEFF', '');
 }
 
 /// Elements whose content is not text the reader sees. `rt` and `rp` are
@@ -140,17 +180,25 @@ const _paragraphBreaks = {
 /// Elements that start a new line, with no blank line.
 const _lineBreaks = {'br', 'dd', 'dt', 'li', 'tr'};
 
-String _bodyText(String xhtml) {
-  final document = XmlDocument.parse(
-    xhtml,
-    entityMapping: const XmlDefaultEntityMapping.html5(),
-  );
+XmlDocument _parseXhtml(String xhtml) => XmlDocument.parse(
+  xhtml,
+  entityMapping: const XmlDefaultEntityMapping.html5(),
+);
+
+/// The plain text of [document]'s body and, if [target] is in the body,
+/// how many characters of it come before [target]'s own text.
+({String text, int? targetOffset}) _walkBody(
+  XmlDocument document, {
+  XmlElement? target,
+}) {
   final text = _TextBuilder();
+  int? targetOffset;
   void walk(XmlNode node) {
     switch (node) {
       case XmlText(:final value) || XmlCDATA(:final value):
         text.add(value);
       case XmlElement(:final name, :final children):
+        if (identical(node, target)) targetOffset = text.length;
         final tag = name.local.toLowerCase();
         if (_skipped.contains(tag)) return;
         final gap = _paragraphBreaks.contains(tag)
@@ -167,7 +215,7 @@ String _bodyText(String xhtml) {
   }
 
   walk(document.findAllElements('body').firstOrNull ?? document.rootElement);
-  return text.toString();
+  return (text: text.toString(), targetOffset: targetOffset);
 }
 
 /// Collects text with whitespace collapsed to single spaces and line breaks
@@ -197,6 +245,9 @@ class _TextBuilder {
   }
 
   void breakLines(int count) => _gap = max(_gap, count);
+
+  /// Characters written so far. Text added later starts at or after it.
+  int get length => _out.length;
 
   @override
   String toString() => _out.toString();

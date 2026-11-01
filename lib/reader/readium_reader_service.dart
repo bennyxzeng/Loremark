@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_readium/flutter_readium.dart';
 
@@ -65,7 +68,7 @@ class ReadiumReaderService implements EpubReaderService {
       // Read by the reader view when it is built, so set it first.
       readium.setDefaultPreferences(_readerPreferences);
 
-      final session = _ReadiumSession(readium, publication, spine);
+      final session = _ReadiumSession(readium, publication, spine, epubPath);
       _current = session;
       return session;
     });
@@ -80,8 +83,12 @@ const _readerPreferences = EPUBPreferences(
 );
 
 class _ReadiumSession implements EpubReaderSession {
-  _ReadiumSession(this._readium, this._publication, this._spine)
-    : _normalizer = PositionNormalizer(_spine),
+  _ReadiumSession(
+    this._readium,
+    this._publication,
+    this._spine,
+    this._epubPath,
+  ) : _normalizer = PositionNormalizer(_spine),
       tableOfContents = tocEntriesFromLinks(
         _publication.tableOfContents,
         (href) => spineIndexOf(_spine, href),
@@ -96,6 +103,7 @@ class _ReadiumSession implements EpubReaderSession {
   final FlutterReadium _readium;
   final Publication _publication;
   final List<SpineItem> _spine;
+  final String _epubPath;
   final PositionNormalizer _normalizer;
   late final StreamSubscription<Locator> _locatorSubscription;
   late final StreamSubscription<ReadiumReaderStatus> _statusSubscription;
@@ -104,6 +112,7 @@ class _ReadiumSession implements EpubReaderSession {
   // Single-subscription: it holds the early positions until the Read tab
   // listens, which it does once. A broadcast stream would drop them.
   final _positions = StreamController<ReaderPosition>();
+  final _pageTextStarts = StreamController<ReaderPosition>();
 
   @override
   final List<TocEntry> tableOfContents;
@@ -113,6 +122,9 @@ class _ReadiumSession implements EpubReaderSession {
 
   @override
   Stream<ReaderPosition> get positions => _positions.stream;
+
+  @override
+  Stream<ReaderPosition> get pageTextStarts => _pageTextStarts.stream;
 
   int? _indexOf(String href) => spineIndexOf(_spine, href);
 
@@ -124,6 +136,12 @@ class _ReadiumSession implements EpubReaderSession {
     final previousHadPageInfo = _lastHadPageInfo;
     _lastHadPageInfo = _hasPageInfo(locator.locations);
     final raw = positionFromLocator(locator, _indexOf);
+    // Before the duplicate check: the selector comes with the second, full
+    // locator of a page, which has the same position as the bare one.
+    final selector = locator.locations?.cssSelector;
+    if (raw != null && selector != null) {
+      unawaited(_onPageStart(raw.sectionIndex, selector));
+    }
     // Readium reports every page twice, a bare locator and then a full one
     // with the same position.
     if (raw == null || raw == _lastRaw) return;
@@ -139,6 +157,38 @@ class _ReadiumSession implements EpubReaderSession {
     if (status == ReadiumReaderStatus.reachedEndOfPublication) {
       _emit(_normalizer.finish());
     }
+  }
+
+  (int, String)? _lastPageStart;
+  int? _markupSection;
+  Future<String?>? _markup;
+
+  /// Finds where the page whose first visible element is [selector] starts
+  /// in [section]'s text and reports it on [pageTextStarts].
+  Future<void> _onPageStart(int section, String selector) async {
+    if (_lastPageStart == (section, selector)) return;
+    _lastPageStart = (section, selector);
+    // One section's markup is kept, since most page turns stay in it.
+    if (_markupSection != section) {
+      _markupSection = section;
+      _markup = readSectionMarkup(_epubPath, _spine[section].path);
+    }
+    final xhtml = await _markup;
+    if (xhtml == null) return;
+    final progression = await Isolate.run(
+      () => textProgressionOf(xhtml, selector),
+    );
+    // Debug and profile builds only; for checking cutoffs on a device.
+    if (kDebugMode || kProfileMode) {
+      final fields = {
+        'section': section,
+        'selector': selector,
+        'textProgression': progression,
+      };
+      debugPrint('LOREMARK_PAGE_TEXT ${jsonEncode(fields)}');
+    }
+    if (progression == null || _closed) return;
+    _pageTextStarts.add(ReaderPosition(section, progression));
   }
 
   void _emit(List<ReaderPosition> positions) {
@@ -231,6 +281,7 @@ class _ReadiumSession implements EpubReaderSession {
     // Not awaited: the future of a controller nobody listened to never
     // completes.
     unawaited(_positions.close());
+    unawaited(_pageTextStarts.close());
     if (!identical(ReadiumReaderService._current, this)) return;
     ReadiumReaderService._current = null;
     await _readium.closePublication();

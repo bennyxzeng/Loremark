@@ -29,6 +29,13 @@ abstract interface class EpubReaderSession {
   /// exactly 1.0 first.
   Stream<ReaderPosition> get positions;
 
+  /// Where the text of each page the reader lands on starts. Unlike
+  /// [positions], the progression is a fraction of the section's plain text
+  /// (`readSectionTexts`), not of its pages, so everything before it was on
+  /// an earlier page. Pages whose first element can't be found in the text
+  /// are left out.
+  Stream<ReaderPosition> get pageTextStarts;
+
   /// The rendered book, starting at [initialPosition] or the beginning.
   Widget buildView({ReaderPosition? initialPosition});
 

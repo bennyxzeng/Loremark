@@ -68,8 +68,13 @@ class _ReadScreenState extends State<ReadScreen> {
   /// platform view.
   Widget? _view;
   StreamSubscription<ReaderPosition>? _positionSubscription;
+  StreamSubscription<ReaderPosition>? _pageTextSubscription;
   ReadingPositionStore? _store;
   ReaderPosition? _position;
+
+  /// The start of the furthest page reached in this session, as a text
+  /// position, if the reader could locate it.
+  ReaderPosition? _furthestPageText;
   Object? _error;
 
   /// The opened search of the current book, kept so the index is built once.
@@ -124,6 +129,7 @@ class _ReadScreenState extends State<ReadScreen> {
     _releaseSession();
     _store = null;
     _position = null;
+    _furthestPageText = null;
     _error = null;
     _searchFuture = null;
     _cutoff.value = searchCutoff();
@@ -154,6 +160,7 @@ class _ReadScreenState extends State<ReadScreen> {
       _store = store;
       _position = position;
       _positionSubscription = session.positions.listen(_onPosition);
+      _pageTextSubscription = session.pageTextStarts.listen(_onPageTextStart);
       _view = session.buildView(initialPosition: position);
     });
   }
@@ -179,6 +186,8 @@ class _ReadScreenState extends State<ReadScreen> {
   void _releaseSession() {
     unawaited(_positionSubscription?.cancel());
     _positionSubscription = null;
+    unawaited(_pageTextSubscription?.cancel());
+    _pageTextSubscription = null;
     final session = _session;
     _session = null;
     _view = null;
@@ -215,6 +224,14 @@ class _ReadScreenState extends State<ReadScreen> {
       unawaited(_save(store, position));
     }
     widget.onPositionChanged?.call(position);
+  }
+
+  void _onPageTextStart(ReaderPosition start) {
+    _furthestPageText = searchCutoff(
+      current: start,
+      furthest: _furthestPageText,
+    );
+    _updateCutoff();
   }
 
   Future<void> _save(
@@ -262,12 +279,13 @@ class _ReadScreenState extends State<ReadScreen> {
     await _navigate(() => session.goTo(chosen));
   }
 
-  /// Recomputes what search may look at, from the reader's position and the
-  /// furthest one they reached.
+  /// Recomputes what search may look at, from the reader's position, the
+  /// furthest one they reached, and the furthest page start in the text.
   void _updateCutoff() {
-    _cutoff.value = completedSectionCutoff(
+    _cutoff.value = pageCutoff(
       current: _position,
       furthest: widget.furthestPosition?.call(),
+      furthestPageText: _furthestPageText,
     );
   }
 
