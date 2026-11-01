@@ -46,7 +46,19 @@ export DEEPSEEK_API_KEY
 export DEEPSEEK_MODEL=deepseek-flash
 ```
 
-`read` 会等待你粘贴 key，按回车后继续；不显示输入是正常的。不要把 key 填进 README 或 `.env.example`，程序也不会自动读取 `.env`。查看模型、导出 Markdown、初始化和 `--dry-run` 都不用 key。
+`read` 会等待你粘贴 key，按回车后继续；不显示输入是正常的。不要把 key 填进 README 或 `.env.example`。`story-model` 命令不会读取 `.env`；不想每个 Terminal 都输入 key，就用下面的 `run_story_model.py`。查看模型、导出 Markdown、初始化和 `--dry-run` 都不用 key。
+
+**也可以用一个文件运行，不用敲参数、不用 export：**
+
+1. 把 API key 粘贴到 `tools/story_model_lab/.env`（已被 git 忽略；文件不存在就复制 `.env.example`）。Terminal 里已经 export 的值优先。
+2. 修改 [`run_story_model.py`](run_story_model.py) 顶部的设置：`COMMAND`、`MODEL`（`Model.DEEPSEEK_FLASH` 或 `Model.GPT_6_1_TERRA`，provider 由模型决定）、`EFFORT`、`CHAPTER` / `SECTION`、`STORE`、`DRY_RUN` 等。
+3. 运行（在任何目录都可以，不需要先激活环境）：
+
+```bash
+tools/story_model_lab/.venv/bin/python tools/story_model_lab/run_story_model.py
+```
+
+在 VS Code 里把解释器选成 `tools/story_model_lab/.venv/bin/python`，然后点 **Run Python File** 即可。脚本运行前会打印对应的 `story-model` 命令，所以下面各步骤的说明同样适用。
 
 ### A. 第一次运行：从第一章建立一个新模型
 
@@ -298,7 +310,7 @@ SDK 对网络错误、429 和 5xx 最多重试两次。没有额外业务重试�
 
 ## 模型服务配置
 
-只读取环境变量，不自动加载 `.env`；变量名称见 `.env.example`。
+`story-model` 命令只读取环境变量，不自动加载 `.env`；`run_story_model.py` 会先读取 `tools/story_model_lab/.env`（不覆盖已经 export 的变量）。变量名称见 `.env.example`。
 
 | Provider | API key | 模型 | Base URL 环境变量及默认值 |
 | --- | --- | --- | --- |

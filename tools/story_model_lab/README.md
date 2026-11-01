@@ -46,7 +46,19 @@ export DEEPSEEK_API_KEY
 export DEEPSEEK_MODEL=deepseek-flash
 ```
 
-The `read` command waits for your key; paste it and press Enter. Hidden input is normal. Do not put the key in this README or `.env.example`; the tool does not automatically load `.env` files. Viewing, exporting Markdown, initializing a store, and `--dry-run` do not need a key.
+The `read` command waits for your key; paste it and press Enter. Hidden input is normal. Do not put the key in this README or `.env.example`. The `story-model` command does not load `.env` files; to skip typing the key in each terminal, use `run_story_model.py` below. Viewing, exporting Markdown, initializing a store, and `--dry-run` do not need a key.
+
+**Or run from one file, with no flags or exports:**
+
+1. Paste your API keys into `tools/story_model_lab/.env` (gitignored; copy `.env.example` if it is missing). Keys exported in the shell take precedence.
+2. Edit the settings at the top of [`run_story_model.py`](run_story_model.py): `COMMAND`, `MODEL` (`Model.DEEPSEEK_FLASH` or `Model.GPT_6_1_TERRA`; the provider follows from the model), `EFFORT`, `CHAPTER` / `SECTION`, `STORE`, `DRY_RUN`, and so on.
+3. Run it from any directory, without activating the environment:
+
+```bash
+tools/story_model_lab/.venv/bin/python tools/story_model_lab/run_story_model.py
+```
+
+In VS Code, select `tools/story_model_lab/.venv/bin/python` as the interpreter and use **Run Python File**. The script prints the equivalent `story-model` command before running it, so the steps below apply to it too.
 
 ### A. First run: build a new model from Chapter 1
 
@@ -327,8 +339,9 @@ saving partial JSON.
 
 ## Model providers
 
-Configuration comes only from environment variables; no `.env` file is loaded.
-`.env.example` lists the names.
+The `story-model` command reads configuration only from environment variables and loads no
+`.env` file. `run_story_model.py` first loads `tools/story_model_lab/.env`, without overriding
+variables already exported. `.env.example` lists the names.
 
 | Provider | Key | Model | Base URL (default) |
 | --- | --- | --- | --- |

@@ -67,7 +67,8 @@ class GenerateConfig:
         key = env.get(self.provider.api_key_env, "").strip()
         if not key:
             raise ConfigError(
-                f"{self.provider.api_key_env} is not set; export it in your shell "
+                f"{self.provider.api_key_env} is not set; export it in your shell or, for "
+                f"run_story_model.py, put it in tools/story_model_lab/.env "
                 f"(provider {self.provider.name!r}), or use --dry-run"
             )
         if not self.model:
