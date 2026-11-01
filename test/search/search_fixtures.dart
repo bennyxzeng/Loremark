@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:loremark/reader/reader_position.dart';
+import 'package:loremark/search/passage_search.dart';
 import 'package:loremark/search/search_index.dart';
 
 /// A small English story with known words, for ranking and snippet tests.
@@ -80,3 +81,9 @@ String randomParagraph(Random random) {
   }
   return out.toString();
 }
+
+/// Everything about a hit that must not change with text past the cutoff.
+String describe(SearchHit hit) =>
+    '${hit.passage.sectionIndex}:${hit.passage.paragraphIndex}|${hit.snippet}|'
+    '${hit.matches}|${hit.target.highlight}|${hit.target.before}|'
+    '${hit.target.after}';

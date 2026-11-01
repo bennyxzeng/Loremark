@@ -3,9 +3,7 @@ import 'package:loremark/search/stemmer.dart';
 import 'package:loremark/search/tokenizer.dart';
 
 List<String> terms(String text, {bool stem = false}) => [
-  for (final token in Tokenizer(
-    stem: stem ? porter2Stem : null,
-  ).tokenize(text))
+  for (final token in Tokenizer(stem: stem ? porter2Stem : null).tokenize(text))
     token.term,
 ];
 
@@ -23,10 +21,10 @@ void main() {
     test('keeps offsets into the original text', () {
       const text = '  Ryn’s Café  ';
       final tokens = Tokenizer().tokenize(text);
-      expect([for (final t in tokens) text.substring(t.start, t.end)], [
-        'Ryn’s',
-        'Café',
-      ]);
+      expect(
+        [for (final t in tokens) text.substring(t.start, t.end)],
+        ['Ryn’s', 'Café'],
+      );
     });
 
     test('folds diacritics and look-alike letters', () {
@@ -126,17 +124,14 @@ void main() {
     test('mixed scripts keep their own rules and offsets', () {
       const text = 'Klein 克莱恩 said café';
       final tokens = Tokenizer().tokenize(text);
-      expect(tokens.map((t) => t.term), [
-        'klein',
+      expect(tokens.map((t) => t.term), ['klein', '克莱', '莱恩', 'said', 'cafe']);
+      expect(tokens.map((t) => text.substring(t.start, t.end)), [
+        'Klein',
         '克莱',
         '莱恩',
         'said',
-        'cafe',
+        'café',
       ]);
-      expect(
-        tokens.map((t) => text.substring(t.start, t.end)),
-        ['Klein', '克莱', '莱恩', 'said', 'café'],
-      );
       expect(tokens.map((t) => t.cjk), [false, true, true, false, false]);
     });
 
