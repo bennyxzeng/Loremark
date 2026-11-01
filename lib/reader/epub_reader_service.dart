@@ -72,6 +72,35 @@ class TocEntry {
   String toString() => 'TocEntry($title, $href, $sectionIndex, depth: $depth)';
 }
 
+/// A passage to jump to and highlight, such as a search hit.
+///
+/// The renderer finds the passage by its text, which survives differences
+/// between our plain text and the rendered page. [progression] is only the
+/// fallback when the text can't be found.
+class PassageTarget {
+  const PassageTarget({
+    required this.sectionIndex,
+    required this.progression,
+    required this.highlight,
+    this.before = '',
+    this.after = '',
+  });
+
+  final int sectionIndex;
+  final double progression;
+
+  /// The text to highlight, from a single line of one paragraph.
+  final String highlight;
+
+  /// Up to 32 characters just before and after [highlight], to tell repeated
+  /// lines apart.
+  final String before;
+  final String after;
+
+  @override
+  String toString() => 'PassageTarget($sectionIndex, $progression, $highlight)';
+}
+
 enum EpubOpenFailure {
   /// The app's copy of the EPUB is gone.
   missingFile,
