@@ -22,6 +22,8 @@ class BookScreen extends StatefulWidget {
 }
 
 class _BookScreenState extends State<BookScreen> {
+  static const _storyMapTab = 3;
+
   int _selectedTab = 0;
   late final Future<StoryModel> _storyModel = loadStoryModel(
     demoStoryModelAsset,
@@ -51,6 +53,8 @@ class _BookScreenState extends State<BookScreen> {
                   ReadScreen(
                     book: widget.book,
                     readerService: const ReadiumReaderService(),
+                    // Wired to FileReadingInsights in the integration commit.
+                    onOpenStoryMap: () => _selectTab(_storyMapTab),
                   ),
                   const AskScreen(),
                   const NotesScreen(),

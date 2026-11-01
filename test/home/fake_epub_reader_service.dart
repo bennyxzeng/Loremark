@@ -73,6 +73,7 @@ class FakeEpubReaderSession implements EpubReaderSession {
   /// The `initialPosition` of every [buildView] call.
   final List<ReaderPosition?> builtViews = [];
   final List<TocEntry> goToCalls = [];
+  final List<ReaderPosition> goToPositionCalls = [];
   int forwardCalls = 0;
   int backwardCalls = 0;
   int closeCalls = 0;
@@ -102,7 +103,8 @@ class FakeEpubReaderSession implements EpubReaderSession {
   Future<void> goTo(TocEntry entry) async => goToCalls.add(entry);
 
   @override
-  Future<void> goToPosition(ReaderPosition position) async {}
+  Future<void> goToPosition(ReaderPosition position) async =>
+      goToPositionCalls.add(position);
 
   @override
   Future<void> goForward() async => forwardCalls++;
