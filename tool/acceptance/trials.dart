@@ -357,12 +357,16 @@ class TrialRunner {
     throw StateError('Airplane mode ${on ? 'on' : 'off'} did not take effect');
   }
 
+  /// Whether the device can resolve a public name. GitHub's hosted runners
+  /// drop outbound ICMP, so a ping reply can't be the signal; ping prints its
+  /// `PING host (address)` header only once the name resolved, and airplane
+  /// mode makes resolution fail.
   Future<bool> _canReachInternet() async {
     final result = await adb.run([
       'shell',
-      'ping -c 1 -W 2 8.8.8.8',
+      'ping -c 1 -W 2 connectivitycheck.gstatic.com',
     ], timeout: const Duration(seconds: 15));
-    return result.exitCode == 0;
+    return result.stdout.contains('PING connectivitycheck.gstatic.com (');
   }
 
   TrialResult _failed(int index, String kind, Stopwatch timer, String why) {
