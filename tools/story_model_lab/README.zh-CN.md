@@ -4,7 +4,7 @@
 
 [![Story Model 文件结构与标签](https://img.shields.io/badge/Story_Model-%E6%96%87%E4%BB%B6%E7%BB%93%E6%9E%84%E4%B8%8E%E6%A0%87%E7%AD%BE-0F766E?style=for-the-badge)](STORY_MODEL_FORMAT.zh-CN.md)
 
-**`story_model.json` 里面记录了什么？** 查看[文件结构与标签说明](STORY_MODEL_FORMAT.zh-CN.md)：人物、地点、组织、关系、事件、证据、疑点、历史修订，以及 `inferred`、flashback（对应 `past`）等依据和时间标签的完整含义。[English](STORY_MODEL_FORMAT.md)。
+**`story_model.json` 里面记录了什么？** 先看[一图看懂（附《86》例子）](STORY_MODEL_FORMAT.zh-CN.md#at-a-glance)，再查[文件结构与标签说明](STORY_MODEL_FORMAT.zh-CN.md)：人物、地点、组织、关系、事件、证据、疑点、历史修订，以及 `inferred`、flashback（对应 `past`）等依据和时间标签的完整含义。[English](STORY_MODEL_FORMAT.md)。
 
 [查看结构关系图](STORY_MODEL_FORMAT.zh-CN.md#visual-overview)：直观看每个字段存什么，以及实体、记录、证据和历史修订之间如何通过 ID 关联。
 

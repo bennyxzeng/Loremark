@@ -2,7 +2,58 @@
 
 [![English](https://img.shields.io/badge/English-64748B?style=for-the-badge)](STORY_MODEL_FORMAT.md) [![简体中文](https://img.shields.io/badge/%E7%AE%80%E4%BD%93%E4%B8%AD%E6%96%87-2563EB?style=for-the-badge)](STORY_MODEL_FORMAT.zh-CN.md)
 
-[返回 README](README.zh-CN.md) · [结构总览图](#visual-overview) · [文件结构](#file-structure) · [人物与知识记录](#characters-and-records) · [事件](#events) · [标签含义](#labels) · [历史修订](#revisions)
+[返回 README](README.zh-CN.md) · [一图看懂](#at-a-glance) · [结构总览图](#visual-overview) · [文件结构](#file-structure) · [人物与知识记录](#characters-and-records) · [事件](#events) · [标签含义](#labels) · [历史修订](#revisions)
+
+<a id="at-a-glance"></a>
+
+## 先看这一节：一图看懂
+
+![Story model 一图看懂：实体、7 种说法、原文证据、两个标签，以及章节推进时的替代/撤回/解答，全部以《86》第 1–2 章为例](images/story_model_at_a_glance.zh-CN.svg)
+
+**一句话：** story model 记录的是「读到某一节为止，读者知道了什么」。它不是全书设定集：读到第 2 章，就只有第 1–2 章里写出来的东西，后文的信息一律不会提前出现。
+
+**① 实体和说法。** 实体就是故事里的人物、地点、组织，本身只有一个编号和类别（Shin 是 `c006`）。所有具体信息都拆成一条条「说法」，通过编号指向实体，一共 7 种：名字、别名、属性、关系、事件、疑点、身份链接。拆成小条的好处是：每条都能单独附证据，也能单独被后面的章节推翻，而不影响其他信息。
+
+**证据。** 每条说法都要附原文：哪一节、哪一段、一句逐字一致的引文。程序会检查这句话确实出现在那一段里。但它只能证明「这句话存在」，不能证明这句话支持这条说法；内容对不对，仍要人对照原文判断。
+
+**② 两个标签。** 关系和事件有两个标签；属性和身份链接只有第一个；名字、别名、疑点没有标签。两个标签互相独立，可以任意组合。
+
+| 问题 | 标签 | 意思 | 86 的例子 |
+| --- | --- | --- | --- |
+| 怎么知道的？ | `explicit` | 原文直接写明 | Shin 是 Spearhead 战队的队长 |
+| | `reported` | 某个角色或书中来源说的，可能是假话；会记下是谁说的 | Karlstahl 说管制官们叫 Shin「死神」，他会把管制官「弄坏」 |
+| | `inferred` | 原文没直说，但能合理推出 | 从「她的短发是 Alba 的银色」推出 Annette 是 Alba（白系种） |
+| 发生在什么时候？ | `current` | 当前剧情 | Lena 被任命为 Spearhead 战队的管制官 |
+| | `past` | 过去、回忆、倒叙 | 九年前，Giad 帝国用 Legion 发动战争 |
+| | `future` | 计划、预测、将要发生 | 共和国认为两年后 Legion 会全部停机（示意） |
+| | `hypothetical` | 假设、「如果……」 | Raiden 心想：Shin 若生在骑士时代，会成为神话主角（示意） |
+| | `unknown` | 文本没交代是什么时候 | 这两章没有出现 |
+
+标「示意」的两行，原句出自这两章，但当前模型里没有记录这一条。另外，没有叫 `implicit` 的标签：原文没直说、靠推断得出的，就是 `inferred`。
+
+**③ 一节一节往后读。** 每处理一节就生成一个新的修订（revision）。修订号数的是处理了几节，不是章节号，因为序章、间章也各算一节。旧说法从来不删除；新章节改变了认识时，用三种操作之一让旧说法失效：
+
+- **替代（supersede）**：新说法取代关于同一件事的旧说法。例如第 2 章揭示 Undertaker 的本名是 Shinei Nouzen，年龄也从「和 Lena 差不多大」更新为「快满十六岁」。
+- **撤回（retract）**：新章节证明旧说法是错的，作废且没有替代品。
+- **解答（resolve）**：某个疑点有了答案。
+
+因为旧说法都还在，所以可以还原任意一章读完时的状态。App 的章节切换就是这样做的：选第 1 章时 Shin 叫 Undertaker，选第 2 章时叫 Shinei Nouzen，第 2 章才出场的 Raiden 在第 1 章时不会出现。
+
+**图里的叫法在文件里对应什么：**
+
+| 图里的叫法 | `story_model.json` 里的字段 |
+| --- | --- |
+| 实体 | `entities` |
+| 7 种说法 | `records` 下的 `names`、`aliases`、`attributes`、`relationships`、`events`、`uncertainties`、`identity_links` |
+| 证据 | 每条记录的 `evidence` |
+| 两个标签 | 每条记录 `payload` 里的 `assertion`、`temporal_context` |
+| 替代 / 撤回 / 解答 | `transitions` |
+| 现在有效的说法 | `current.active_record_ids` |
+| 读到了哪一节 | `processed_sections`、`revision` |
+
+下面是逐字段的详细参考。
+
+---
 
 Story Model 记录的是：**正文介绍了哪些人物、地点和组织，发生了什么，它们有什么关系，还有哪些疑点，以及每条主张由哪些原文支持**。它还保留读者何时得知一条信息，以及后续章节如何改变已有认知。
 

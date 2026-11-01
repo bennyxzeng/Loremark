@@ -4,7 +4,7 @@
 
 [![Story Model structure & labels](https://img.shields.io/badge/Story_Model-Structure_%26_Labels-0F766E?style=for-the-badge)](STORY_MODEL_FORMAT.md)
 
-**What does `story_model.json` contain?** Read the [file structure and label guide](STORY_MODEL_FORMAT.md) for characters, places, organizations, relationships, events, evidence, open questions, revisions, and every assertion/time label, including `inferred` and flashbacks (`past`). [简体中文](STORY_MODEL_FORMAT.zh-CN.md).
+**What does `story_model.json` contain?** Start with the [one-page diagram with 86 examples](STORY_MODEL_FORMAT.md#at-a-glance), then read the [file structure and label guide](STORY_MODEL_FORMAT.md) for characters, places, organizations, relationships, events, evidence, open questions, revisions, and every assertion/time label, including `inferred` and flashbacks (`past`). [简体中文](STORY_MODEL_FORMAT.zh-CN.md).
 
 [View the structure diagrams](STORY_MODEL_FORMAT.md#visual-overview): field contents and the ID links between entities, records, evidence, and revisions.
 
