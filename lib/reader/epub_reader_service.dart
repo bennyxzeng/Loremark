@@ -1,0 +1,94 @@
+import 'package:flutter/widgets.dart';
+
+import 'reader_position.dart';
+
+/// Opens EPUBs for reading.
+///
+/// The Read tab only talks to this interface, so the rendering package stays
+/// in one adapter and widget tests can use a fake instead of native code.
+abstract interface class EpubReaderService {
+  /// Opens the EPUB at [epubPath].
+  ///
+  /// Throws an [EpubOpenException] if the file is missing or can't be read.
+  Future<EpubReaderSession> open(String epubPath);
+}
+
+/// One open book.
+abstract interface class EpubReaderSession {
+  /// The book's table of contents, flattened in reading order. Nested entries
+  /// keep their [TocEntry.depth].
+  List<TocEntry> get tableOfContents;
+
+  /// Number of items in the EPUB spine, which is one more than the largest
+  /// [ReaderPosition.sectionIndex].
+  int get sectionCount;
+
+  /// Every position the reader moves to: page turns, chapter jumps, and the
+  /// initial position once the view has opened. When the reader turns from
+  /// the end of a section into the next one, the old section is reported at
+  /// exactly 1.0 first.
+  Stream<ReaderPosition> get positions;
+
+  /// The rendered book, starting at [initialPosition] or the beginning.
+  Widget buildView({ReaderPosition? initialPosition});
+
+  Future<void> goTo(TocEntry entry);
+
+  Future<void> goToPosition(ReaderPosition position);
+
+  /// Turns to the next page.
+  Future<void> goForward();
+
+  /// Turns to the previous page.
+  Future<void> goBackward();
+
+  /// Releases the book. The session can't be used afterwards.
+  Future<void> close();
+}
+
+/// A chapter in the table of contents.
+class TocEntry {
+  const TocEntry({
+    required this.title,
+    required this.href,
+    required this.sectionIndex,
+    this.depth = 0,
+  });
+
+  final String title;
+
+  /// Where the entry points, as written in the EPUB, possibly with a
+  /// `#fragment`.
+  final String href;
+
+  /// The spine item the entry points to, or null if it points outside the
+  /// spine.
+  final int? sectionIndex;
+
+  /// Nesting level: 0 for a top-level chapter.
+  final int depth;
+
+  @override
+  String toString() => 'TocEntry($title, $href, $sectionIndex, depth: $depth)';
+}
+
+enum EpubOpenFailure {
+  /// The app's copy of the EPUB is gone.
+  missingFile,
+
+  /// The file exists but isn't an EPUB the reader can open.
+  unreadable,
+}
+
+/// Why an EPUB couldn't be opened, so the Read tab can say so plainly.
+class EpubOpenException implements Exception {
+  const EpubOpenException(this.failure, [this.cause]);
+
+  final EpubOpenFailure failure;
+
+  /// The underlying error, for logs.
+  final Object? cause;
+
+  @override
+  String toString() => 'EpubOpenException($failure, $cause)';
+}
