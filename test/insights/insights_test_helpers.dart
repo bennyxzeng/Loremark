@@ -25,13 +25,20 @@ BookUnits tenSections({int perSection = 2000, List<bool>? linear}) => BookUnits(
   linear: linear ?? List.filled(10, true),
 );
 
+/// Ten sections of [pagesPerSection] pages of 200 units, for scripts that
+/// read a long way.
+BookUnits longBook(int pagesPerSection) =>
+    tenSections(perSection: 200 * pagesPerSection);
+
 /// Builds a log record by record on a timeline.
 ///
-/// A page `n` of a section is at progression `n / 10`, so with
+/// A page `n` of a section is at progression `n / pagesPerSection`, so with
 /// [tenSections] each page is 200 units.
 class LogScript {
-  LogScript({int? startMs, this.tz = 0}) : t = startMs ?? baseMs;
+  LogScript({int? startMs, this.tz = 0, this.pagesPerSection = 10})
+    : t = startMs ?? baseMs;
 
+  final int pagesPerSection;
   int t;
   final int tz;
   final records = <LogRecord>[];
@@ -84,7 +91,7 @@ class LogScript {
     num dwell, [
     NavigationCause cause = NavigationCause.pageForward,
   ]) {
-    pos(section, page / 10, cause);
+    pos(section, page / pagesPerSection, cause);
     return wait(dwell);
   }
 
