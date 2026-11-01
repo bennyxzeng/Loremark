@@ -106,16 +106,17 @@ List<QueryPart> parseQuery(
 
 QueryPart _quoted(List<Token> tokens) => tokens.length > 1
     ? QueryPart(tokens: tokens, phrase: true, required: true)
-    : _single(tokens.single);
+    : _single(tokens.single, required: true);
 
 /// A run of overlapping CJK bigrams from the text, or a lone character.
 QueryPart _run(List<Token> tokens) => tokens.length > 1
     ? QueryPart(tokens: tokens, phrase: true)
     : _single(tokens.single);
 
-QueryPart _single(Token token) => token.cjk && token.term.runes.length == 1
-    ? QueryPart(substring: token.term)
-    : QueryPart(tokens: [token]);
+QueryPart _single(Token token, {bool required = false}) =>
+    token.cjk && token.term.runes.length == 1
+    ? QueryPart(substring: token.term, required: required)
+    : QueryPart(tokens: [token], required: required);
 
 /// Whether the query ends in a space or a closing quote, so no word is being
 /// typed.

@@ -126,6 +126,7 @@ class _ReadScreenState extends State<ReadScreen> {
     _position = null;
     _error = null;
     _searchFuture = null;
+    _cutoff.value = searchCutoff();
 
     final book = widget.book;
     final sessionFuture = _openSession(book);

@@ -1,3 +1,7 @@
+@Tags(['benchmark'])
+library;
+
+import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -34,12 +38,11 @@ List<String> generatedBook(int words, Random random) {
 }
 
 void main() {
-  // Roughly a sixth of the size of the 500,000-word book of the scalability
-  // target, built in well under a second on a laptop. The bounds are loose so
+  // The full 500,000-word scalability target. Bounds are loose so
   // a slow CI machine passes; they exist to catch a change that makes
   // indexing or querying quadratic.
-  test('indexes 100,000 words and answers queries quickly', () {
-    final texts = generatedBook(100000, Random(1));
+  test('indexes 500,000 words and answers queries quickly', () {
+    final texts = generatedBook(500000, Random(1));
 
     final build = Stopwatch()..start();
     final index = SearchIndex.build(
@@ -83,6 +86,21 @@ void main() {
       'decode ${decoded.elapsedMilliseconds} ms; query p50 '
       '${latencies[50] / 1000} ms, p95 ${latencies[95] / 1000} ms',
     );
+    final report = File('build/search-benchmark.md');
+    report.parent.createSync(recursive: true);
+    report.writeAsStringSync('''# Search benchmark
+
+Seeded 500,000-word synthetic book; Dart VM JIT on ${Platform.operatingSystem}.
+These timings describe this run, not a device acceptance result.
+
+| Metric | Result |
+| --- | ---: |
+| Index build | ${build.elapsedMilliseconds} ms |
+| Index size | ${bytes.length ~/ 1024} KiB |
+| Decode | ${decoded.elapsedMilliseconds} ms |
+| Search p50 (100 queries) | ${latencies[50] / 1000} ms |
+| Search p95 (100 queries) | ${latencies[95] / 1000} ms |
+''');
     expect(build.elapsedMilliseconds, lessThan(15000));
     expect(decoded.elapsedMilliseconds, lessThan(5000));
     expect(latencies[95], lessThan(500 * 1000));

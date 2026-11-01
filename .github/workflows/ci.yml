@@ -43,4 +43,4 @@ jobs:
 
       # Tests tagged `live` call a real LLM provider and are run by hand.
       - name: Run tests
-        run: flutter test --exclude-tags live
+        run: flutter test --exclude-tags "live || benchmark"

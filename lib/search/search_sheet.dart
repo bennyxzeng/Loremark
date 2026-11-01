@@ -29,7 +29,7 @@ class SearchSheetController {
       _opener = opener;
 
   void detach(Future<void> Function(String initialQuery) opener) {
-    if (identical(_opener, opener)) _opener = null;
+    if (_opener == opener) _opener = null;
   }
 
   /// Opens the sheet with [initialQuery] already typed and searched.

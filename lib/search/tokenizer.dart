@@ -1,6 +1,6 @@
 /// Bump when tokenizing, folding or stemming changes in a way that alters
 /// terms, so a saved index is rebuilt instead of read with the wrong rules.
-const tokenizerVersion = 1;
+const tokenizerVersion = 2;
 
 /// One searchable unit of a text.
 class Token {
