@@ -73,6 +73,7 @@ class FakeEpubReaderSession implements EpubReaderSession {
   /// The `initialPosition` of every [buildView] call.
   final List<ReaderPosition?> builtViews = [];
   final List<TocEntry> goToCalls = [];
+  final List<ReaderPosition> goToPositionCalls = [];
   final List<PassageTarget> shownPassages = [];
 
   /// How often the passage highlight was cleared.
@@ -106,7 +107,8 @@ class FakeEpubReaderSession implements EpubReaderSession {
   Future<void> goTo(TocEntry entry) async => goToCalls.add(entry);
 
   @override
-  Future<void> goToPosition(ReaderPosition position) async {}
+  Future<void> goToPosition(ReaderPosition position) async =>
+      goToPositionCalls.add(position);
 
   @override
   Future<void> showPassage(PassageTarget target) async =>

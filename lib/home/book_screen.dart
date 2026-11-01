@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../library/book.dart';
+import '../insights/file_reading_insights.dart';
 import '../reader/readium_reader_service.dart';
 import '../search/search_index_store.dart';
 import '../story_map/story_map_screen.dart';
@@ -23,6 +24,8 @@ class BookScreen extends StatefulWidget {
 }
 
 class _BookScreenState extends State<BookScreen> {
+  static const _storyMapTab = 3;
+
   int _selectedTab = 0;
   late final Future<StoryModel> _storyModel = loadStoryModel(
     demoStoryModelAsset,
@@ -52,6 +55,12 @@ class _BookScreenState extends State<BookScreen> {
                   ReadScreen(
                     book: widget.book,
                     readerService: const ReadiumReaderService(),
+                    isActive: _selectedTab == 0,
+                    openInsights: () => FileReadingInsights.open(
+                      bookId: widget.book.id,
+                      epubPath: widget.book.epubPath,
+                    ),
+                    onOpenStoryMap: () => _selectTab(_storyMapTab),
                     openSearch: () => openPassageSearch(
                       bookId: widget.book.id,
                       epubPath: widget.book.epubPath,
