@@ -150,9 +150,8 @@ class PositionRecord extends LogRecord {
     required this.cause,
   });
 
-  /// A position as the log stores it: progression to four decimals, which is
-  /// finer than a unit in any section. Live code and replay both go through
-  /// this, so they can't disagree on rounding.
+  /// Keeps the renderer's exact progression. Rounding upward could move the
+  /// furthest position past a spoiler cutoff, especially in long sections.
   factory PositionRecord.at(
     int t,
     ReaderPosition position,
@@ -160,7 +159,7 @@ class PositionRecord extends LogRecord {
   ) => PositionRecord(
     t: t,
     section: position.sectionIndex,
-    progression: (position.progression.clamp(0.0, 1.0) * 10000).round() / 10000,
+    progression: position.progression.clamp(0.0, 1.0),
     cause: cause,
   );
 

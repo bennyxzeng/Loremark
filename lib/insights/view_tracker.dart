@@ -406,8 +406,12 @@ class ViewTracker {
   }
 
   void _noteFurthest(int section, double progression, double offset) {
-    if (offset > _furthestOffset) {
-      _furthestOffset = offset;
+    _furthestOffset = max(_furthestOffset, offset);
+    final previous = _furthest;
+    if (previous == null ||
+        section > previous.sectionIndex ||
+        (section == previous.sectionIndex &&
+            progression > previous.progression)) {
       _furthest = ReaderPosition(section, progression);
     }
   }

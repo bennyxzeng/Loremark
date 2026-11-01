@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loremark/insights/insights_config.dart';
+import 'package:loremark/insights/book_units.dart';
 import 'package:loremark/insights/reading_insights.dart';
 import 'package:loremark/insights/reading_log.dart';
 import 'package:loremark/insights/view_tracker.dart';
@@ -23,6 +24,26 @@ List<PageView> started(List<ViewEvent> events) => [
 ];
 
 void main() {
+  test('furthest position survives missing or empty section text', () {
+    for (final units in [
+      BookUnits.empty(),
+      BookUnits(counts: [0, 0], linear: [true, true]),
+    ]) {
+      final tracker = ViewTracker(units, const InsightsConfig());
+      run(
+        LogScript()
+            .open()
+            .pos(0, 0.5)
+            .wait(10)
+            .pos(1, 0.8)
+            .wait(10)
+            .pos(0, 0.1),
+        tracker,
+      );
+      expect(tracker.furthest!.sectionIndex, 1);
+      expect(tracker.furthest!.progression, 0.8);
+    }
+  });
   group('dwell', () {
     test('is the time until the reader moved on', () {
       final views = ended(run(LogScript().open().read(0, 0, 3, 30)));

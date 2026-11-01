@@ -55,15 +55,18 @@ void main() {
       }
     });
 
-    test('positions are stored to four decimals', () {
-      final record = PositionRecord.at(
-        1,
-        const ReaderPosition(2, 0.123456789),
-        NavigationCause.swipe,
-      );
-      expect(record.progression, 0.1235);
-      expect(jsonEncode(record.toJson()), contains('"p":0.1235'));
-    });
+    test(
+      'positions retain exact progression without rounding a cutoff upward',
+      () {
+        final record = PositionRecord.at(
+          1,
+          const ReaderPosition(2, 0.123456789),
+          NavigationCause.swipe,
+        );
+        expect(record.progression, 0.123456789);
+        expect(jsonEncode(record.toJson()), contains('"p":0.123456789'));
+      },
+    );
 
     test('unknown kinds and malformed records are ignored', () {
       expect(LogRecord.fromJson({'k': 'zzz', 't': 1}), isNull);

@@ -39,11 +39,13 @@ void main() {
     Future<ReadingInsights> Function()? openInsights,
     VoidCallback? onSearchChapter,
     bool withInsights = true,
+    bool isActive = true,
   }) => MaterialApp(
     theme: buildLoremarkTheme(),
     home: Scaffold(
       body: ReadScreen(
         book: book,
+        isActive: isActive,
         readerService: service,
         openPositionStore: () async => store,
         openInsights: withInsights
@@ -551,6 +553,34 @@ void main() {
         tester.binding.handleAppLifecycleStateChanged(state);
       }
     }
+
+    testWidgets('another tab pauses reading until the reader is visible', (
+      tester,
+    ) async {
+      final session = await openBook(tester);
+      await emit(tester, session, start);
+      await tester.pumpWidget(screen(isActive: false));
+      expect(insights.hiddenCalls, 1);
+      await emit(tester, session, const ReaderPosition(1, 0.1));
+      expect(insights.positions.length, 1);
+      await tester.pumpWidget(screen());
+      expect(insights.shownCalls, 1);
+      expect(service.sessions.length, 1);
+    });
+
+    testWidgets('a hidden tab stays paused through an app switch', (
+      tester,
+    ) async {
+      await openBook(tester);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpWidget(screen(isActive: false));
+      background(tester);
+      foreground(tester);
+      expect(insights.hiddenCalls, 1);
+      expect(insights.shownCalls, 0);
+      await tester.pumpWidget(screen());
+      expect(insights.shownCalls, 1);
+    });
 
     testWidgets('hiding and showing the app is reported', (tester) async {
       await openBook(tester);

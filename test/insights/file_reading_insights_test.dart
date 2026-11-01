@@ -99,6 +99,24 @@ void main() {
   Future<List<LogRecord>> logOf(String id) async =>
       (await readLogFile(readingLogFile(root, id).path)).records;
 
+  test(
+    'concurrent close is idempotent and ignores late position events',
+    () async {
+      final insights = await open();
+      page(insights, 0, 0, 20);
+      final first = insights.close();
+      final second = insights.close();
+      insights.recordPosition(
+        const ReaderPosition(0, 0.5),
+        NavigationCause.swipe,
+      );
+      await Future.wait([first, second]);
+      final records = await logOf('book1');
+      expect(records.whereType<CloseRecord>(), hasLength(1));
+      expect(records.whereType<PositionRecord>(), hasLength(1));
+    },
+  );
+
   group('opening', () {
     test('writes a header and an open record', () async {
       final insights = await open();

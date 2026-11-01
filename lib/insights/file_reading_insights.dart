@@ -115,6 +115,7 @@ class FileReadingInsights extends ChangeNotifier implements ReadingInsights {
   final _signals = StreamController<ConfusionSignal>.broadcast();
   bool _hintsEnabled;
   var _closed = false;
+  Future<void>? _closing;
 
   int get _ms => _clock().millisecondsSinceEpoch;
   int get _tz => _clock().timeZoneOffset.inMinutes;
@@ -246,11 +247,13 @@ class FileReadingInsights extends ChangeNotifier implements ReadingInsights {
   }
 
   @override
-  Future<void> close() async {
-    if (_closed) return;
+  Future<void> close() => _closing ??= _close();
+
+  Future<void> _close() async {
     _ingest(CloseRecord(t: _ms));
-    await flush();
+    // Stop producers before awaiting I/O, including a second close call.
     _closed = true;
+    await flush();
     await _signals.close();
     dispose();
   }

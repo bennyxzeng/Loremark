@@ -27,6 +27,7 @@ class ReadScreen extends StatefulWidget {
     required this.readerService,
     this.openPositionStore = ReadingPositionStore.open,
     this.openInsights,
+    this.isActive = true,
     this.onPositionChanged,
     this.onOpenStoryMap,
     this.onSearchChapter,
@@ -34,6 +35,9 @@ class ReadScreen extends StatefulWidget {
   });
 
   final Book book;
+
+  /// False when another tab covers the reader. Hidden pages are not reading.
+  final bool isActive;
   final EpubReaderService readerService;
 
   /// Opens where [book]'s position is saved and resumed from. If it fails,
@@ -104,14 +108,23 @@ class _ReadScreenState extends State<ReadScreen> {
   /// Identifies the latest open, so a slow earlier one can tell it was
   /// replaced or the screen was disposed.
   int _generation = 0;
+  bool _appVisible = true;
+  bool _insightsVisible = true;
+  bool _modalVisible = false;
 
   @override
   void initState() {
     super.initState();
     widget.controller?._jump = _jumpTo;
     _lifecycle = AppLifecycleListener(
-      onHide: () => _tellInsights((insights) => insights.recordHidden()),
-      onShow: () => _tellInsights((insights) => insights.recordShown()),
+      onHide: () {
+        _appVisible = false;
+        _updateVisibility();
+      },
+      onShow: () {
+        _appVisible = true;
+        _updateVisibility();
+      },
     );
     unawaited(_open());
   }
@@ -119,6 +132,7 @@ class _ReadScreenState extends State<ReadScreen> {
   @override
   void didUpdateWidget(ReadScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _updateVisibility();
     if (!identical(oldWidget.controller, widget.controller)) {
       oldWidget.controller?._jump = null;
       widget.controller?._jump = _jumpTo;
@@ -179,6 +193,8 @@ class _ReadScreenState extends State<ReadScreen> {
       _session = session;
       _store = store;
       _insights = insights;
+      _insightsVisible = true;
+      _updateVisibility();
       _position = position;
       _positionSubscription = session.positions.listen(_onPosition);
       _view = session.buildView(initialPosition: position);
@@ -216,6 +232,23 @@ class _ReadScreenState extends State<ReadScreen> {
       );
       return null;
     }
+  }
+
+  void _updateVisibility() {
+    final visible = _appVisible && widget.isActive && !_modalVisible;
+    if (_insights == null || visible == _insightsVisible) return;
+    _insightsVisible = visible;
+    _tellInsights((insights) {
+      if (visible) {
+        insights.recordShown();
+        final position = _position;
+        if (position != null) {
+          insights.recordPosition(position, NavigationCause.open);
+        }
+      } else {
+        insights.recordHidden();
+      }
+    });
   }
 
   void _releaseSession() {
@@ -282,7 +315,9 @@ class _ReadScreenState extends State<ReadScreen> {
 
   void _onPosition(ReaderPosition position) {
     final cause = _takeCause(position);
-    _tellInsights((insights) => insights.recordPosition(position, cause));
+    if (_insightsVisible) {
+      _tellInsights((insights) => insights.recordPosition(position, cause));
+    }
     setState(() => _position = position);
     final store = _store;
     if (store != null) {
@@ -361,19 +396,34 @@ class _ReadScreenState extends State<ReadScreen> {
     if (insights == null) {
       return;
     }
-    await showInsightsSheet(
-      context,
-      insights: insights,
-      timeLeft: _timeLeft(_usableEntries(session)),
+    await _withReaderCovered(
+      () => showInsightsSheet(
+        context,
+        insights: insights,
+        timeLeft: _timeLeft(_usableEntries(session)),
+      ),
     );
+  }
+
+  Future<T> _withReaderCovered<T>(Future<T> Function() show) async {
+    _modalVisible = true;
+    _updateVisibility();
+    try {
+      return await show();
+    } finally {
+      _modalVisible = false;
+      if (mounted) _updateVisibility();
+    }
   }
 
   Future<void> _openContents(EpubReaderSession session) async {
     final entries = _usableEntries(session);
-    final chosen = await showTableOfContentsSheet(
-      context,
-      entries: entries,
-      current: _currentEntry(entries),
+    final chosen = await _withReaderCovered(
+      () => showTableOfContentsSheet(
+        context,
+        entries: entries,
+        current: _currentEntry(entries),
+      ),
     );
     if (chosen == null || !mounted || !identical(session, _session)) {
       return;
