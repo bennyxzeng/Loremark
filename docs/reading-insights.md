@@ -71,7 +71,9 @@ Under the application support directory's `library/reading_log/`:
 - `settings.json`: persisted Reading hints setting.
 
 Writes queue in order and coalesce same-turn events. Hiding/closing flushes to
-storage. A torn JSONL line is skipped; the next append begins a new line.
+storage. A torn JSONL line is skipped; the next append begins a new line. A position or
+furthest record naming a section the book doesn't have (a damaged line) is
+ignored when replayed, so it can't widen what search opens.
 A newer log format is read-only to avoid an older app damaging it. Old events
 are compacted in an isolate when a book opens, into daily totals plus furthest
 position, retaining recent raw events for replay. The byte limits first reduce

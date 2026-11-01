@@ -222,9 +222,17 @@ class ViewTracker {
     return sorted[sorted.length ~/ 2];
   }
 
+  /// Whether [section] is outside the book. A damaged line can name any
+  /// section, and one past the end would let a cutoff open the whole book. A
+  /// book that couldn't be counted has no sections to check against.
+  bool _outsideBook(int section) =>
+      !units.isEmpty && section >= units.sectionCount;
+
   /// Takes the next record and returns what it settled.
   List<ViewEvent> add(LogRecord record) => switch (record) {
     OpenRecord() => _open(record),
+    PositionRecord(:final section) ||
+    FurthestRecord(:final section) when _outsideBook(section) => const [],
     PositionRecord() => _position(record),
     BackgroundRecord() => _background(record),
     ForegroundRecord() => _foreground(record),

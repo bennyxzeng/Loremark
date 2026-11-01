@@ -202,6 +202,28 @@ void main() {
       expect(records.whereType<PositionRecord>().last.progression, 0.6);
     });
 
+    test('ignores positions past the end of the book', () async {
+      final file = readingLogFile(root, 'book1');
+      await file.parent.create(recursive: true);
+      await file.writeAsString(
+        '{"k":"hdr","v":1,"id":"book1","t":1}\n'
+        '{"k":"fur","s":999,"p":0.1,"t":1}\n'
+        '{"k":"pos","t":${baseMs - 600000},"s":3,"p":0.5,"c":"pf"}\n'
+        '{"k":"pos","t":${baseMs - 590000},"s":999,"p":0.2,"c":"pf"}\n',
+      );
+
+      final insights = await open();
+
+      // The book has ten sections, so search would never be told 999.
+      expect(insights.furthest, const ReaderPosition(3, 0.5));
+      insights.recordPosition(
+        const ReaderPosition(50, 0),
+        NavigationCause.swipe,
+      );
+      expect(insights.furthest, const ReaderPosition(3, 0.5));
+      await insights.close();
+    });
+
     test('a log from a newer version is read but not written', () async {
       final file = readingLogFile(root, 'book1');
       await file.parent.create(recursive: true);

@@ -502,6 +502,40 @@ void main() {
       expect(tracker.furthest!.sectionIndex, 7);
     });
 
+    test('ignores positions past the last section of the book', () {
+      final tracker = ViewTracker(tenSections(), const InsightsConfig());
+      final events = run(
+        LogScript()
+            .open()
+            .page(2, 3, 30, NavigationCause.open)
+            .pos(999, 0.5, NavigationCause.tocJump)
+            .wait(30)
+            .pos(10, 0)
+            .wait(30)
+            .page(2, 4, 30),
+        tracker,
+      );
+      tracker.add(const FurthestRecord(section: 999, progression: 0.1, t: 1));
+
+      expect(tracker.furthest, const ReaderPosition(2, 0.4));
+      expect(started(events).map((v) => v.section), [2, 2]);
+    });
+
+    test('takes the last section, but not one beyond it', () {
+      final tracker = ViewTracker(tenSections(), const InsightsConfig())
+        ..add(const FurthestRecord(section: 9, progression: 1, t: 1))
+        ..add(const FurthestRecord(section: 10, progression: 0, t: 1));
+
+      expect(tracker.furthest, const ReaderPosition(9, 1));
+    });
+
+    test('a book that could not be counted has no sections to check', () {
+      final tracker = ViewTracker(BookUnits.empty(), const InsightsConfig())
+        ..add(const FurthestRecord(section: 40, progression: 0.5, t: 1));
+
+      expect(tracker.furthest, const ReaderPosition(40, 0.5));
+    });
+
     test('is null before anything is read', () {
       expect(
         ViewTracker(tenSections(), const InsightsConfig()).furthest,
