@@ -154,6 +154,16 @@ flutter test --exclude-tags live
 
 See [docs/testing.md](docs/testing.md) for how to add a test and how CI works.
 
+### EPUB reader
+
+The Read tab renders books with [Readium](https://readium.org/) through the [`flutter_readium`](https://pub.dev/packages/flutter_readium) plugin, so it needs a real device or emulator; `flutter test` uses a fake reader instead. To try it on Android (Android SDK with platform 37 and an emulator or phone):
+
+```bash
+flutter run
+```
+
+Then tap **Import EPUB**, pick a DRM-free EPUB (for example one from [Project Gutenberg](https://www.gutenberg.org/)), and read: turn pages with the arrows or by swiping, and jump to a chapter from the contents button. The app saves your place on every page turn and reopens the book there. iOS needs iOS 15 or later and has not been tested yet.
+
 Have feedback? [Open an issue](https://github.com/bennyxzeng/Loremark/issues) with the reading scenario, the chapter boundary, and what you expected Loremark to do. Clearly label any spoilers in examples.
 
 ## Meet your reading companion
