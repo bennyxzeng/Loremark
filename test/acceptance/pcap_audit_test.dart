@@ -90,6 +90,23 @@ void main() {
       expect(_audit(frames, withControl: false).pass, isFalse);
     });
 
+    test('allow-list permits HTTPS destinations, never plaintext HTTP', () {
+      final audit = _audit(
+        [
+          _dnsAnswer(_t0 + 110 * _s, 'api.loremark.app', '203.0.113.7'),
+          _http(_t0 + 120 * _s, 'api.loremark.app', '203.0.113.7'),
+          (
+            _t0 + 121 * _s,
+            ipv4Frame(guestIp, '203.0.113.7', 6, tcp(41000, 80, [1, 2, 3])),
+          ),
+        ],
+        allowed: {'api.loremark.app'},
+      );
+      expect(audit.unexpectedNames, isEmpty);
+      expect(audit.plaintextHttp, ['203.0.113.7:80', 'api.loremark.app:80']);
+      expect(audit.pass, isFalse);
+    });
+
     test('ignores packets outside the session window', () {
       final audit = _audit([
         _hello(_t0 + 60 * _s, 'before.example.org', '198.51.100.2'),
@@ -242,6 +259,14 @@ void main() {
     test('returns null when the device prints no such table', () {
       expect(parseNetstats('Active interfaces:\n  iface=wlan0'), isNull);
       expect(parseNetstats(''), isNull);
+      expect(parseNetstats('mAppUidStatsMap:\n permission denied'), isNull);
+      expect(parseNetstats('mAppUidStatsMap:\n uid bytes packets'), isNull);
+      expect(
+        parseNetstats(
+          dump.replaceFirst('10165 51609 62 8235 52', '10165 unavailable'),
+        ),
+        isNull,
+      );
     });
 
     test('subtracts two readings', () {

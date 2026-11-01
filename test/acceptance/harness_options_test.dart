@@ -16,7 +16,6 @@ void main() {
 
   test('parses every option', () {
     final options = parseOptions([
-      '--ci',
       '--serial',
       'emulator-5556',
       '--adb',
@@ -47,7 +46,7 @@ void main() {
       '--no-install',
     ]);
 
-    expect(options.ci, isTrue);
+    expect(options.ci, isFalse);
     expect(options.serial, 'emulator-5556');
     expect(options.adb, '/sdk/adb');
     expect(options.apk, 'app.apk');
@@ -68,6 +67,18 @@ void main() {
   test('recognises help', () {
     expect(parseOptions(['--help']).help, isTrue);
     expect(parseOptions(['-h']).help, isTrue);
+  });
+
+  test('CI cannot silently skip acceptance requirements', () {
+    expect(parseOptions(['--ci', '--pcap', '/tmp/e.pcap']).ci, isTrue);
+    for (final args in [
+      ['--ci', '--trials', '19'],
+      ['--ci', '--skip-offline'],
+      ['--ci', '--skip-privacy'],
+      ['--ci'],
+    ]) {
+      expect(() => parseOptions(args), throwsA(isA<UsageError>()));
+    }
   });
 
   test('rejects unknown flags, missing values and bad numbers', () {

@@ -163,6 +163,16 @@ Options parseOptions(List<String> args) {
         throw UsageError('Unknown option: $arg');
     }
   }
+  if (options.ci &&
+      !options.help &&
+      (options.trials < 20 ||
+          options.skipOffline ||
+          options.skipPrivacy ||
+          options.pcap == null)) {
+    throw UsageError(
+      '--ci requires --pcap, at least 20 trials, offline and privacy checks',
+    );
+  }
   return _copy(options, allowedHosts: allowed);
 }
 

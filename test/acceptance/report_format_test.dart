@@ -99,6 +99,27 @@ void main() {
       expect(unmeasured.pass, isFalse);
     });
 
+    test("a supplied capture that can't be verified is inconclusive", () {
+      const missing = PrivacyResult(
+        uid: 10216,
+        before: UidTraffic(),
+        after: UidTraffic(),
+        uidsSeen: 16,
+        captureRequired: true,
+        pcapNote: 'stale capture',
+      );
+      expect(missing.netstatsPass, isTrue);
+      expect(missing.captureInconclusive, isTrue);
+      // The UID counters still decide; the capture row never says PASS.
+      expect(missing.pass, isTrue);
+      final markdown = _report(privacy: missing).toMarkdown();
+      expect(markdown, contains('| INCONCLUSIVE |'));
+      expect(
+        markdown,
+        isNot(contains('Capture policy (HTTPS, hosts, markers) | PASS')),
+      );
+    });
+
     test('a failing offline trial fails the run', () {
       final report = _report(offline: _trial(0, pass: false, distance: null));
 

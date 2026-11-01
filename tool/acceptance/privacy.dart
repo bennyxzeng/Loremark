@@ -56,13 +56,20 @@ NetstatsSnapshot? parseNetstats(String dump) {
   final lines = const LineSplitter().convert(dump);
   final header = lines.indexWhere((l) => l.trim() == 'mAppUidStatsMap:');
   if (header < 0) return null;
+  final columns = header + 1;
+  if (columns >= lines.length ||
+      !RegExp(r'^\s*uid\s+rxBytes\s+rxPackets\s+txBytes\s+txPackets\s*$')
+          .hasMatch(lines[columns])) {
+    return null;
+  }
   final byUid = <int, UidTraffic>{};
   final row = RegExp(r'^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s*$');
-  for (final line in lines.skip(header + 1)) {
+  for (final line in lines.skip(columns + 1)) {
     final match = row.firstMatch(line);
     if (match == null) {
       // Column titles come first; the table ends at the next section.
-      if (line.contains('rxBytes') || line.trim().isEmpty) continue;
+      if (line.trim().isEmpty) continue;
+      if (RegExp(r'^\s*\d').hasMatch(line)) return null;
       break;
     }
     final n = [for (var i = 1; i <= 5; i++) int.parse(match.group(i)!)];
@@ -240,12 +247,14 @@ PcapAudit auditPcap(
 
   // A destination is baseline when its address was in the control window or a
   // baseline name resolved to it.
-  bool baselineDestination(CapturedPacket p) {
+  bool knownDestination(CapturedPacket p, {bool includeAllowed = true}) {
     final address = p.dstIp;
     if (address == null) return false;
     if (baselineAddresses.contains(address)) return true;
     return (nameOfAddress[address] ?? const {}).any(
-      (name) => _inAny(baselineNames, name) || _inAny(allowedHosts, name),
+      (name) =>
+          _inAny(baselineNames, name) ||
+          (includeAllowed && _inAny(allowedHosts, name)),
     );
   }
 
@@ -256,14 +265,14 @@ PcapAudit auditPcap(
     if (p.isPlaintextHttp && p.protocol == 'tcp') {
       final host = p.httpHost;
       final ok = host != null
-          ? _inAny(baselineNames, host) || _inAny(allowedHosts, host)
-          : baselineDestination(p);
+          ? _inAny(baselineNames, host)
+          : knownDestination(p, includeAllowed: false);
       if (!ok) plaintext.add('${host ?? p.dstIp}:${p.dstPort}');
     }
     // A TLS handshake or QUIC packet that named nothing, to a stranger.
     final tlsHello = p.protocol == 'tcp' && p.sniSplit;
     final quic = p.protocol == 'udp' && p.dstPort == 443;
-    if ((tlsHello || quic) && !baselineDestination(p)) {
+    if ((tlsHello || quic) && !knownDestination(p)) {
       opaque.add('${p.dstIp}:${p.dstPort} (${quic ? 'QUIC' : 'split hello'})');
     }
   }

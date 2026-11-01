@@ -77,6 +77,7 @@ class PrivacyResult {
     required this.uidsSeen,
     this.audit,
     this.pcapNote,
+    this.captureRequired = false,
   });
 
   final int? uid;
@@ -89,6 +90,7 @@ class PrivacyResult {
 
   /// Why there is no pcap result, when there isn't.
   final String? pcapNote;
+  final bool captureRequired;
 
   bool get measured => before != null && after != null;
 
@@ -96,6 +98,12 @@ class PrivacyResult {
 
   /// True when the app moved no bytes over the network during the session.
   bool get netstatsPass => delta?.isZero ?? false;
+
+  /// A capture was supplied (or required) but couldn't be shown to cover the
+  /// session, so it proves nothing either way. The per-UID counters stay the
+  /// gate: on the Windows emulator `-tcpdump` misses some guest DNS lookups,
+  /// so an unverified capture must not fail a run, and must never pass one.
+  bool get captureInconclusive => captureRequired && audit == null;
 
   bool get pass => netstatsPass && (audit?.pass ?? true);
 
@@ -109,6 +117,8 @@ class PrivacyResult {
     'uidsSeen': uidsSeen,
     'pcap': audit?.toJson(),
     'pcapNote': pcapNote,
+    'captureRequired': captureRequired,
+    'captureInconclusive': captureInconclusive,
     'pass': pass,
   };
 }
@@ -179,7 +189,11 @@ class AcceptanceReport {
       ..writeln('# Loremark acceptance checks')
       ..writeln()
       ..writeln(
-        '**${pass ? 'PASS' : 'FAIL'}** · ${startedAt.toUtc().toIso8601String()} '
+        '**${!pass
+            ? 'FAIL'
+            : forceQuitComplete
+            ? 'PASS'
+            : 'INCOMPLETE'}** · ${startedAt.toUtc().toIso8601String()} '
         '· seed $seed',
       )
       ..writeln();
@@ -223,7 +237,7 @@ class AcceptanceReport {
       final audit = p.audit;
       out.writeln(
         '| Capture policy (HTTPS, hosts, markers) | '
-        '${audit == null ? 'n/a' : _mark(audit.pass)} '
+        '${audit == null ? (p.captureInconclusive ? 'INCONCLUSIVE' : 'n/a') : _mark(audit.pass)} '
         '| ${audit == null ? p.pcapNote ?? 'no capture given' : _auditDetail(audit)} |',
       );
     }

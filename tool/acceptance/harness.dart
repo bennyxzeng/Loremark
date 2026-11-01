@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'adb.dart';
+import 'capture_clock.dart';
 import 'options.dart';
 import 'pcap.dart';
 import 'privacy.dart';
@@ -92,6 +93,9 @@ Future<int> runHarness(
 
     // Control window: the OS's own traffic with the app not running.
     final pcapFile = options.pcap == null ? null : File(options.pcap!);
+    final captureStart = privacy && pcapFile != null
+        ? await _captureProbe(adb)
+        : null;
     TimeWindow? control;
     if (privacy && pcapFile != null && options.baselineSeconds > 0) {
       log('Recording ${options.baselineSeconds}s of OS-only traffic');
@@ -129,6 +133,14 @@ Future<int> runHarness(
     // Let the last packets reach the capture before closing the window.
     await Future<void>.delayed(const Duration(seconds: 3));
     final sessionEnd = DateTime.now();
+    final captureEnd = privacy && pcapFile != null
+        ? await _captureProbe(adb)
+        : null;
+    if (privacy && pcapFile != null && device.isEmulator) {
+      // QEMU buffers its output. Stopping flushes the tail before we copy it.
+      // We own the capture supplied for this harness session.
+      await adb.run(['emu', 'network', 'capture', 'stop'], check: true);
+    }
 
     PrivacyResult? privacyResult;
     if (privacy) {
@@ -145,16 +157,30 @@ Future<int> runHarness(
           if (capture.packets.isEmpty) {
             pcapNote = 'the capture file holds no packets';
           } else {
+            final offsetUs = captureClockOffset(
+              capture,
+              captureStart!,
+              captureEnd!,
+            );
+            notes.add(
+              'Capture clock offset: $offsetUs microseconds; '
+              'fresh DNS probes verified before and after the session.',
+            );
             audit = auditPcap(
               capture,
-              session: TimeWindow(
-                sessionStart.microsecondsSinceEpoch,
-                sessionEnd.microsecondsSinceEpoch,
+              session: shiftWindow(
+                TimeWindow(
+                  sessionStart.microsecondsSinceEpoch,
+                  sessionEnd.microsecondsSinceEpoch,
+                ),
+                offsetUs,
               ),
-              control: control,
+              control: control == null ? null : shiftWindow(control, offsetUs),
               allowedHosts: options.allowedHosts,
               markers: book.markers,
-              offline: runner.offlineWindows,
+              offline: [
+                for (final w in runner.offlineWindows) shiftWindow(w, offsetUs),
+              ],
             );
           }
           copy.copySync('${reportDir.path}/emulator.pcap');
@@ -174,6 +200,7 @@ Future<int> runHarness(
         uidsSeen: netAfter?.byUid.length ?? 0,
         audit: audit,
         pcapNote: pcapNote,
+        captureRequired: pcapFile != null || options.ci,
       );
       if (options.ci && audit == null) {
         notes.add('Capture required in CI but missing: $pcapNote');
@@ -227,6 +254,18 @@ Future<int> runHarness(
     }
     scratch.deleteSync(recursive: true);
   }
+}
+
+Future<CaptureProbe> _captureProbe(Adb adb) async {
+  final before = DateTime.now().microsecondsSinceEpoch;
+  final name = 'loremark-capture-$before.example.com';
+  // A unique, nonexistent name bypasses DNS caching. Failure to resolve is
+  // expected; the DNS query in the capture is the measurement, not the reply.
+  await adb.run([
+    'shell',
+    'ping -c 1 -W 1 $name',
+  ], timeout: const Duration(seconds: 15));
+  return CaptureProbe(name, before, DateTime.now().microsecondsSinceEpoch);
 }
 
 String? _defaultApk() {
