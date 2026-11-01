@@ -47,7 +47,17 @@ void main(List<String> args) {
   out.writeAsStringSync(
     '${const JsonEncoder.withIndent('  ').convert(report.toJson())}\n',
   );
-  stderr.writeln('Wrote $outPath');
+  final markdownPath = outPath.endsWith('.json')
+      ? '${outPath.substring(0, outPath.length - 5)}.md'
+      : '$outPath.md';
+  File(markdownPath).writeAsStringSync(
+    '# Scalability benchmark (${report.mode})\n\n'
+    '${config.words} generated words, '
+    '${Platform.numberOfProcessors} logical processors. '
+    'Host timings; not a physical-device or LLM benchmark.\n\n'
+    '${report.toMarkdown()}',
+  );
+  stderr.writeln('Wrote $outPath and $markdownPath');
 
   final wholeBook = report.rows.first;
   final ok = report.cardsUnderOneSecond >= 28 && wholeBook.max < 60 * 1000;

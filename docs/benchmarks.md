@@ -75,7 +75,7 @@ dart compile exe tool/benchmark/run.dart -o build/benchmark/run.exe
 build/benchmark/run.exe            # build\benchmark\run.exe in PowerShell
 ```
 
-Both print the table and write `build/benchmark/results.json` (change it with `--out=<path>`;
+Both print the table and write `build/benchmark/results.json` and `results.md` (change it with `--out=<path>`;
 `--chapters=<n>` and `--words-per-chapter=<n>` make a smaller run). The command exits 1 if fewer
 than 28 of 30 cards open in under a second or whole-book extraction takes 60 s or more.
 
