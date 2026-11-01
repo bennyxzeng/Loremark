@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../library/book.dart';
 import '../insights/file_reading_insights.dart';
 import '../reader/readium_reader_service.dart';
+import '../search/search_index_store.dart';
 import '../story_map/story_map_screen.dart';
 import '../story_model/story_model.dart';
 import '../story_model/story_model_loader.dart';
@@ -60,6 +61,10 @@ class _BookScreenState extends State<BookScreen> {
                       epubPath: widget.book.epubPath,
                     ),
                     onOpenStoryMap: () => _selectTab(_storyMapTab),
+                    openSearch: () => openPassageSearch(
+                      bookId: widget.book.id,
+                      epubPath: widget.book.epubPath,
+                    ),
                   ),
                   const AskScreen(),
                   const NotesScreen(),
@@ -116,7 +121,7 @@ class _BookScreenState extends State<BookScreen> {
         // Plain text rather than a spinner: an endless animation would keep
         // widget tests from settling.
         if (model == null) {
-          return const Center(child: Text('Loading story model…'));
+          return const Center(child: Text('Loading story modelâ€¦'));
         }
         return StoryMapScreen(model: model);
       },

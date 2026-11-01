@@ -64,8 +64,8 @@ class SearchIndexData {
 class SearchIndex implements PassageSearch {
   /// Indexes [sectionTexts] (one per spine item, in order).
   ///
-  /// [stem] chooses English stemming; by default it is on when the text
-  /// looks English.
+  /// [stem] chooses English stemming (on by default). It must not be
+  /// inferred from unread text, which would change visible search results.
   factory SearchIndex.build({
     required String bookId,
     required List<String> sectionTexts,
@@ -74,7 +74,7 @@ class SearchIndex implements PassageSearch {
   }) {
     final isLinear = linear ?? List.filled(sectionTexts.length, true);
     final paragraphs = ParagraphIndex(sectionTexts, linear: isLinear);
-    final stemmed = stem ?? _looksEnglish(paragraphs.sectionTexts);
+    final stemmed = stem ?? true;
     final tokenizer = Tokenizer(stem: stemmed ? porter2Stem : null);
 
     final counts = Int32List(paragraphs.count);
@@ -126,8 +126,39 @@ class SearchIndex implements PassageSearch {
         data.termStarts.last != data.postings.length) {
       throw const FormatException('Search index parts do not fit together');
     }
+    if (data.termStarts.first != 0 || data.postings.length.isOdd) {
+      throw const FormatException('Invalid search postings offsets');
+    }
+    for (var term = 0; term < data.terms.length; term++) {
+      final start = data.termStarts[term];
+      final end = data.termStarts[term + 1];
+      if (data.terms[term].isEmpty ||
+          (term > 0 && data.terms[term - 1].compareTo(data.terms[term]) >= 0) ||
+          start < 0 ||
+          start.isOdd ||
+          end <= start ||
+          end.isOdd ||
+          end > data.postings.length) {
+        throw const FormatException('Invalid search term or postings range');
+      }
+      var previous = -1;
+      for (var i = start; i < end; i += 2) {
+        final id = data.postings[i];
+        final frequency = data.postings[i + 1];
+        if (id <= previous ||
+            id >= paragraphs.count ||
+            frequency <= 0 ||
+            frequency > data.tokenCounts[id]) {
+          throw const FormatException('Invalid search posting');
+        }
+        previous = id;
+      }
+    }
     final cumulative = Int32List(paragraphs.count + 1);
     for (var i = 0; i < paragraphs.count; i++) {
+      if (data.tokenCounts[i] < 0) {
+        throw const FormatException('Invalid paragraph token count');
+      }
       cumulative[i + 1] = cumulative[i] + data.tokenCounts[i];
     }
     return SearchIndex._(data, paragraphs, cumulative);
@@ -765,51 +796,3 @@ const _stopWords = [
   're',
   've',
 ];
-
-/// Whether the text is English enough for English stemming to help: mostly
-/// Latin script, and with the share of everyday English words an English text
-/// has and French or German don't.
-bool _looksEnglish(List<String> sectionTexts) {
-  final sample = StringBuffer();
-  for (final text in sectionTexts) {
-    if (sample.length > 60000) break;
-    sample.write(text.length > 4000 ? text.substring(0, 4000) : text);
-    sample.write('\n');
-  }
-  final tokens = Tokenizer().tokenize(sample.toString());
-  final words = tokens.where((t) => !t.cjk).toList();
-  if (words.isEmpty || words.length < tokens.length / 2) return false;
-  const common = {
-    'the',
-    'of',
-    'and',
-    'to',
-    'a',
-    'in',
-    'that',
-    'was',
-    'he',
-    'it',
-    'his',
-    'you',
-    'i',
-    'had',
-    'with',
-    'for',
-    'as',
-    'at',
-    'on',
-    'her',
-    'she',
-    'not',
-    'but',
-    'is',
-    'be',
-    'by',
-    'they',
-    'said',
-    'from',
-  };
-  final hits = words.where((t) => common.contains(t.term)).length;
-  return hits / words.length >= 0.18;
-}

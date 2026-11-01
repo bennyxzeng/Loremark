@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:loremark/reader/reader_position.dart';
 import 'package:loremark/search/search_index.dart';
 import 'package:loremark/search/search_index_codec.dart';
+import 'package:loremark/search/tokenizer.dart';
 
 import 'search_fixtures.dart';
 
@@ -82,6 +83,17 @@ void main() {
     }
   });
 
+  test('rejects structurally invalid postings even with a valid checksum', () {
+    final bad = storyIndex();
+    // A corrupt producer can write a valid gzip CRC around invalid ids.
+    final postings = bad.toData().postings;
+    postings[postings.length - 2] = bad.paragraphCount;
+    expect(
+      () => decodeSearchIndex(encodeSearchIndex(bad), bookId: bad.bookId),
+      throwsA(isA<FormatException>()),
+    );
+  });
+
   test('round trips a book with no text', () {
     final empty = SearchIndex.build(bookId: 'e', sectionTexts: ['', ' ']);
     final decoded = decodeSearchIndex(encodeSearchIndex(empty), bookId: 'e');
@@ -144,7 +156,7 @@ void main() {
     });
 
     test('another tokenizer version', () {
-      final text = utf8.encode('"tokenizer":1');
+      final text = utf8.encode('"tokenizer":$tokenizerVersion');
       expectRejected(
         tamper(index, (plain) {
           final at = _find(plain, text);

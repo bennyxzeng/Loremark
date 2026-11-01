@@ -1,6 +1,6 @@
 # Passage search
 
-How search over a book works, why a result can never be a spoiler, and how the AI features should call it. Owner: Kevin. Code: [`lib/search/`](../lib/search/). The interface is [`passage_search.dart`](../lib/search/passage_search.dart); the Read tab's search sheet and the highlight in the reader are separate work.
+How search over a book works, why a result can never be a spoiler, and how the AI features should call it. Owner: Kevin. Code: [`lib/search/`](../lib/search/). The interface is [`passage_search.dart`](../lib/search/passage_search.dart); the Read tab opens the index lazily and highlights a selected result in Readium.
 
 **Contents:** [What it does](#what-it-does) · [Using it](#using-it) · [How it works](#how-it-works) · [The spoiler guarantees](#the-spoiler-guarantees) · [For the AI features: `retrievePassages`](#for-the-ai-features-retrievepassages) · [Storage](#storage) · [Testing](#testing) · [Limits](#limits)
 
@@ -64,7 +64,7 @@ A paragraph is the text between blank lines in a section's plain text. Ids run i
 
 - Latin: words, lowercased, accents and `ß æ œ` and full-width letters folded to ASCII. Soft hyphens and zero-width characters inside a word are ignored. `Klein's` is indexed as `klein`; `l'homme` as `homme`.
 - Chinese, Japanese, Korean: a run of `n` characters gives `n - 1` overlapping bigrams (`克莱恩` → `克莱`, `莱恩`), as Lucene's `CJKBigramFilter` does. A lone character is a token of its own. The query for a single character scans the text instead, since no bigram holds it alone.
-- English stemming is on when the text is mostly Latin script and has the share of everyday English words an English book has, and is saved in the index so a change forces a rebuild.
+- English stemming is on by default for Latin words. Callers can explicitly disable it with `stem: false` for other Latin languages. The policy is fixed, never inferred from unread text: changing an unread chapter cannot alter visible matches.
 
 ### Ranking
 
@@ -129,7 +129,7 @@ The file is gzip of this, every number a varint: the magic `LMSI`, the format ve
 - Two requests for the same book share one load.
 - The root folder can be injected (`openPassageSearch(root: ...)`, `SearchIndexStore(root)`) for tests.
 
-Measured on a laptop (Dart VM, JIT) for a generated 500,000-word English book with a Zipf vocabulary: reading the sections from the EPUB 0.3 s, building 0.5 s, file 1.9 MiB, loading 40 ms, query p50 2 ms and p95 9 ms. A phone will be a few times slower, and a Chinese novel indexes about one posting per character, so expect a larger file and a few seconds to build.
+Measured on this Windows host with Flutter 3.47.7 / Dart VM JIT, using the seeded 500,000-word generator: build 566 ms, encode 130 ms, file 1,908 KiB, load 36 ms, query p50 1.880 ms and p95 10.638 ms (100 queries). These are host timings, not phone acceptance results. Run `flutter test --tags benchmark test/search/search_index_perf_test.dart` to regenerate `build/search-benchmark.md`; device performance remains to be measured.
 
 ## Testing
 
@@ -140,12 +140,12 @@ Measured on a laptop (Dart VM, JIT) for a generated 500,000-word English book wi
 - `search_index_test.dart`: ranking, prefix, phrases, Chinese, snippets, hit targets, cutoff behavior, `retrievePassages`.
 - `spoiler_property_test.dart`: the guarantees above on seeded random books, queries and cutoffs.
 - `search_index_codec_test.dart`, `search_index_store_test.dart`: round trips, corrupt, truncated, wrong-version and wrong-book files, in-memory EPUBs in a temp folder.
-- `search_index_perf_test.dart`: 100,000 words, with loose time bounds (it takes about a quarter of a second).
+- `search_index_perf_test.dart`: 500,000 words, tagged `benchmark`, with a Markdown report and loose time bounds. Normal CI excludes this tag.
 
 ## Limits
 
 - No fuzzy matching: a typo finds nothing. A "no results, did you mean" fallback could use edit distance 1 on visible words.
-- English stemming only; other languages are folded and matched by exact word. Thai, Lao and Khmer, which have no spaces, behave as one long word.
+- English stemming only; non-Latin scripts are folded and matched by exact word or CJK bigram. Other Latin languages may overmatch unless callers disable stemming. Thai, Lao and Khmer, which have no spaces, behave as one long word.
 - Phrase checks run on the best 60 to 2,000 candidates, so a phrase that is common may rank imperfectly in a very long book.
 - Plain text positions are not the page's scroll positions, so a jump relies on the quote; if the page text differs a lot (ruby text), the reader lands near the passage without the highlight.
 - The passage is the unit: a hit is a whole paragraph, even a long one.

@@ -3,3 +3,6 @@ tags:
   # Calls a real LLM provider: needs an API key, costs money, and the output is
   # nondeterministic. Excluded from CI; run by hand with `flutter test --tags live`.
   live:
+
+  # Full-size search benchmark; run with --tags benchmark.
+  benchmark:

@@ -61,10 +61,10 @@ void main() {
     expect(part.prefixText, isNull);
   });
 
-  test('a quoted single word is an ordinary word', () {
+  test('a quoted single word remains required', () {
     final part = parse('"harbor"').single;
     expect(part.phrase, isFalse);
-    expect(part.required, isFalse);
+    expect(part.required, isTrue);
   });
 
   test('common words are dropped when there is something else', () {

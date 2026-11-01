@@ -16,6 +16,25 @@ void main() {
   SearchResults search(String query, {ReaderPosition? cutoff, int? limit}) =>
       index.search(query, cutoff: cutoff ?? endOfStory, limit: limit ?? 50);
 
+  test('unread language cannot change visible tokenization or ranking', () {
+    const visible = 'Running runners wait.\n\nA runner waits.';
+    final prefix = SearchIndex.build(bookId: 'prefix', sectionTexts: [visible]);
+    final full = SearchIndex.build(
+      bookId: 'full',
+      sectionTexts: [visible, List.filled(100, 'the and of to a in').join(' ')],
+    );
+    const cutoff = ReaderPosition(0, 1);
+    for (final query in ['runs ', 'runner ', 'running runners']) {
+      final expected = prefix.search(query, cutoff: cutoff).hits;
+      final actual = full.search(query, cutoff: cutoff).hits;
+      expect(
+        actual.map((h) => h.passage.text),
+        expected.map((h) => h.passage.text),
+      );
+      expect(actual.map((h) => h.score), expected.map((h) => h.score));
+    }
+  });
+
   group('ranking', () {
     test('finds the paragraphs with the word', () {
       expect(ids(search('lamp')), ['0:2']);
@@ -164,6 +183,17 @@ void main() {
   });
 
   group('phrases', () {
+    test('single quoted words and CJK characters remain required', () {
+      final book = SearchIndex.build(
+        bookId: 'quoted',
+        sectionTexts: [
+          'Ryn in the harbor.\n\nHarbor alone.\n\n\u732b in harbor.',
+        ],
+      );
+      const end = ReaderPosition(0, 1);
+      expect(ids(book.search('"Ryn" harbor', cutoff: end)), ['0:0']);
+      expect(ids(book.search('"\u732b" harbor', cutoff: end)), ['0:2']);
+    });
     test('a quoted phrase must appear in order', () {
       expect(ids(search('"old keeper"')), ['0:2']);
       expect(search('"keeper old"').hits, isEmpty);
