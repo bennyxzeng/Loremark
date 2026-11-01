@@ -82,6 +82,11 @@ class Rig {
     engine.policy.dismiss(script.t);
     _noteNudge();
   }
+
+  void accept() {
+    engine.policy.accept();
+    _noteNudge();
+  }
 }
 
 void main() {
@@ -370,6 +375,60 @@ void main() {
       rig.read(0, 30, 45);
       rig.inject(page: 44);
       expect(rig.shown, hasLength(3));
+    });
+
+    test('taking the action is not a dismissal', () {
+      const config = InsightsConfig(
+        nudgesPerSession: 10,
+        nudgeCooldown: Duration.zero,
+        nudgeCooldownPages: 0,
+      );
+      final rig = warmRig(config);
+      rig.inject(page: 10);
+
+      rig.accept();
+
+      expect(rig.nudge, isNull);
+      // No hour's wait: the next passage that needs it is nudged at once.
+      rig.read(0, 11, 20);
+      rig.inject(page: 19);
+      expect(rig.shown, hasLength(2));
+      expect(rig.nudge, isNotNull);
+    });
+
+    test('accepting with no nudge showing does nothing', () {
+      final rig = warmRig();
+
+      rig.accept();
+
+      expect(rig.nudge, isNull);
+      rig.inject(page: 10);
+      expect(rig.shown, hasLength(1));
+    });
+
+    test('an accepted nudge ends the run of dismissals', () {
+      const config = InsightsConfig(
+        nudgesPerSession: 10,
+        nudgeCooldown: Duration.zero,
+        nudgeCooldownPages: 0,
+        dismissSuppression: Duration.zero,
+      );
+      final rig = warmRig(config);
+
+      rig.inject(page: 10);
+      rig.dismiss();
+      rig.read(0, 11, 20);
+      rig.inject(page: 19);
+      rig.accept();
+      rig.read(0, 20, 30);
+      rig.inject(page: 29);
+      rig.dismiss();
+      rig.read(0, 30, 40);
+      rig.inject(page: 39);
+
+      // Two dismissals, but not in a row.
+      expect(rig.shown, hasLength(4));
+      expect(rig.nudge, isNotNull);
     });
 
     test('a dismissal holds nudges back for an hour', () {

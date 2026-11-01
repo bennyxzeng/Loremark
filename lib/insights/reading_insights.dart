@@ -163,6 +163,11 @@ abstract interface class ReadingInsights implements Listenable {
   /// Hides [nudge] and holds back new ones for a while.
   void dismissNudge();
 
+  /// Hides [nudge] because the reader took one of its actions. Unlike
+  /// [dismissNudge] this isn't a "not now": it holds nothing back, and ends
+  /// a run of dismissals.
+  void acceptNudge();
+
   /// Whether nudges are shown. Signals are still detected when off.
   bool get hintsEnabled;
 

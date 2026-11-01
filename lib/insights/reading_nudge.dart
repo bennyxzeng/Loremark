@@ -11,12 +11,14 @@ import 'reading_insights.dart';
 /// It sits between the reader and the page controls instead of over the text
 /// (no SnackBar or dialog), asks a question rather than diagnosing, and hides
 /// itself after [autoHide]. [onDismiss] runs for the close button and for the
-/// timeout alike, since both mean "not now".
+/// timeout alike, since both mean "not now". Taking an action runs [onAccept]
+/// instead, which is not a dismissal.
 class ReadingNudge extends StatefulWidget {
   const ReadingNudge({
     super.key,
     required this.signal,
     required this.onDismiss,
+    this.onAccept,
     this.onOpenStoryMap,
     this.onSearchChapter,
     this.autoHide = const Duration(seconds: 12),
@@ -24,6 +26,10 @@ class ReadingNudge extends StatefulWidget {
 
   final ConfusionSignal signal;
   final VoidCallback onDismiss;
+
+  /// Runs after the reader takes an action, to hide the strip. Defaults to
+  /// [onDismiss] when null.
+  final VoidCallback? onAccept;
 
   /// Opens the Story Map. The button is left out when this is null.
   final VoidCallback? onOpenStoryMap;
@@ -65,7 +71,7 @@ class _ReadingNudgeState extends State<ReadingNudge> {
   /// Takes the action, then hides the strip: the reader has accepted it.
   VoidCallback _then(VoidCallback action) => () {
     action();
-    widget.onDismiss();
+    (widget.onAccept ?? widget.onDismiss)();
   };
 
   @override

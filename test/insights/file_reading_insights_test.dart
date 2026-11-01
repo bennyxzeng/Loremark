@@ -466,6 +466,21 @@ void main() {
       await insights.close();
     });
 
+    test('accepting hides the nudge without holding others back', () async {
+      final insights = await open();
+      rereadScript(insights);
+      var notified = 0;
+      insights.addListener(() => notified++);
+
+      insights.acceptNudge();
+
+      expect(insights.nudge, isNull);
+      expect(notified, 1);
+      insights.acceptNudge();
+      expect(notified, 1);
+      await insights.close();
+    });
+
     test('hints off: signals still come, the nudge does not', () async {
       final insights = await open();
       await insights.setHintsEnabled(false);

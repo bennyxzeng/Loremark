@@ -244,6 +244,13 @@ class FileReadingInsights extends ChangeNotifier implements ReadingInsights {
   }
 
   @override
+  void acceptNudge() {
+    if (_closed || _engine.policy.current == null) return;
+    _engine.policy.accept();
+    notifyListeners();
+  }
+
+  @override
   bool get hintsEnabled => _hintsEnabled;
 
   @override

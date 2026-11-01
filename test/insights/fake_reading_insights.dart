@@ -46,6 +46,7 @@ class FakeReadingInsights extends ChangeNotifier implements ReadingInsights {
   int hiddenCalls = 0;
   int shownCalls = 0;
   int dismissCalls = 0;
+  int acceptCalls = 0;
   int flushCalls = 0;
   int closeCalls = 0;
 
@@ -104,6 +105,13 @@ class FakeReadingInsights extends ChangeNotifier implements ReadingInsights {
   @override
   void dismissNudge() {
     dismissCalls++;
+    _nudge = null;
+    notifyListeners();
+  }
+
+  @override
+  void acceptNudge() {
+    acceptCalls++;
     _nudge = null;
     notifyListeners();
   }

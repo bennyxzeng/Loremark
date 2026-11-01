@@ -18,7 +18,8 @@ import 'view_tracker.dart';
 /// - After a nudge, none for 30 minutes and 25 forward pages. At most two a
 ///   session and four a day.
 /// - Dismissing holds nudges back for an hour; two dismissals in a row end
-///   them for the session.
+///   them for the session. Taking a nudge's action isn't a dismissal: it
+///   holds nothing back and breaks the run.
 /// - A nudge is dropped, silently, once the reader moves three pages past
 ///   its passage, and only shows while they are within two pages of it.
 /// - None in the first two minutes of a session, nor soon after the app came
@@ -63,7 +64,7 @@ class NudgePolicy {
   var _sessionId = -1;
   var _sessionStartMs = 0;
   var _sessionNudges = 0;
-  var _dismissals = 0;
+  var _dismissalsInARow = 0;
   var _sessionDone = false;
 
   int? _lastNudgeMs;
@@ -124,7 +125,19 @@ class NudgePolicy {
     if (_current == null) return;
     _current = null;
     _lastDismissMs = nowMs;
-    if (++_dismissals >= config.dismissalsPerSession) _sessionDone = true;
+    if (++_dismissalsInARow >= config.dismissalsPerSession) {
+      _sessionDone = true;
+    }
+  }
+
+  /// The reader took the nudge's action. The strip goes away, and the
+  /// cooldown from showing it still applies, but nothing is held back for
+  /// a dismissal, and an earlier dismissal no longer counts towards ending
+  /// the session's nudges.
+  void accept() {
+    if (_current == null) return;
+    _current = null;
+    _dismissalsInARow = 0;
   }
 
   /// Forgets signals and the nudge on screen, but not the history that limits
@@ -140,7 +153,7 @@ class NudgePolicy {
     _sessionId = id;
     _sessionStartMs = startMs;
     _sessionNudges = 0;
-    _dismissals = 0;
+    _dismissalsInARow = 0;
     _sessionDone = false;
   }
 

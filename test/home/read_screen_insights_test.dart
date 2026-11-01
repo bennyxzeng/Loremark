@@ -393,7 +393,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(storyMapOpens, 1);
-      expect(insights.dismissCalls, 1);
+      // Taking the action is not a "not now".
+      expect(insights.acceptCalls, 1);
+      expect(insights.dismissCalls, 0);
+      expect(find.byKey(const ValueKey('reading-nudge')), findsNothing);
     });
 
     testWidgets('offers chapter search only when it is available', (
@@ -417,6 +420,8 @@ void main() {
       await tester.tap(find.text('Search this chapter'));
       await tester.pumpAndSettle();
       expect(searches, 1);
+      expect(insights.acceptCalls, 1);
+      expect(insights.dismissCalls, 0);
     });
 
     testWidgets('is not shown while reading hints are off', (tester) async {

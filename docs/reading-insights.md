@@ -39,7 +39,10 @@ an overlapping span, unusually slow dwell followed by looking back (median/MAD
 of log pace), and repeated chapter bounces. Search bursts can corroborate a
 signal but never nudge alone. `InsightsConfig` holds the thresholds. The nudge
 policy adds warmup, per-span deduplication, 30 minutes plus 25 forward pages
-between prompts, and session/day limits. Dismissal suppresses later prompts.
+between prompts, and session/day limits. Dismissing (the close button or the timeout) holds prompts back for an hour,
+and two dismissals in a row end them for the session. Taking an action (Story
+Map, Search) hides the nudge through `acceptNudge()` instead: it holds nothing
+back and breaks the run of dismissals.
 These are heuristics, not validated diagnoses; synthetic tests verify the rules.
 The Story Map action uses the existing Story Map tab. Search is a callback for
 the passage-search integration; this independent feature branch does not own it.

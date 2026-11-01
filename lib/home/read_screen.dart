@@ -667,6 +667,8 @@ class _ReadScreenState extends State<ReadScreen> {
                   signal: nudge,
                   onDismiss: () =>
                       _tellInsights((insights) => insights.dismissNudge()),
+                  onAccept: () =>
+                      _tellInsights((insights) => insights.acceptNudge()),
                   onOpenStoryMap: widget.onOpenStoryMap,
                   onSearchChapter:
                       widget.onSearchChapter ??
