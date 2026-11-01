@@ -87,7 +87,9 @@ class NudgePolicy {
           _now = view.startMs;
           _tz = view.tz;
           _position = view.startOffset;
-          if (view.section > _furthestSection) _furthestSection = view.section;
+          if (view.frontierSection > _furthestSection) {
+            _furthestSection = view.frontierSection;
+          }
           _enterSession(view.sessionId, view.sessionStartMs);
         case ViewEnded(:final view):
           _pageUnits = view.pageUnits;

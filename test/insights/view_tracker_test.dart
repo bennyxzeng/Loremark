@@ -4,6 +4,7 @@ import 'package:loremark/insights/book_units.dart';
 import 'package:loremark/insights/reading_insights.dart';
 import 'package:loremark/insights/reading_log.dart';
 import 'package:loremark/insights/view_tracker.dart';
+import 'package:loremark/reader/reader_position.dart';
 
 import 'insights_test_helpers.dart';
 
@@ -415,6 +416,137 @@ void main() {
         ViewTracker(tenSections(), const InsightsConfig()).furthest,
         isNull,
       );
+    });
+
+    ViewTracker follow(LogScript script) {
+      final tracker = ViewTracker(tenSections(), const InsightsConfig());
+      run(script, tracker);
+      return tracker;
+    }
+
+    test('a contents jump ahead is visited but not read through', () {
+      final tracker = follow(
+        LogScript()
+            .open()
+            .page(0, 0, 30, NavigationCause.open)
+            .page(0, 1, 30)
+            .page(9, 0, 30, NavigationCause.tocJump)
+            .page(0, 0, 30, NavigationCause.tocJump)
+            .page(0, 1, 30),
+      );
+
+      expect(tracker.furthest, const ReaderPosition(0, 0.1));
+    });
+
+    test('a search jump ahead does not move it either', () {
+      final tracker = follow(
+        LogScript()
+            .open()
+            .page(0, 0, 30, NavigationCause.open)
+            .page(6, 3, 30, NavigationCause.searchJump)
+            .page(0, 1, 30),
+      );
+
+      expect(tracker.furthest, const ReaderPosition(0, 0));
+    });
+
+    test('a swipe over many pages is a jump, not reading', () {
+      final tracker = follow(
+        LogScript()
+            .open()
+            .page(0, 0, 30, NavigationCause.open)
+            .page(0, 1, 30, NavigationCause.swipe)
+            .page(0, 9, 30, NavigationCause.swipe),
+      );
+
+      expect(tracker.furthest, const ReaderPosition(0, 0.1));
+    });
+
+    test('reading on from a jump does not move it', () {
+      final tracker = follow(
+        LogScript()
+            .open()
+            .page(0, 0, 30, NavigationCause.open)
+            .page(5, 0, 30, NavigationCause.tocJump)
+            .page(5, 1, 30)
+            .page(5, 2, 30),
+      );
+
+      expect(tracker.furthest, const ReaderPosition(0, 0));
+    });
+
+    test('page by page, including a section turn, it follows the reader', () {
+      final script = LogScript().open().read(0, 0, 10, 30);
+      // The end of a section and the start of the next share a timestamp.
+      script
+        ..pos(0, 1)
+        ..pos(1, 0)
+        ..wait(30)
+        ..page(1, 1, 30);
+      final tracker = follow(script);
+
+      expect(tracker.furthest, const ReaderPosition(1, 0.1));
+    });
+
+    test('a swipe of about a page counts, and so does going back and on', () {
+      final tracker = follow(
+        LogScript()
+            .open()
+            .page(0, 0, 30, NavigationCause.swipe)
+            .page(0, 1, 30, NavigationCause.swipe)
+            .page(0, 2, 30, NavigationCause.swipe)
+            .page(0, 1, 30, NavigationCause.pageBackward)
+            .page(0, 2, 30)
+            .page(0, 3, 30),
+      );
+
+      expect(tracker.furthest, const ReaderPosition(0, 0.3));
+    });
+
+    test('opening a few pages ahead of the frontier catches up', () {
+      final tracker = ViewTracker(tenSections(), const InsightsConfig())
+        ..add(const FurthestRecord(section: 2, progression: 0, t: 1));
+      run(LogScript().open().page(2, 3, 30, NavigationCause.open), tracker);
+
+      expect(tracker.furthest, const ReaderPosition(2, 0.3));
+
+      run(LogScript().open().page(6, 0, 30, NavigationCause.open), tracker);
+
+      expect(tracker.furthest, const ReaderPosition(2, 0.3));
+    });
+
+    test('a jump from a compacted frontier leaves it alone', () {
+      final tracker = ViewTracker(tenSections(), const InsightsConfig())
+        ..add(const FurthestRecord(section: 1, progression: 0.5, t: 1));
+      run(
+        LogScript()
+            .open()
+            .page(1, 4, 30, NavigationCause.open)
+            .page(8, 0, 30, NavigationCause.tocJump),
+        tracker,
+      );
+
+      expect(tracker.furthest, const ReaderPosition(1, 0.5));
+    });
+
+    test('pages read after jumping back are not revisits', () {
+      final views = ended(
+        run(
+          LogScript()
+              .open()
+              .page(0, 0, 30, NavigationCause.open)
+              .page(0, 1, 30)
+              .page(9, 0, 30, NavigationCause.tocJump)
+              .page(0, 1, 30, NavigationCause.tocJump)
+              .read(0, 2, 6, 30)
+              .pos(0, 0.6),
+        ),
+      );
+
+      final reading = views.where(
+        (v) => v.section == 0 && v.startOffset >= 400 && !v.isRevisit,
+      );
+      expect(reading.map((v) => v.progression), [0.2, 0.3, 0.4, 0.5]);
     });
   });
 }

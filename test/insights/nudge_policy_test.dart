@@ -412,6 +412,8 @@ void main() {
       );
       final rig = warmRig(config);
       rig.inject(page: 10);
+      // Reading on through the chapter, page by page, not jumping ahead.
+      rig.read(0, 11, 100);
       rig.read(1, 0, 10);
 
       rig.script.page(0, 10, 30, NavigationCause.tocJump);

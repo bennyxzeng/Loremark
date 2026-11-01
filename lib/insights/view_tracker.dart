@@ -67,8 +67,12 @@ class PageView {
   /// not because the reader moved. Its first part was spent before.
   final bool resumed;
 
-  /// The furthest start offset reached before this view.
+  /// The reading frontier, as a start offset, before this view.
   final double furthestBefore;
+
+  /// The section of the reading frontier once this view started. A jump
+  /// ahead leaves it behind the view's own section.
+  var frontierSection = 0;
 
   // Set when the view ends.
   var end = ViewEnd.lost;
@@ -96,7 +100,7 @@ class PageView {
   /// section turn.
   bool get isSectionEnd => progression >= 0.9999;
 
-  /// Everything before this page had already been shown.
+  /// Everything before this page had already been read through.
   bool get isRevisit => startOffset < furthestBefore - 0.5;
 
   /// How many units the reader moved past, when they turned a page forward.
@@ -192,7 +196,12 @@ class ViewTracker {
   double _furthestOffset = -1;
   ReaderPosition? _furthest;
 
-  /// The furthest position reached so far, including what `fur` records say.
+  /// The reading frontier: how far the reader has got by turning pages one
+  /// after another, including what `fur` records say.
+  ///
+  /// A jump ahead (contents, search, or a swipe over many pages) is visited
+  /// but not read through, so it doesn't move this. Search and other spoiler
+  /// boundaries rely on that.
   ReaderPosition? get furthest => _furthest;
 
   /// The view on screen now, still running.
@@ -405,6 +414,7 @@ class ViewTracker {
     return const [];
   }
 
+  /// Moves the frontier to the position if it is later than the frontier.
   void _noteFurthest(int section, double progression, double offset) {
     _furthestOffset = max(_furthestOffset, offset);
     final previous = _furthest;
@@ -444,6 +454,12 @@ class ViewTracker {
     double? furthestBefore,
   }) {
     final offset = units.offsetAt(section, progression);
+    final extendsFrontier = _extendsFrontier(
+      prevOffset: prevOffset,
+      offset: offset,
+      cause: cause,
+      resumed: resumed,
+    );
     final view = PageView(
       startMs: t,
       section: section,
@@ -462,8 +478,35 @@ class ViewTracker {
     _segmentStartMs = t;
     _inBackground = false;
     _hadBackground = false;
-    _noteFurthest(section, progression, offset);
+    if (extendsFrontier) _noteFurthest(section, progression, offset);
+    view.frontierSection = _furthest?.sectionIndex ?? section;
     return view;
+  }
+
+  /// Whether arriving at [offset] extends the frontier: the reader turned a
+  /// page forward from a page at or just behind it, which includes the two
+  /// positions of a section turn. Anything else, such as a jump ahead, only
+  /// records where the reader is.
+  bool _extendsFrontier({
+    required double? prevOffset,
+    required double offset,
+    required NavigationCause cause,
+    required bool resumed,
+  }) {
+    // The first position ever seen is where reading starts. A book with no
+    // measurable text can't tell a jump from a page, so position decides.
+    if (_furthest == null || units.total <= 0) return true;
+    if (resumed) return false;
+    final page = pageUnits;
+    if (cause == NavigationCause.open) {
+      // The reader may have turned a few pages before the log was ready.
+      return offset - _furthestOffset <= config.buttonJumpFactor * page;
+    }
+    if (prevOffset == null || prevOffset > _furthestOffset + page) {
+      return false;
+    }
+    final delta = offset - prevOffset;
+    return delta >= 0 && !_isJump(delta, cause);
   }
 
   /// Ends [view] at [t]. [endAt] is when it really ended, for a page left in
@@ -515,15 +558,18 @@ class ViewTracker {
   /// so a larger font doesn't make every page a jump.
   MoveKind _classify(double from, double to, NavigationCause cause) {
     final delta = to - from;
-    final distance = delta.abs();
+    final jump = _isJump(delta.abs(), cause);
+    if (delta > 0) return jump ? MoveKind.forwardJump : MoveKind.forwardPage;
+    return jump ? MoveKind.backwardJump : MoveKind.backwardPage;
+  }
+
+  bool _isJump(double distance, NavigationCause cause) {
     final page = pageUnits;
-    final jump = switch (cause) {
+    return switch (cause) {
       NavigationCause.tocJump || NavigationCause.searchJump => true,
       NavigationCause.pageForward ||
       NavigationCause.pageBackward => distance > config.buttonJumpFactor * page,
       _ => distance > config.swipeJumpFactor * page,
     };
-    if (delta > 0) return jump ? MoveKind.forwardJump : MoveKind.forwardPage;
-    return jump ? MoveKind.backwardJump : MoveKind.backwardPage;
   }
 }

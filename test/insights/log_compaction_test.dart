@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:loremark/insights/insights_config.dart';
 import 'package:loremark/insights/insights_engine.dart';
 import 'package:loremark/insights/log_compaction.dart';
+import 'package:loremark/insights/reading_insights.dart';
 import 'package:loremark/insights/reading_log.dart';
 
 import 'insights_test_helpers.dart';
@@ -21,14 +22,17 @@ void main() {
 
   tearDown(() => temp.delete(recursive: true));
 
-  /// Ninety days of reading ending at [baseMs]: a session a day of ten pages
-  /// of section d mod 4, apart from day 85, when the reader got to
-  /// section 6.
+  /// Ninety days of reading ending at [baseMs]: a session a day of ten pages.
+  /// The reader reads a section a day for the first seven days, up to
+  /// section 6 on day 83, then goes back over sections d mod 4.
   List<LogRecord> ninetyDays() {
     final records = <LogRecord>[];
     for (var d = 89; d >= 0; d--) {
+      final section = d >= 83 ? 89 - d : d % 4;
       final script = LogScript(startMs: baseMs - d * 24 * 3600 * 1000)..open();
-      script.read(d == 85 ? 6 : d % 4, 0, 10, 30).close();
+      // A book opens on its saved position, one page on from the last day's.
+      script.page(section, 0, 30, NavigationCause.open);
+      script.read(section, 1, 10, 30).close();
       records.addAll(script.records);
     }
     return records;
@@ -95,6 +99,26 @@ void main() {
     expect(File('${file.path}.tmp').existsSync(), isFalse);
   });
 
+  test('keeps the frontier, not a jump ahead of it', () async {
+    final jump =
+        (LogScript(startMs: baseMs - 70 * 24 * 3600 * 1000 + 3600000)
+              ..open()
+              ..page(0, 0, 30, NavigationCause.open)
+              ..page(9, 0, 30, NavigationCause.tocJump)
+              ..page(0, 0, 30, NavigationCause.tocJump)
+              ..close())
+            .records;
+    final records = [...ninetyDays(), ...jump]
+      ..sort((a, b) => a.timeMs!.compareTo(b.timeMs!));
+    await writeLog(records);
+    expect(replayed(records).furthest!.sectionIndex, 6);
+
+    compactLogFileSync(job());
+
+    final after = replayed(parseLog(await file.readAsString()).records);
+    expect(after.furthest!.sectionIndex, 6);
+  });
+
   test('keeps the furthest position and the day totals', () async {
     final records = ninetyDays();
     await writeLog(records);
@@ -104,7 +128,7 @@ void main() {
     compactLogFileSync(job());
 
     final after = replayed(parseLog(await file.readAsString()).records);
-    // Day 85 is before the cut, so only the fur record remembers section 6.
+    // Day 83 is before the cut, so only the fur record remembers section 6.
     expect(after.furthest!.sectionIndex, 6);
     expect(after.furthest!.progression, before.furthest!.progression);
     expect(totals(after), totals(before));

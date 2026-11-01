@@ -66,4 +66,46 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     await tester.pumpAndSettle();
   });
+
+  testWidgets('a contents jump ahead does not widen what search may see', (
+    tester,
+  ) async {
+    final service = FakeEpubReaderService();
+    // The reader read through chapter 1 and jumped to the last chapter.
+    final insights = FakeReadingInsights(furthest: const ReaderPosition(1, 1));
+    final search = FakePassageSearch();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ReadScreen(
+            book: Book(
+              id: 'jump',
+              title: 'Jump book',
+              author: null,
+              epubPath: 'unused.epub',
+              coverPath: null,
+              importedAt: DateTime(2026),
+            ),
+            readerService: service,
+            openPositionStore: () async => FakeReadingPositionStore(),
+            openInsights: () async => insights,
+            openSearch: () async => search,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    service.sessions.single.emit(const ReaderPosition(9, 0.5));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Search'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('search-field')), 'cat');
+    await tester.pump(searchDebounce);
+    await tester.pump();
+
+    expect(search.lastCutoff, const ReaderPosition(1, 1));
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
+  });
 }

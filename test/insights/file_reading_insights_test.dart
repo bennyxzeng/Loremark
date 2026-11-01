@@ -580,7 +580,10 @@ void main() {
       for (var d = 89; d >= 1; d--) {
         final script = LogScript(startMs: baseMs - d * 24 * 3600 * 1000)
           ..open();
-        script.read(d == 80 ? 7 : d % 4, 0, 10, 30).close();
+        // The first week is a walk to section 7, then rereading.
+        final section = d >= 82 ? 89 - d : d % 4;
+        script.page(section, 0, 30, NavigationCause.open);
+        script.read(section, 1, 10, 30).close();
         for (final record in script.records) {
           text.write('${jsonEncode(record.toJson())}\n');
         }
@@ -594,7 +597,7 @@ void main() {
       await insights.flush();
 
       expect(await file.length(), lessThan(before));
-      // Day 80 is long gone from the raw events, but not from the log.
+      // Day 82 is long gone from the raw events, but not from the log.
       expect(insights.furthest!.sectionIndex, 7);
       // Eighty-nine days in a row at exactly the five-minute minimum.
       expect(insights.summary.streakDays, 89);

@@ -8,6 +8,7 @@ import 'package:loremark/insights/insights_engine.dart';
 import 'package:loremark/insights/reading_insights.dart';
 import 'package:loremark/insights/reading_log.dart';
 import 'package:loremark/insights/view_tracker.dart';
+import 'package:loremark/reader/reader_position.dart';
 
 import 'insights_test_helpers.dart';
 
@@ -168,5 +169,48 @@ void main() {
     expect(first.furthest, second.furthest);
     expect(first.timeline.samples.length, second.timeline.samples.length);
     expect(first.timeline.days.keys.length, 2);
+  });
+
+  group('after a jump ahead and back', () {
+    final jumped =
+        (LogScript()
+              ..open()
+              ..page(0, 0, 30, NavigationCause.open)
+              ..page(0, 1, 30)
+              ..page(9, 0, 30, NavigationCause.tocJump)
+              ..page(0, 1, 30, NavigationCause.tocJump)
+              ..read(0, 2, 10, 30)
+              ..pos(0, 1)
+              ..pos(1, 0)
+              ..wait(30)
+              ..page(1, 1, 30)
+              ..close())
+            .records;
+
+    test('the frontier is where continuous reading got to', () {
+      final engine = InsightsEngine(units: tenSections())..replay(jumped);
+
+      expect(engine.furthest, const ReaderPosition(1, 0.1));
+    });
+
+    test('pace is learned from the pages read after coming back', () {
+      final engine = InsightsEngine(units: tenSections())..replay(jumped);
+
+      expect(engine.timeline.samples.length, greaterThanOrEqualTo(6));
+    });
+
+    test('replaying gives what following it live gave', () {
+      final live = InsightsEngine(units: tenSections());
+      for (final record in jumped) {
+        live.add(record);
+      }
+      final replayed = InsightsEngine(units: tenSections())..replay(jumped);
+
+      expect(replayed.furthest, live.furthest);
+      expect(
+        replayed.timeline.samples.map((s) => s.toJson()),
+        live.timeline.samples.map((s) => s.toJson()),
+      );
+    });
   });
 }

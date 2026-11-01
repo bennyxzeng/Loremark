@@ -495,13 +495,14 @@ class _ReadScreenState extends State<ReadScreen> {
     return _navigate(cause, () => session.goToPosition(position));
   }
 
-  /// Recomputes what search may look at, from the reader's position and the
-  /// furthest one they reached.
+  /// Recomputes what search may look at: how far the reader has read through,
+  /// not where they are now, since a jump ahead must not open the chapters
+  /// it skipped. Without a record of that, it is the current position.
   void _updateCutoff() {
-    _cutoff.value = completedSectionCutoff(
-      current: _position,
-      furthest: widget.furthestPosition?.call() ?? _insights?.furthest,
-    );
+    final furthest = widget.furthestPosition?.call() ?? _insights?.furthest;
+    _cutoff.value = furthest != null
+        ? completedSectionCutoff(furthest: furthest)
+        : completedSectionCutoff(current: _position);
   }
 
   /// The book's search, opened on first use and then reused. A failure is

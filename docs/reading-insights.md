@@ -37,7 +37,17 @@ These are heuristics, not validated diagnoses; synthetic tests verify the rules.
 The Story Map action uses the existing Story Map tab. Search is a callback for
 the passage-search integration; this independent feature branch does not own it.
 
-`furthest` means the furthest *visited* position, including contents jumps.
+`furthest` is the *contiguous reading frontier*, not the furthest visited
+position. It advances only through continuous reading: a forward page turn or
+swipe of about a page from a page at or just behind the frontier, including the
+two positions of a section turn. A contents or search jump, or a swipe over many
+pages, records where the reader is but leaves the frontier alone, and so does
+reading on from there. When a book opens a few pages ahead of the frontier (the
+reader turned pages before the log was ready) it catches up. Pages behind the
+frontier are revisits for pace and totals; pages ahead of it are new. The
+frontier is what `FurthestRecord` keeps through compaction, and search uses it
+(alone, not the current page) as its cutoff, so jumping to the last chapter
+never opens the chapters in between.
 TODO(kevin): use Grisha's authoritative spoiler boundary once his tracker lands;
 this log must not replace jump confirmation or decide which future chapters a
 reader deliberately unlocked. Consumers should enforce their own hard cutoff.
