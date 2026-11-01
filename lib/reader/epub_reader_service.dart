@@ -36,6 +36,16 @@ abstract interface class EpubReaderSession {
 
   Future<void> goToPosition(ReaderPosition position);
 
+  /// Jumps to [target] and highlights it, replacing any earlier highlight.
+  ///
+  /// Does nothing if the section can't be shown, such as a non-linear spine
+  /// item. The highlight stays through page turns until [clearPassageHighlight]
+  /// or the next [showPassage].
+  Future<void> showPassage(PassageTarget target);
+
+  /// Removes the highlight [showPassage] drew, if any.
+  Future<void> clearPassageHighlight();
+
   /// Turns to the next page.
   Future<void> goForward();
 
@@ -70,6 +80,35 @@ class TocEntry {
 
   @override
   String toString() => 'TocEntry($title, $href, $sectionIndex, depth: $depth)';
+}
+
+/// A passage to jump to and highlight, such as a search hit.
+///
+/// The renderer finds the passage by its text, which survives differences
+/// between our plain text and the rendered page. [progression] is only the
+/// fallback when the text can't be found.
+class PassageTarget {
+  const PassageTarget({
+    required this.sectionIndex,
+    required this.progression,
+    required this.highlight,
+    this.before = '',
+    this.after = '',
+  });
+
+  final int sectionIndex;
+  final double progression;
+
+  /// The text to highlight, from a single line of one paragraph.
+  final String highlight;
+
+  /// Up to 32 characters just before and after [highlight], to tell repeated
+  /// lines apart.
+  final String before;
+  final String after;
+
+  @override
+  String toString() => 'PassageTarget($sectionIndex, $progression, $highlight)';
 }
 
 enum EpubOpenFailure {

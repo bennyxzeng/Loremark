@@ -11,6 +11,9 @@ import '../library/library_screen.dart';
 import '../reader/epub_reader_service.dart';
 import '../reader/reader_position.dart';
 import '../reader/reading_position_store.dart';
+import '../search/passage_search.dart';
+import '../search/search_cutoff.dart';
+import '../search/search_sheet.dart';
 import '../theme/loremark_theme.dart';
 import 'table_of_contents_sheet.dart';
 
@@ -32,6 +35,9 @@ class ReadScreen extends StatefulWidget {
     this.onOpenStoryMap,
     this.onSearchChapter,
     this.controller,
+    this.openSearch,
+    this.furthestPosition,
+    this.searchController,
   });
 
   final Book book;
@@ -60,6 +66,23 @@ class ReadScreen extends StatefulWidget {
 
   /// Lets other features move the reader and say why.
   final ReadScreenController? controller;
+
+  /// Opens the search for [book], or null if the book can't be searched, which
+  /// disables the Search button.
+  ///
+  /// Called lazily the first time the reader searches and cached for the
+  /// book, since building the index can take a while. If it fails, the sheet
+  /// says so and offers to try again; reading is unaffected.
+  final Future<PassageSearch> Function()? openSearch;
+
+  /// The furthest position the reader has reached, which bounds what search
+  /// may show. When null or when it returns null, the current position is
+  /// used.
+  final ReaderPosition? Function()? furthestPosition;
+
+  /// Lets other code open the search sheet, such as a "Search this chapter"
+  /// action.
+  final SearchSheetController? searchController;
 
   @override
   State<ReadScreen> createState() => _ReadScreenState();
@@ -105,6 +128,17 @@ class _ReadScreenState extends State<ReadScreen> {
   /// Whether the next position is the first since the book opened.
   bool _firstPosition = true;
 
+  /// The opened search of the current book, kept so the index is built once.
+  Future<PassageSearch>? _searchFuture;
+
+  /// What search may look at. The sheet watches it so open results follow the
+  /// reader.
+  final ValueNotifier<ReaderPosition> _cutoff = ValueNotifier(searchCutoff());
+
+  /// Whether a search highlight is on the page, so it is cleared only when
+  /// there is one.
+  bool _highlightShown = false;
+
   /// Identifies the latest open, so a slow earlier one can tell it was
   /// replaced or the screen was disposed.
   int _generation = 0;
@@ -126,6 +160,7 @@ class _ReadScreenState extends State<ReadScreen> {
         _updateVisibility();
       },
     );
+    widget.searchController?.attach(_openSearchSheet);
     unawaited(_open());
   }
 
@@ -137,6 +172,10 @@ class _ReadScreenState extends State<ReadScreen> {
       oldWidget.controller?._jump = null;
       widget.controller?._jump = _jumpTo;
     }
+    if (oldWidget.searchController != widget.searchController) {
+      oldWidget.searchController?.detach(_openSearchSheet);
+      widget.searchController?.attach(_openSearchSheet);
+    }
     if (oldWidget.book.id != widget.book.id) {
       unawaited(_open());
     }
@@ -147,7 +186,9 @@ class _ReadScreenState extends State<ReadScreen> {
     _generation++;
     widget.controller?._jump = null;
     _lifecycle.dispose();
+    widget.searchController?.detach(_openSearchSheet);
     _releaseSession();
+    _cutoff.dispose();
     super.dispose();
   }
 
@@ -162,6 +203,7 @@ class _ReadScreenState extends State<ReadScreen> {
     _position = null;
     _error = null;
     _firstPosition = true;
+    _searchFuture = null;
 
     final book = widget.book;
     final sessionFuture = _openSession(book);
@@ -260,10 +302,22 @@ class _ReadScreenState extends State<ReadScreen> {
     _session = null;
     _view = null;
     if (session != null) {
+      if (_highlightShown) unawaited(_clearHighlight(session));
       unawaited(_close(session));
     }
     unawaited(_closeInsights(_insights));
     _insights = null;
+  }
+
+  /// Takes the search highlight off the page. Best effort: the book is about
+  /// to close anyway.
+  Future<void> _clearHighlight(EpubReaderSession session) async {
+    _highlightShown = false;
+    try {
+      await session.clearPassageHighlight();
+    } on Object catch (error) {
+      debugPrint('Could not clear the search highlight: $error');
+    }
   }
 
   Future<void> _close(EpubReaderSession session) async {
@@ -319,6 +373,7 @@ class _ReadScreenState extends State<ReadScreen> {
       _tellInsights((insights) => insights.recordPosition(position, cause));
     }
     setState(() => _position = position);
+    _updateCutoff();
     final store = _store;
     if (store != null) {
       unawaited(_save(store, position));
@@ -439,6 +494,55 @@ class _ReadScreenState extends State<ReadScreen> {
     return _navigate(cause, () => session.goToPosition(position));
   }
 
+  /// Recomputes what search may look at, from the reader's position and the
+  /// furthest one they reached.
+  void _updateCutoff() {
+    _cutoff.value = searchCutoff(
+      current: _position,
+      furthest: widget.furthestPosition?.call() ?? _insights?.furthest,
+    );
+  }
+
+  /// The book's search, opened on first use and then reused. A failure is
+  /// forgotten so "Try again" opens it afresh.
+  Future<PassageSearch> _search() {
+    final future = _searchFuture ??= widget.openSearch!();
+    unawaited(
+      future.then<void>(
+        (_) {},
+        onError: (Object _) {
+          if (identical(_searchFuture, future)) _searchFuture = null;
+        },
+      ),
+    );
+    return future;
+  }
+
+  /// Shows the search sheet and jumps to the hit the reader picks, with the
+  /// passage highlighted.
+  ///
+  /// The highlight stays until the next hit replaces it or the book closes.
+  Future<void> _openSearchSheet(String initialQuery) async {
+    final session = _session;
+    if (session == null || widget.openSearch == null || !mounted) return;
+    _updateCutoff();
+    final hit = await _withReaderCovered(
+      () => showSearchSheet(
+        context,
+        openSearch: _search,
+        cutoff: _cutoff,
+        entries: _usableEntries(session),
+        initialQuery: initialQuery,
+      ),
+    );
+    if (hit == null || !mounted || !identical(session, _session)) return;
+    _highlightShown = true;
+    await _navigate(
+      NavigationCause.searchJump,
+      () => session.showPassage(hit.target),
+    );
+  }
+
   /// Moves the reader, noting [cause] for the position that follows.
   Future<void> _navigate(
     NavigationCause cause,
@@ -519,6 +623,9 @@ class _ReadScreenState extends State<ReadScreen> {
           onOpenContents: entries.isEmpty
               ? null
               : () => unawaited(_openContents(session)),
+          onOpenSearch: widget.openSearch == null
+              ? null
+              : () => unawaited(_openSearchSheet('')),
         ),
         Expanded(child: view),
         // Always in the column, so the reader view keeps its place in it.
@@ -533,7 +640,11 @@ class _ReadScreenState extends State<ReadScreen> {
                   onDismiss: () =>
                       _tellInsights((insights) => insights.dismissNudge()),
                   onOpenStoryMap: widget.onOpenStoryMap,
-                  onSearchChapter: widget.onSearchChapter,
+                  onSearchChapter:
+                      widget.onSearchChapter ??
+                      (widget.openSearch == null
+                          ? null
+                          : () => unawaited(_openSearchSheet(''))),
                 ),
         ),
         _PageControls(
@@ -559,6 +670,7 @@ class _ChapterBar extends StatelessWidget {
     required this.title,
     required this.onOpenInsights,
     required this.onOpenContents,
+    required this.onOpenSearch,
   });
 
   final String title;
@@ -566,6 +678,7 @@ class _ChapterBar extends StatelessWidget {
   /// Null while there are no reading insights, which hides the button.
   final VoidCallback? onOpenInsights;
   final VoidCallback? onOpenContents;
+  final VoidCallback? onOpenSearch;
 
   @override
   Widget build(BuildContext context) {
@@ -594,6 +707,12 @@ class _ChapterBar extends StatelessWidget {
                 color: LoremarkColors.muted,
                 onPressed: onOpenInsights,
               ),
+            IconButton(
+              icon: const Icon(Icons.search),
+              tooltip: 'Search',
+              color: LoremarkColors.muted,
+              onPressed: onOpenSearch,
+            ),
             IconButton(
               icon: const Icon(Icons.toc),
               tooltip: 'Contents',
