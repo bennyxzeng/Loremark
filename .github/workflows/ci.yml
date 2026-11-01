@@ -41,6 +41,8 @@ jobs:
       - name: Analyze
         run: flutter analyze
 
-      # Tests tagged `live` call a real LLM provider and are run by hand.
+      # Tests tagged `live` call a real LLM provider and tests tagged
+      # `benchmark` time a 500,000-word book; both are run by hand. A boolean
+      # tag selector excludes either one (see dart_test.yaml).
       - name: Run tests
         run: flutter test --exclude-tags "live || benchmark"
