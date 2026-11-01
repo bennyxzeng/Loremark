@@ -88,7 +88,7 @@ String _sectionText(EpubPackage package, String path) {
   try {
     final xhtml = utf8
         .decode(file.content, allowMalformed: true)
-        .replaceFirst('﻿', '');
+        .replaceFirst('\uFEFF', '');
     try {
       return _bodyText(xhtml);
     } on XmlException {
