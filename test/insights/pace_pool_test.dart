@@ -59,6 +59,44 @@ void main() {
     },
   );
 
+  test(
+    'pace pools only matching units but totals include every book',
+    () async {
+      await writeStats(
+        statsFile(temp, 'english'),
+        samples: samples(10),
+        days: {'2026-10-01': 100},
+      );
+      await writeStats(
+        statsFile(temp, 'chinese'),
+        samples: samples(20),
+        days: {'2026-10-01': 200},
+        countsCharacters: true,
+      );
+      final words = await loadPool(temp, excludeId: 'none');
+      final characters = await loadPool(
+        temp,
+        excludeId: 'none',
+        countsCharacters: true,
+      );
+      expect(words.samples, hasLength(10));
+      expect(characters.samples, hasLength(20));
+      expect(words.days['2026-10-01'], 300);
+      expect(characters.days['2026-10-01'], 300);
+      final legacy = statsFile(temp, 'legacy');
+      await legacy.writeAsString(
+        jsonEncode({
+          'version': 1,
+          'samples': samples(30).map((s) => s.toJson()).toList(),
+          'days': {'2026-10-01': 400},
+        }),
+      );
+      final mixed = await loadPool(temp, excludeId: 'none');
+      expect(mixed.samples, hasLength(10));
+      expect(mixed.days['2026-10-01'], 700);
+    },
+  );
+
   test('keeps the newest 100 samples', () async {
     await writeStats(
       statsFile(temp, 'a'),
@@ -104,6 +142,7 @@ void main() {
     File('${folder.path}/odd.stats.json').writeAsStringSync(
       jsonEncode({
         'version': 1,
+        'unit': 'word',
         'samples': [
           [1, 200, 40],
           'junk',

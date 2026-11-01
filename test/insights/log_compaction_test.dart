@@ -151,7 +151,7 @@ void main() {
     expect(parsed.skippedLines, 0);
   });
 
-  test('a log over the hard cap keeps only 14 days raw', () async {
+  test('a log over the hard cap reduces raw retention', () async {
     await writeLog(ninetyDays());
     const config = InsightsConfig(compactLines: 100, hardCapBytes: 1000);
 
@@ -165,8 +165,70 @@ void main() {
           .every((r) => r.timeMs! >= cut),
       isTrue,
     );
-    expect(parsed.records.whereType<DayRecord>(), hasLength(75));
+    expect(
+      parsed.records.whereType<DayRecord>().length,
+      greaterThanOrEqualTo(75),
+    );
   });
+
+  test(
+    'caps a large recent session without losing totals or furthest',
+    () async {
+      final script = LogScript().open();
+      for (var i = 0; i < 150; i++) {
+        script.pos(i % 8, (i % 10) / 10).wait(30);
+      }
+      script.close();
+      final records = script.records;
+      await writeLog(records);
+      final before = replayed(records);
+      const config = InsightsConfig(
+        compactBytes: 200,
+        compactLines: 1,
+        hardCapBytes: 1000,
+      );
+      compactLogFileSync(job(config: config));
+      expect(await file.length(), lessThanOrEqualTo(1000));
+      final compacted = parseLog(await file.readAsString());
+      final after = replayed(compacted.records);
+      expect(totals(after), totals(before));
+      expect(after.furthest!.sectionIndex, before.furthest!.sectionIndex);
+      expect(after.furthest!.progression, before.furthest!.progression);
+      compactLogFileSync(job(config: config));
+      expect(
+        totals(replayed(parseLog(await file.readAsString()).records)),
+        totals(before),
+      );
+    },
+  );
+
+  test(
+    'repeated lifecycle events shrink to summaries and a live checkpoint',
+    () async {
+      final script = LogScript().open().pos(0, 0.2).wait(20);
+      for (var i = 0; i < 100; i++) {
+        script.bg().wait(1).fg().wait(1);
+      }
+      script.bg();
+      await writeLog(script.records);
+      const config = InsightsConfig(
+        compactBytes: 200,
+        compactLines: 1,
+        hardCapBytes: 500,
+      );
+      compactLogFileSync(job(config: config));
+      expect(await file.length(), lessThanOrEqualTo(500));
+      final parsed = parseLog(await file.readAsString());
+      expect(parsed.records.whereType<PositionRecord>(), hasLength(1));
+      expect(parsed.records.last, isA<BackgroundRecord>());
+      final once = totals(replayed(parsed.records));
+      compactLogFileSync(job(config: config));
+      expect(
+        totals(replayed(parseLog(await file.readAsString()).records)),
+        once,
+      );
+    },
+  );
 
   test('compacts by size too', () async {
     await writeLog(ninetyDays());

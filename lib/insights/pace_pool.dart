@@ -35,6 +35,7 @@ Future<void> writeStats(
   required List<PaceSample> samples,
   required Map<String, int> days,
   InsightsConfig config = const InsightsConfig(),
+  bool countsCharacters = false,
 }) async {
   final recent = samples.length > config.poolWindow
       ? samples.sublist(samples.length - config.poolWindow)
@@ -44,6 +45,7 @@ Future<void> writeStats(
   await temp.writeAsString(
     jsonEncode({
       'version': 1,
+      'unit': countsCharacters ? 'character' : 'word',
       'samples': [for (final s in recent) s.toJson()],
       'days': days,
     }),
@@ -58,6 +60,7 @@ Future<PoolData> loadPool(
   Directory root, {
   required String excludeId,
   InsightsConfig config = const InsightsConfig(),
+  bool countsCharacters = false,
 }) async {
   final directory = Directory('${root.path}/reading_log');
   final samples = <PaceSample>[];
@@ -71,7 +74,12 @@ Future<PoolData> loadPool(
       try {
         final json = jsonDecode(await entry.readAsString());
         if (json is! Map || json['version'] != 1) continue;
-        for (final raw in (json['samples'] as List? ?? const [])) {
+        final matchingUnits =
+            json['unit'] == (countsCharacters ? 'character' : 'word');
+        for (final raw
+            in (matchingUnits
+                ? json['samples'] as List? ?? const []
+                : const [])) {
           final sample = PaceSample.fromJson(raw);
           if (sample != null) samples.add(sample);
         }

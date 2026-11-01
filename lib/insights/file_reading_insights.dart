@@ -60,12 +60,16 @@ class FileReadingInsights extends ChangeNotifier implements ReadingInsights {
         return const ParsedLog();
       }),
       _readSettings(library),
-      loadPool(library, excludeId: bookId, config: config),
     ]);
     final bookUnits = results[0] as BookUnits;
     final parsed = results[1] as ParsedLog;
     final hints = results[2] as bool;
-    final pool = results[3] as PoolData;
+    final pool = await loadPool(
+      library,
+      excludeId: bookId,
+      config: config,
+      countsCharacters: bookUnits.countsCharacters(config),
+    );
 
     final engine = InsightsEngine(
       units: bookUnits,
@@ -116,6 +120,7 @@ class FileReadingInsights extends ChangeNotifier implements ReadingInsights {
   bool _hintsEnabled;
   var _closed = false;
   Future<void>? _closing;
+  var _eventsSinceSizeCheck = 0;
 
   int get _ms => _clock().millisecondsSinceEpoch;
   int get _tz => _clock().timeZoneOffset.inMinutes;
@@ -159,6 +164,10 @@ class FileReadingInsights extends ChangeNotifier implements ReadingInsights {
       }
     } on Object catch (error, stackTrace) {
       debugPrint('Reading insights failed on $record: $error\n$stackTrace');
+    }
+    if (++_eventsSinceSizeCheck >= 256) {
+      _eventsSinceSizeCheck = 0;
+      _compactIfNeeded(const ParsedLog(), _log.file);
     }
     notifyListeners();
   }
@@ -301,6 +310,7 @@ class FileReadingInsights extends ChangeNotifier implements ReadingInsights {
             day: days[day]!.ms,
         },
         config: _config,
+        countsCharacters: _units.countsCharacters(_config),
       );
     } on Object catch (error, stackTrace) {
       debugPrint('Could not save reading stats: $error\n$stackTrace');
