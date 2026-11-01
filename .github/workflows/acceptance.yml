@@ -1,0 +1,106 @@
+# Runs the device acceptance checks (force-quit, offline, privacy) on an Android
+# emulator. Slow and heavy, so it is kept out of ci.yml. See docs/acceptance.md.
+#
+# `workflow_dispatch` and `schedule` only work once this file is on the default
+# branch. A pull request can run it before that: add the `device-tests` label.
+name: Acceptance (device)
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Mondays, 09:00 UTC.
+    - cron: '0 9 * * 1'
+  pull_request:
+    # Opened pull requests do not run it; the label (or a push to a labeled
+    # pull request) does.
+    types: [labeled, synchronize]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: acceptance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  device:
+    name: Force-quit, offline and privacy checks
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.action == 'labeled' && github.event.label.name == 'device-tests') ||
+      (github.event.action == 'synchronize' &&
+        contains(github.event.pull_request.labels.*.name, 'device-tests'))
+    runs-on: ubuntu-latest
+    # Cold build 6-10 min, emulator boot 2-3 min, 20 trials about 10 min.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          # Same SDK as ci.yml.
+          flutter-version: 3.47.7
+          cache: true
+
+      - name: Cache Gradle
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('android/**/*.gradle*', 'android/gradle/wrapper/gradle-wrapper.properties', 'pubspec.lock') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: flutter pub get --enforce-lockfile
+
+      # x86_64 only: the default debug APK carries every ABI and is far larger.
+      - name: Build debug APK
+        run: flutter build apk --debug --target-platform android-x64
+
+      # The emulator needs KVM; the runner's default rules keep it root-only.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      # `script` runs one `sh -c` per line, so it is a single line. The
+      # emulator stops when it ends, hence the report is written inside it.
+      # emulator-options replaces the action's defaults, so they are restated,
+      # plus -tcpdump for the privacy audit. API 36 matches the dev AVD.
+      - name: Run acceptance checks
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-boot-timeout: 300
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -tcpdump /tmp/emulator.pcap
+          script: dart run tool/acceptance/run.dart --ci --report build/acceptance --pcap /tmp/emulator.pcap
+
+      - name: Publish summary
+        if: always()
+        run: |
+          if [ -f build/acceptance/report.md ]; then
+            cat build/acceptance/report.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'The harness wrote no report; see the job log.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # report.json, report.md and a copy of the capture.
+      - name: Upload report and capture
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: acceptance
+          path: build/acceptance
+          if-no-files-found: warn

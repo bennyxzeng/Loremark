@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_readium/flutter_readium.dart';
 
@@ -124,6 +126,11 @@ class _ReadiumSession implements EpubReaderSession {
     final previousHadPageInfo = _lastHadPageInfo;
     _lastHadPageInfo = _hasPageInfo(locator.locations);
     final raw = positionFromLocator(locator, _indexOf);
+    // Debug and profile builds only; tool/acceptance reads it from logcat.
+    if (kDebugMode || kProfileMode) {
+      final line = positionLogLine(locator, raw?.sectionIndex);
+      if (line != null) debugPrintSynchronously(line);
+    }
     // Readium reports every page twice, a bare locator and then a full one
     // with the same position.
     if (raw == null || raw == _lastRaw) return;
@@ -264,6 +271,28 @@ bool _isLastPage(Locations? locations) {
       totalPages is int &&
       totalPages > 0 &&
       currentPage >= totalPages - 1;
+}
+
+/// The `LOREMARK_POSITION {json}` logcat line the acceptance harness reads
+/// for [locator] on [section], or null for the bare locator that lacks page
+/// numbers.
+///
+/// The harness measures "within one page" in Readium pages, which the saved
+/// position file doesn't hold. Printed synchronously, unlike `debugPrint`,
+/// so a line survives a SIGKILL right after the page turn.
+@visibleForTesting
+String? positionLogLine(Locator locator, int? section, {DateTime? now}) {
+  final locations = locator.locations;
+  if (!_hasPageInfo(locations)) return null;
+  final properties = locations!.additionalProperties;
+  final fields = {
+    'section': section,
+    'progression': locations.progression,
+    'currentPage': properties['currentPage'],
+    'totalPages': properties['totalPages'],
+    'tUs': (now ?? DateTime.now()).microsecondsSinceEpoch,
+  };
+  return 'LOREMARK_POSITION ${jsonEncode(fields)}';
 }
 
 /// Whether [locations] carries the plugin's page numbers, which the bare
