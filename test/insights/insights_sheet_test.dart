@@ -94,7 +94,7 @@ void main() {
       );
       await showSheet(tester);
 
-      expect(find.text('Still learning your pace'), findsOneWidget);
+      expect(find.text('A typical pace until it learns yours'), findsOneWidget);
       expect(find.text('1 day'), findsOneWidget);
       expect(find.text('0 min'), findsOneWidget);
       // No estimate yet for either.

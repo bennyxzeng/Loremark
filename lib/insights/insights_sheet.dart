@@ -87,7 +87,7 @@ class _InsightsSheetState extends State<InsightsSheet> {
 
   String _paceNote(InsightsSummary summary) => summary.paceIsPersonal
       ? 'Estimated from ${summary.paceSamples} page turns'
-      : 'Still learning your pace';
+      : 'A typical pace until it learns yours';
 
   @override
   Widget build(BuildContext context) {
@@ -112,7 +112,9 @@ class _InsightsSheetState extends State<InsightsSheet> {
               _Stat(
                 label: 'TODAY',
                 value: _shortTime(summary.today),
-                note: 'Idle time not counted',
+                // Today and the streak add up every book, so a book opened
+                // for the first time can already show time.
+                note: 'All books, idle time not counted',
               ),
               _Stat(
                 label: 'PACE',
