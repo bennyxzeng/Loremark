@@ -109,14 +109,31 @@ class ReadingPositionStore {
 
   /// Writes to a temporary file first, so a crash mid-write cannot lose the
   /// position.
+  ///
+  /// The other keys of the existing file stay, since the progress tracker
+  /// keeps its own beside `current`. Only the writes in the queue touch the
+  /// file, so reading it here can't race another save.
   Future<void> _write(File file, ReaderPosition position) async {
     await file.parent.create(recursive: true);
+    final state = await _readState(file);
+    state['current'] = position.toJson();
     final temp = File('${file.path}.tmp');
-    await temp.writeAsString(
-      jsonEncode({'version': 1, 'current': position.toJson()}),
-      flush: true,
-    );
+    await temp.writeAsString(jsonEncode(state), flush: true);
     await temp.rename(file.path);
+  }
+
+  /// What [file] holds, or a fresh state if it is missing, broken or from
+  /// another version.
+  Future<Map<String, dynamic>> _readState(File file) async {
+    try {
+      final json = jsonDecode(await file.readAsString());
+      if (json is Map<String, dynamic> && json['version'] == 1) return json;
+    } on FormatException {
+      // Starts fresh, like [load] reads it as no position.
+    } on FileSystemException {
+      // Same.
+    }
+    return {'version': 1};
   }
 }
 

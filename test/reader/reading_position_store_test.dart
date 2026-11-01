@@ -126,12 +126,80 @@ void main() {
   });
 
   test('a later save replaces a leftover temporary file', () async {
-    await writeRaw('$bookA.json.tmp', 'stale');
+    final temp = File('${fileFor(bookA).path}.tmp');
+    await temp.parent.create(recursive: true);
+    await temp.writeAsString('stale');
 
     await store.save(bookA, const ReaderPosition(2, 0.3));
 
     expect(await store.load(bookA), const ReaderPosition(2, 0.3));
-    expect(await File('${fileFor(bookA).path}.tmp').exists(), isFalse);
+    expect(await temp.exists(), isFalse);
+  });
+
+  group('other keys', () {
+    test('survive a save', () async {
+      await writeRaw(
+        bookA,
+        jsonEncode({
+          'version': 1,
+          'current': {'sectionIndex': 0, 'progression': 0.1},
+          'furthest': {'sectionIndex': 3, 'progression': 0.5},
+          'boundary': 7,
+        }),
+      );
+
+      await store.save(bookA, const ReaderPosition(1, 0.5));
+
+      expect(jsonDecode(await fileFor(bookA).readAsString()), {
+        'version': 1,
+        'current': {'sectionIndex': 1, 'progression': 0.5},
+        'furthest': {'sectionIndex': 3, 'progression': 0.5},
+        'boundary': 7,
+      });
+    });
+
+    test('survive many saves', () async {
+      await writeRaw(bookA, jsonEncode({'version': 1, 'furthest': 'kept'}));
+
+      for (var i = 0; i < 5; i++) {
+        await store.save(bookA, ReaderPosition(i, 0));
+      }
+
+      final json = jsonDecode(await fileFor(bookA).readAsString());
+      expect(json['furthest'], 'kept');
+      expect(json['current']['sectionIndex'], 4);
+    });
+
+    test('are dropped with a file of another version', () async {
+      await writeRaw(bookA, jsonEncode({'version': 2, 'furthest': 'old'}));
+
+      await store.save(bookA, const ReaderPosition(1, 0.5));
+
+      expect(jsonDecode(await fileFor(bookA).readAsString()), {
+        'version': 1,
+        'current': {'sectionIndex': 1, 'progression': 0.5},
+      });
+    });
+
+    test('are dropped with a corrupt file', () async {
+      await writeRaw(bookA, '{"version": 1, "furth');
+
+      await store.save(bookA, const ReaderPosition(1, 0.5));
+
+      expect(await store.load(bookA), const ReaderPosition(1, 0.5));
+      expect(jsonDecode(await fileFor(bookA).readAsString()), {
+        'version': 1,
+        'current': {'sectionIndex': 1, 'progression': 0.5},
+      });
+    });
+
+    test('are dropped when the file is not a JSON object', () async {
+      await writeRaw(bookA, '[1, 2]');
+
+      await store.save(bookA, const ReaderPosition(1, 0.5));
+
+      expect(await store.load(bookA), const ReaderPosition(1, 0.5));
+    });
   });
 
   group('rapid saves', () {
