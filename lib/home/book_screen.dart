@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../library/book.dart';
+import '../reader/readium_reader_service.dart';
 import '../story_map/story_map_screen.dart';
 import '../story_model/story_model.dart';
 import '../story_model/story_model_loader.dart';
@@ -47,7 +48,10 @@ class _BookScreenState extends State<BookScreen> {
               child: IndexedStack(
                 index: _selectedTab,
                 children: [
-                  ReadScreen(book: widget.book),
+                  ReadScreen(
+                    book: widget.book,
+                    readerService: const ReadiumReaderService(),
+                  ),
                   const AskScreen(),
                   const NotesScreen(),
                   _buildStoryMapTab(),

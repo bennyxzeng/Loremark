@@ -1,5 +1,7 @@
 package com.example.loremark
 
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 
-class MainActivity : FlutterActivity()
+// flutter_readium hosts its reader in a platform view that needs Fragment
+// support. With a plain FlutterActivity the book never leaves "loading".
+class MainActivity : FlutterFragmentActivity()
