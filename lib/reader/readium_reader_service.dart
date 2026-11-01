@@ -20,6 +20,22 @@ class ReadiumReaderService implements EpubReaderService {
   // open session globally and closes it before opening another book.
   static _ReadiumSession? _current;
 
+  // Every native open and close runs through this chain, one at a time. Without
+  // it, an old session's slow close could land after the next book opened and
+  // close that book instead.
+  static Future<void> _queue = Future.value();
+
+  /// Runs [task] after every earlier one finished.
+  ///
+  /// A failing task fails its own caller only, never the ones queued behind
+  /// it. A task already running in the queue must not call this: it would wait
+  /// for itself.
+  static Future<T> _serially<T>(Future<T> Function() task) {
+    final result = _queue.then((_) => task());
+    _queue = result.then<void>((_) {}, onError: (Object _) {});
+    return result;
+  }
+
   @override
   Future<EpubReaderSession> open(String epubPath) async {
     if (!await File(epubPath).exists()) {
@@ -33,24 +49,26 @@ class ReadiumReaderService implements EpubReaderService {
       throw EpubOpenException(EpubOpenFailure.unreadable, error);
     }
 
-    await _current?.close();
-    final readium = FlutterReadium();
-    final Publication publication;
-    try {
-      // The plugin wants a URL, not a path.
-      publication = await readium.openPublication(
-        Uri.file(epubPath).toString(),
-      );
-    } on Object catch (error) {
-      throw EpubOpenException(EpubOpenFailure.unreadable, error);
-    }
+    return _serially(() async {
+      await _current?._release();
+      final readium = FlutterReadium();
+      final Publication publication;
+      try {
+        // The plugin wants a URL, not a path.
+        publication = await readium.openPublication(
+          Uri.file(epubPath).toString(),
+        );
+      } on Object catch (error) {
+        throw EpubOpenException(EpubOpenFailure.unreadable, error);
+      }
 
-    // Read by the reader view when it is built, so set it first.
-    readium.setDefaultPreferences(_readerPreferences);
+      // Read by the reader view when it is built, so set it first.
+      readium.setDefaultPreferences(_readerPreferences);
 
-    final session = _ReadiumSession(readium, publication, spine);
-    _current = session;
-    return session;
+      final session = _ReadiumSession(readium, publication, spine);
+      _current = session;
+      return session;
+    });
   }
 }
 
@@ -99,14 +117,20 @@ class _ReadiumSession implements EpubReaderSession {
   int? _indexOf(String href) => spineIndexOf(_spine, href);
 
   ReaderPosition? _lastRaw;
+  bool _lastHadPageInfo = false;
 
   void _onLocator(Locator locator) {
+    // Tracked before the checks below, so a dropped duplicate still counts.
+    final previousHadPageInfo = _lastHadPageInfo;
+    _lastHadPageInfo = _hasPageInfo(locator.locations);
     final raw = positionFromLocator(locator, _indexOf);
     // Readium reports every page twice, a bare locator and then a full one
     // with the same position.
     if (raw == null || raw == _lastRaw) return;
     _lastRaw = raw;
-    _emit(_normalizer.normalize(raw));
+    // With page info the last page already reached 1.0, so leaving a section
+    // below it is a jump, not a page turn through its end.
+    _emit(_normalizer.normalize(raw, mayFinishPrevious: !previousHadPageInfo));
   }
 
   void _onStatus(ReadiumReaderStatus status) {
@@ -118,7 +142,7 @@ class _ReadiumSession implements EpubReaderSession {
   }
 
   void _emit(List<ReaderPosition> positions) {
-    if (_positions.isClosed) return;
+    if (_closed) return;
     for (final position in positions) {
       _positions.add(position);
     }
@@ -166,15 +190,25 @@ class _ReadiumSession implements EpubReaderSession {
   Future<void> goBackward() => _readium.goBackward();
 
   @override
-  Future<void> close() async {
-    if (_closed) return;
+  Future<void> close() {
+    // Stops emitting now; the native close waits its turn in the queue.
     _closed = true;
-    if (identical(ReadiumReaderService._current, this)) {
-      ReadiumReaderService._current = null;
-    }
+    return ReadiumReaderService._serially(_release);
+  }
+
+  /// Tears the session down. Safe to call again.
+  ///
+  /// The publication is closed only while this session is still the open one,
+  /// since a newer book may have replaced it. Runs inside the service's queue.
+  Future<void> _release() async {
+    _closed = true;
     await _locatorSubscription.cancel();
     await _statusSubscription.cancel();
-    await _positions.close();
+    // Not awaited: the future of a controller nobody listened to never
+    // completes.
+    unawaited(_positions.close());
+    if (!identical(ReadiumReaderService._current, this)) return;
+    ReadiumReaderService._current = null;
     await _readium.closePublication();
   }
 }
@@ -230,6 +264,13 @@ bool _isLastPage(Locations? locations) {
       totalPages is int &&
       totalPages > 0 &&
       currentPage >= totalPages - 1;
+}
+
+/// Whether [locations] carries the plugin's page numbers, which the bare
+/// locator of each page lacks.
+bool _hasPageInfo(Locations? locations) {
+  final properties = locations?.additionalProperties;
+  return properties?['currentPage'] is int && properties?['totalPages'] is int;
 }
 
 /// The locator that opens the reader at [position], or null if the section

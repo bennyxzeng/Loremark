@@ -19,7 +19,15 @@ class PositionNormalizer {
   ReaderPosition? _last;
 
   /// The positions to report for [raw], in order. Empty if nothing changed.
-  List<ReaderPosition> normalize(ReaderPosition raw) {
+  ///
+  /// Turning into the next section normally reports the old one at exactly 1.0
+  /// first. Pass `mayFinishPrevious: false` when the renderer already reports
+  /// the last page at 1.0: then moving on without it was a jump, such as from
+  /// the table of contents, and the old section was not finished.
+  List<ReaderPosition> normalize(
+    ReaderPosition raw, {
+    bool mayFinishPrevious = true,
+  }) {
     final position = ReaderPosition(
       raw.sectionIndex,
       _clean(raw.progression),
@@ -30,7 +38,9 @@ class PositionNormalizer {
     final last = _last;
     if (position == last) return const [];
     _last = position;
-    if (last != null && _isPageTurn(last, position.sectionIndex)) {
+    if (mayFinishPrevious &&
+        last != null &&
+        _isPageTurn(last, position.sectionIndex)) {
       return [_finished(last, position.totalProgression), position];
     }
     return [position];

@@ -119,6 +119,30 @@ void main() {
       ]);
     });
 
+    test('does not finish the section when mayFinishPrevious is false', () {
+      normalizer.normalize(const ReaderPosition(0, 0.4));
+
+      expect(
+        normalizer.normalize(
+          const ReaderPosition(1, 0),
+          mayFinishPrevious: false,
+        ),
+        [const ReaderPosition(1, 0)],
+      );
+    });
+
+    test('still suppresses repeats when mayFinishPrevious is false', () {
+      normalizer.normalize(const ReaderPosition(1, 0.5));
+
+      expect(
+        normalizer.normalize(
+          const ReaderPosition(1, 0.5),
+          mayFinishPrevious: false,
+        ),
+        isEmpty,
+      );
+    });
+
     test('finishes the section when turning across non-linear items', () {
       normalizer.normalize(const ReaderPosition(1, 0.8));
 
