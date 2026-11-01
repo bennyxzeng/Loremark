@@ -162,7 +162,7 @@ The Read tab renders books with [Readium](https://readium.org/) through the [`fl
 flutter run
 ```
 
-Then tap **Import EPUB**, pick a DRM-free EPUB (for example one from [Project Gutenberg](https://www.gutenberg.org/)), and read: turn pages with the arrows or by swiping, and jump to a chapter from the contents button. The app saves your place on every page turn and reopens the book there. iOS needs iOS 15 or later and has not been tested yet.
+Then tap **Import EPUB**, pick a DRM-free EPUB (for example one from [Project Gutenberg](https://www.gutenberg.org/)), and read: turn pages with the arrows or by swiping, and jump to a chapter from the contents button. The app saves your place on every page turn and reopens the book there. iOS needs iOS 15 or later and has not been tested yet. See [docs/epub-reader.md](docs/epub-reader.md) for how the reader works, Mac/iOS steps, and how other features plug into it.
 
 Have feedback? [Open an issue](https://github.com/bennyxzeng/Loremark/issues) with the reading scenario, the chapter boundary, and what you expected Loremark to do. Clearly label any spoilers in examples.
 
