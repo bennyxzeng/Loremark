@@ -23,7 +23,7 @@ The position log stores exact progression, section, cause and timestamp, never
 text. `ViewTracker` sessionizes idle gaps and excludes background time. Dwells
 below three seconds are flip-throughs; time above two minutes is capped.
 Pace uses first-read forward page turns, a trimmed ratio of total time to text
-units, and a prior from the reader's other books. Contents/search jumps and
+units, and a prior from the reader's other books with the same word/character units. Contents/search jumps and
 revisits do not establish pace. The estimate is approximate: EPUB progression
 is a location fraction, not a measured word boundary or eye-tracking signal.
 
@@ -54,9 +54,14 @@ Writes queue in order and coalesce same-turn events. Hiding/closing flushes to
 storage. A torn JSONL line is skipped; the next append begins a new line.
 A newer log format is read-only to avoid an older app damaging it. Old events
 are compacted in an isolate when a book opens, into daily totals plus furthest
-position, retaining recent raw events for replay. The byte limits trigger
-retention reduction (60 days, then 14), rather than guaranteeing a strict byte
-ceiling for unusually intense activity within those days. A crash cannot reveal
+position, retaining recent raw events for replay. The byte limits first reduce
+retention (60 days, then 14). If recent events alone still exceed the cap, the
+oldest raw prefix becomes daily totals while the newest session/position
+checkpoint stays. The byte budget has an unavoidable minimum: header, one
+summary per historical day, furthest position and live checkpoint. Extremely
+small configured budgets below that minimum cannot be met without discarding
+historical totals. This can shorten the detector/pace replay window, but not
+forget the furthest position or recorded reading time. A crash cannot reveal
 how long its final page was read: replay credits at most one capped dwell.
 Summaries of other books update when those books flush/close; they are not a
 live cross-book analytics service.

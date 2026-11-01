@@ -59,14 +59,135 @@ bool compactLogFileSync(CompactionJob job) {
 
   var output = compactRecords(parsed.records, job, config.keepRawDays);
   var encoded = _encode(output, job);
-  if (encoded.length > config.hardCapBytes) {
+  if (utf8.encode(encoded).length > config.hardCapBytes) {
     output = compactRecords(parsed.records, job, config.hardCapRawDays);
+    encoded = _encode(output, job);
+  }
+  // Intense recent reading can exceed the cap even inside the shorter window.
+  // Keep the newest raw tail and fold older events into the same daily totals.
+  while (utf8.encode(encoded).length > config.hardCapBytes) {
+    final positions = [
+      for (var i = 0; i < output.length; i++)
+        if (output[i] is PositionRecord) i,
+    ];
+    if (positions.length <= 1) {
+      output = _compactToCheckpoint(output, job);
+      encoded = _encode(output, job);
+      break; // Only header, summaries and live checkpoint remain.
+    }
+    output = _compactPrefix(output, positions[positions.length ~/ 2], job);
     encoded = _encode(output, job);
   }
   final temp = File('${job.path}.tmp');
   temp.writeAsStringSync(encoded, flush: true);
   temp.renameSync(job.path);
   return true;
+}
+
+/// The irreducible form when even a single raw tail exceeds the byte budget.
+List<LogRecord> _compactToCheckpoint(
+  List<LogRecord> records,
+  CompactionJob job,
+) {
+  final tracker = ViewTracker(job.units, job.config);
+  final timeline = ReadingTimeline(job.config);
+  var hidden = false;
+  var closed = false;
+  var lastMs = job.nowMs;
+  PositionRecord? position;
+  for (final record in records) {
+    if (record is DayRecord) {
+      timeline.addDay(record);
+    } else {
+      tracker.add(record).forEach(timeline.onEvent);
+      lastMs = record.timeMs ?? lastMs;
+      if (record is PositionRecord) position = record;
+      if (record is BackgroundRecord) hidden = true;
+      if (record is ForegroundRecord || record is OpenRecord) hidden = false;
+      if (record is OpenRecord) closed = false;
+      if (record is CloseRecord) closed = true;
+    }
+  }
+  // Settle only time already evidenced by a log record, never wall time now.
+  tracker.add(CloseRecord(t: lastMs)).forEach(timeline.onEvent);
+  final furthest = tracker.furthest;
+  final days = timeline.days.keys.toList()..sort();
+  return [
+    if (furthest != null)
+      FurthestRecord(
+        section: furthest.sectionIndex,
+        progression: furthest.progression,
+        t: lastMs,
+      ),
+    for (final day in days)
+      DayRecord(
+        day: day,
+        ms: timeline.days[day]!.ms,
+        units: timeline.days[day]!.units,
+        pages: timeline.days[day]!.pages,
+        sessions: timeline.days[day]!.sessions,
+      ),
+    if (!closed) ...[
+      OpenRecord(t: lastMs, tz: tracker.tz),
+      if (position != null)
+        PositionRecord(
+          t: lastMs,
+          section: position.section,
+          progression: position.progression,
+          cause: position.cause,
+        ),
+      if (hidden) BackgroundRecord(t: lastMs),
+    ],
+  ];
+}
+
+/// Summarises a raw prefix, retaining a position checkpoint to resume the tail.
+List<LogRecord> _compactPrefix(
+  List<LogRecord> records,
+  int keepFrom,
+  CompactionJob job,
+) {
+  final tracker = ViewTracker(job.units, job.config);
+  final timeline = ReadingTimeline(job.config);
+  for (final record in records.take(keepFrom)) {
+    if (record is DayRecord) {
+      timeline.addDay(record);
+    } else {
+      tracker.add(record).forEach(timeline.onEvent);
+    }
+  }
+  final boundary = records[keepFrom] as PositionRecord;
+  // Feeding the boundary settles the previous page's dwell and units exactly;
+  // the new page is retained below and has not accrued time in the summaries.
+  tracker.add(boundary).forEach(timeline.onEvent);
+  final view = tracker.current!;
+  final session = timeline.sessions[view.sessionId];
+  if (session != null && session.activeMs > 0) {
+    // The retained tail will count this same session when its first page ends.
+    timeline.days[session.day]!.sessions--;
+  }
+  final furthest = tracker.furthest;
+  final days = timeline.days.keys.toList()..sort();
+  return [
+    if (furthest != null)
+      FurthestRecord(
+        section: furthest.sectionIndex,
+        progression: furthest.progression,
+        t: boundary.t,
+      ),
+    for (final day in days)
+      DayRecord(
+        day: day,
+        ms: timeline.days[day]!.ms,
+        units: timeline.days[day]!.units,
+        pages: timeline.days[day]!.pages,
+        sessions: timeline.days[day]!.sessions,
+      ),
+    OpenRecord(t: view.sessionStartMs, tz: view.tz),
+    ...records
+        .skip(keepFrom)
+        .where((r) => r is! DayRecord && r is! FurthestRecord),
+  ];
 }
 
 String _encode(List<LogRecord> records, CompactionJob job) {
