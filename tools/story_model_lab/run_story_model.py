@@ -156,7 +156,8 @@ def main() -> int:
         return 2
     os.chdir(REPO_ROOT)
     argv = build_argv()
-    print(f"$ {shlex.join(['story-model', *argv])}", flush=True)
+    # On stderr, so `> file` with Command.SHOW captures only the model.
+    print(f"$ {shlex.join(['story-model', *argv])}", file=sys.stderr, flush=True)
     return story_model(argv)
 
 

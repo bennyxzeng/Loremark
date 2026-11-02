@@ -8,159 +8,181 @@
 
 [查看结构关系图](STORY_MODEL_FORMAT.zh-CN.md#visual-overview)：直观看每个字段存什么，以及实体、记录、证据和历史修订之间如何通过 ID 关联。
 
-[快速开始](#quick-start) · [新书](#new-book) · [继续已有 store](#continue-store) · [参考](#commands)
+[准备](#setup) · [新书](#new-book) · [继续已有 store](#continue-store) · [运行失败时](#run-fails) · [参考](#commands)
 
 Loremark 的本地命令行实验工具：**按阅读顺序、一次一节**地为 EPUB 建立 story model。每次 `update` 把目前为止的模型和下一节正文，通过 **Responses API 的 Structured Outputs** 发给模型；模型只返回这一节新增或修改的内容（增量），程序校验、分配稳定 ID，并提交一个新修订。一本书的第一次 `update` 从空模型开始，同时创建 store。历史事实和修订都会保留，可以回看书中任何一个位置当时的状态。
 
 模型永远看不到后续章节；文本尚未确定的身份、指代或原因保留为疑点，不会补全。工具独立于 Flutter App，App 只读取最终的 `story_model.json`。
 
-<a id="quick-start"></a>
+## 入门教程
 
-## 快速开始：一个设置文件
+下面所有操作都通过一个文件完成：[`run_story_model.py`](run_story_model.py)。改文件顶部的设置、保存、运行，不需要敲任何命令行参数。每次运行时，文件会先打印对应的 `story-model` 命令，所以[命令参考](#commands)里的说明同样适用。
 
-1. 先完成一次安装（见[第 0 步](#prepare-terminal)）。
-2. 把 API key 粘贴到 `tools/story_model_lab/.env`（已被 git 忽略；文件不存在就复制 `.env.example`）。Terminal 里已经 export 的值优先。
-3. 修改 [`run_story_model.py`](run_story_model.py) 顶部的设置：
-   - `COMMAND`：`Command.UPDATE`、`Command.SHOW`、`Command.CHAPTERS` 等
-   - `STORE`、`EPUB`
-   - `CHAPTER` / `SECTION`：都为 `None` 表示"下一节"；新 store 必须指定其中一个作为起点
-   - `MODEL`（`Model.DEEPSEEK_FLASH` 或 `Model.GPT_6_1_TERRA`，provider 由模型决定）、`EFFORT`、`DRY_RUN` 等
-4. 运行（在任何目录都可以，不需要先激活环境）：
+<a id="setup"></a>
+
+### 0. 一次性准备
+
+**1. 安装**（需要 Python 3.11 或更新版本）。在 Terminal 里，从仓库根目录执行：
+
+```bash
+cd /Users/frankhao76/MineApps/vscode/loremark/Loremark
+python3 -m venv tools/story_model_lab/.venv
+tools/story_model_lab/.venv/bin/python -m pip install -e './tools/story_model_lab[dev]'
+```
+
+`requirements.lock.txt` 记录已测试的精确依赖版本（macOS、Python 3.14.6）；要复现，先运行 `tools/story_model_lab/.venv/bin/python -m pip install -r tools/story_model_lab/requirements.lock.txt`，再执行上面的可编辑安装。
+
+**2. 保存一次 API key。** 把 `tools/story_model_lab/.env.example` 复制为 `tools/story_model_lab/.env`（已被 git 忽略），把 key 粘贴到等号后面：DeepSeek 填 `DEEPSEEK_API_KEY=`，GPT 填 `OPENAI_API_KEY=`。之后新开 Terminal 也会自动读取。列出章节、查看模型和 dry run 都不需要 key。
+
+**3. 在 VS Code 里选解释器：** 按 `Cmd+Shift+P` → **Python: Select Interpreter** → 选 `tools/story_model_lab/.venv/bin/python`。
+
+**怎么运行：** 打开 `run_story_model.py`，点右上角的 **Run Python File**（▶ 按钮）；或者在 Terminal 里执行：
 
 ```bash
 tools/story_model_lab/.venv/bin/python tools/story_model_lab/run_story_model.py
 ```
 
-在 VS Code 里把解释器选成 `tools/story_model_lab/.venv/bin/python`，然后点 **Run Python File** 即可。脚本运行前会打印对应的 `story-model` 命令，所以下面的说明同样适用。
+在哪个目录运行都可以；设置里的相对路径都以仓库根目录为准。
 
-## 入门教程
+**你会用到的设置：**
 
-以下命令在 **macOS zsh Terminal** 中逐段执行，上一步成功后再继续。
-
-<a id="prepare-terminal"></a>
-
-### 0. 准备 Terminal
-
-先进入仓库根目录；如果你把项目放在其他位置，修改这一行路径：
-
-```bash
-cd /Users/frankhao76/MineApps/vscode/loremark/Loremark
-```
-
-**仅首次安装时执行**（需要 Python 3.11 或更新版本）：
-
-```bash
-python3 -m venv tools/story_model_lab/.venv
-source tools/story_model_lab/.venv/bin/activate
-python -m pip install -e './tools/story_model_lab[dev]'
-```
-
-`requirements.lock.txt` 记录已测试的精确依赖版本（macOS、Python 3.14.6）；要复现，先运行 `python -m pip install -r tools/story_model_lab/requirements.lock.txt`，再执行上面的可编辑安装。
-
-**已经安装过，每次新开 Terminal 只需激活：**
-
-```bash
-source tools/story_model_lab/.venv/bin/activate
-```
-
-`story-model` 命令只从环境变量读取 key 和模型（它不读 `.env`；`run_story_model.py` 会读）。使用 DeepSeek 时：
-
-```zsh
-read -rs 'DEEPSEEK_API_KEY?粘贴 DeepSeek API key，然后按回车（输入不显示）：'
-export DEEPSEEK_API_KEY
-export DEEPSEEK_MODEL=deepseek-flash
-```
-
-不显示输入是正常的。不要把 key 填进 README 或 `.env.example`。列出章节、`show` 和 `--dry-run` 都不需要 key。
+| 设置 | 填什么 |
+| --- | --- |
+| `COMMAND` | 要做什么：`Command.CHAPTERS`（列出各节）、`Command.UPDATE`（加入一节）、`Command.SHOW`（查看模型）、`Command.COMMIT` / `Command.VALIDATE`（运行失败后用） |
+| `EPUB` | 书的文件，例如 `"sample_epub/86v1_chapters.epub"` |
+| `STORE` | 存这本书模型的文件夹，例如 `"tools/story_model_lab/stores/86v1"`；文件夹不存在时，第一次 update 会创建它 |
+| `CHAPTER` / `SECTION` | 要加入哪一节。都为 `None` 表示下一节；只有新 store 需要指定，作为起点 |
+| `MODEL`、`EFFORT` | `Model.DEEPSEEK_FLASH` 或 `Model.GPT_6_1_TERRA`；推理强度例如 `Effort.HIGH`，`None` 表示用模型默认值 |
+| `DRY_RUN` | `True` = 只写出将要发送的内容，不调用 API，store 不变 |
+| `RUN` | 某次运行的文件夹，给 `Command.COMMIT` / `Command.VALIDATE` 用 |
+| `REVISION`、`SHOW_JSON` | 给 `Command.SHOW` 用：查看更早的修订（`None` = 最新）；`True` = 输出完整 JSON 而不是 Markdown |
 
 <a id="new-book"></a>
 
 ### A. 新的一本书
 
-**第一步：列出章节，确认 EPUB 能读取。**
+**第一步：列出各节，确认 EPUB 能读取。**
 
-```bash
-story-model chapters --epub sample_epub/86v1_chapters.epub
+```python
+COMMAND = Command.CHAPTERS
+EPUB = "sample_epub/86v1_chapters.epub"
 ```
 
-`--chapter 1` 选择目录标题为 "Chapter 1" 的节（样本中是 `section-004`），不是目录第一项。
+运行。每一行是阅读顺序中的一节：ID（`section-004`）、章节号、段落数和标题。`CHAPTER = 1` 指的是标题为 "Chapter 1" 的那一节（样本中是 `section-004`），不是第一行。
 
-**第二步：从你想覆盖的第一节建立 store。** 这一步会调用 API，可能需要几分钟。store 目录必须不存在或为空。
+**第二步：先预览第一节，不调用 API。** 选一个新的 store 文件夹，以及模型从哪一节开始：
 
-```bash
-story-model update \
-  --store tools/story_model_lab/stores/my-book \
-  --epub sample_epub/86v1_chapters.epub \
-  --chapter 1 \
-  --provider deepseek
+```python
+COMMAND = Command.UPDATE
+STORE = "tools/story_model_lab/stores/my-book"
+CHAPTER = 1
+DRY_RUN = True
 ```
 
-看到 `Status: committed` 和 `created at revision 1` 就表示 store 已建立。起点之前的节（扉页、序章等）会记为未覆盖，以后不能补，所以如果序章重要，就用 `--section ...` 从序章开始。可以先加 `--dry-run` 查看将要发送的内容，它不会创建任何东西。
+输出最后会显示 `Context: new store + section-004` 和 `no store created`。打印出的 `Output:` 文件夹里有 `chapter.txt`（将要发送的原文）和 `request.json`。
 
-**第三步：之后每次 `update` 加入一节。** 不传 `--chapter` / `--section` 时，`update` 自动选阅读顺序的下一节：
+起点之前的节（扉页、序章等）会记为未覆盖，以后不能补。如果序章重要，就设 `SECTION = "section-003"`、`CHAPTER = None`，从序章开始。
 
-```bash
-story-model update \
-  --store tools/story_model_lab/stores/my-book \
-  --epub sample_epub/86v1_chapters.epub \
-  --provider deepseek
+**第三步：真正建立 store。** 只改一项：
+
+```python
+DRY_RUN = False
 ```
 
-如果运行失败（`validation_failed`、`schema_invalid`、API 错误），store 不变：查看打印出的运行目录中的 `review.md` / `failure.json`，然后重新运行 `update`。
+这一步会调用 API，可能需要几分钟。看到 `Status: committed` 和 `created at revision 1` 就表示 store 已建立。如果失败了，见 [C](#run-fails)。
+
+**第四步：继续加入后面的节。** 只改一项：
+
+```python
+CHAPTER = None
+```
+
+之后每运行一次，就按阅读顺序加入下一节（间章也算一节）。每一节运行一次即可，其他设置不用再改。
 
 <a id="continue-store"></a>
 
 ### B. 继续已有的 store
 
-App 读取的演示 store 是 `tools/story_model_lab/stores/86v1`。**`--store` 传目录，不是 JSON 文件。**
+App 读取的演示 store 是 `tools/story_model_lab/stores/86v1`。
 
-```bash
-# 查看目前覆盖到哪里（开头列出已处理的节）。
-story-model show --store tools/story_model_lab/stores/86v1
+**查看目前覆盖到哪里：**
 
-# 可选：预览下一次请求，不调用 API（store 不变）。
-story-model update --store tools/story_model_lab/stores/86v1 \
-  --epub sample_epub/86v1_chapters.epub --provider deepseek --dry-run
+```python
+COMMAND = Command.SHOW
+STORE = "tools/story_model_lab/stores/86v1"
+REVISION = None
+```
 
-# 真实更新下一节。
-story-model update --store tools/story_model_lab/stores/86v1 \
-  --epub sample_epub/86v1_chapters.epub --provider deepseek
+开头会列出已处理的节。`REVISION = 1` 显示处理完第一节时的模型。
 
-# 导出最新修订（或更早的修订）为可读的 Markdown。
-story-model show --store tools/story_model_lab/stores/86v1 > story_model_latest.md
-story-model show --store tools/story_model_lab/stores/86v1 --revision 1
+**加入下一节。** 可以先用 `DRY_RUN = True` 预览，然后：
+
+```python
+COMMAND = Command.UPDATE
+STORE = "tools/story_model_lab/stores/86v1"
+CHAPTER = None
+SECTION = None
+DRY_RUN = False
 ```
 
 `Status: committed` 之后，`stores/86v1/story_model.json` 就包含到这一节为止的知识，历史快照在 `revisions/`。间章也是一节，所以修订号统计的是已处理的节，**不是小说章节号**。
+
+**导出可读的 Markdown：** 设 `COMMAND = Command.SHOW`，然后在 Terminal 里执行：
+
+```bash
+tools/story_model_lab/.venv/bin/python tools/story_model_lab/run_story_model.py > story_model_latest.md
+```
+
+<a id="run-fails"></a>
+
+### C. 运行失败时
+
+运行失败不会改动 store。打开打印出的 `Output:` 文件夹中的 `review.md`，开头列出了所有问题。
+
+- **只是证据位置错了**（`quote_not_found`：段落号差一，或者引号用错）：可以手工修正，不用再调用 API。在这个运行文件夹里写 `manual_corrections.json`（格式见[人工修正后提交](#manual-corrections)），然后：
+
+  ```python
+  COMMAND = Command.COMMIT
+  RUN = "tools/story_model_lab/runs/<运行文件夹>"
+  ```
+
+  用同一个 `RUN` 设 `Command.VALIDATE`，可以离线复查这次运行，但不提交。
+- **其他问题**（事实错误、API 错误、`incomplete`）：重新运行同一次 update。
 
 ### 结果与常见问题
 
 | 状态或问题 | 处理方式 |
 | --- | --- |
-| `committed` | 更新成功；查看 store 的 `story_model.json` |
-| `already_processed` | 这一节已在 store 中，没有发送请求；不传 `--chapter` / `--section` 即可选下一节 |
-| `validation_failed` / `schema_invalid` | store 未改变；查看运行目录中的 `review.md` 和 `validation.json` |
-| 其他 API 错误或 `incomplete` | 查看 `failure.json`；不要当作成功，也不要手改 store 绕过校验 |
-| `A new store needs its starting section` | store 的第一次 `update` 需要传 `--chapter` 或 `--section` |
-| 提示会跳过某一节 | 先处理报错中提到的那一节，或者不传选择参数 |
-| 提示缺少 key / model | 重新执行第 0 步的环境变量设置；用 `run_story_model.py` 时填写 `.env` |
-| `story-model: command not found` | 确认在仓库根目录并激活 `.venv`；首次使用还需安装 |
-| 看本次新增了什么 | 打开终端打印的 `Output:` 目录中的 `diff.md` |
+| `committed` | 更新成功；查看 store 里的 `story_model.json` |
+| `already_processed` | 这一节已在 store 中，没有发送请求；把 `CHAPTER`、`SECTION` 都设为 `None` 即可选下一节 |
+| `validation_failed` / `schema_invalid` | store 未改变；见 [C](#run-fails) |
+| 其他 API 错误或 `incomplete` | 查看运行文件夹里的 `failure.json`，然后重新运行；不要手改 store 绕过校验 |
+| `A new store needs its starting section` | store 的第一次 update 需要设 `CHAPTER` 或 `SECTION` |
+| 提示会跳过某一节 | 把 `CHAPTER`、`SECTION` 都设为 `None`，或者改成报错中提到的那一节 |
+| `... is not set`（缺 key） | 把 key 填进 `tools/story_model_lab/.env` |
+| `loremark_story_lab is not installed for this Python` | 用 `tools/story_model_lab/.venv/bin/python` 运行，或在 VS Code 里选这个解释器 |
+| 看本次新增了什么 | 打开打印出的 `Output:` 文件夹中的 `diff.md` |
 
-真实请求成功不等于事实正确。人工修正证据位置见 [人工修正后提交](#manual-corrections)。
+真实请求成功不等于事实正确；`review.md` 和 `diff.md` 会列出需要人工检查的地方。
 
-### 如果改用 OpenAI
+### 改用 GPT
 
-先配置 OpenAI 的 key 和支持 Responses + Structured Outputs 的模型：
+在 `.env` 里填 `OPENAI_API_KEY`，再设 `MODEL = Model.GPT_6_1_TERRA` 即可，provider 由模型决定。`gpt-6.1-terra` 支持所有 `Effort` 值。中途换模型不需要重建 store。
+
+### 改用命令行
+
+每个设置都对应 `story-model` 命令的一个参数，文件运行的就是这个命令：它打印的 `$ story-model ...` 那一行可以直接粘贴到 Terminal 里。注意 `story-model` 只读取已 export 的环境变量，不读 `.env`：
 
 ```zsh
-read -rs 'OPENAI_API_KEY?粘贴 OpenAI API key，然后按回车（输入不显示）：'
-export OPENAI_API_KEY
-read 'OPENAI_MODEL?输入要使用的 OpenAI 模型 ID：'
-export OPENAI_MODEL
+source tools/story_model_lab/.venv/bin/activate
+read -rs 'DEEPSEEK_API_KEY?粘贴 DeepSeek API key，然后按回车（输入不显示）：'
+export DEEPSEEK_API_KEY
+export DEEPSEEK_MODEL=deepseek-flash
+story-model update --store tools/story_model_lab/stores/86v1 \
+  --epub sample_epub/86v1_chapters.epub --provider deepseek --dry-run
 ```
 
-然后把 `--provider deepseek` 换成 `--provider openai`。中途切换 provider 不需要重建 store。OpenAI 和 DeepSeek 的 key 不能混用。
+所有命令和参数见[命令参考](#commands)。
 
 <a id="commands"></a>
 

@@ -8,7 +8,7 @@
 
 [View the structure diagrams](STORY_MODEL_FORMAT.md#visual-overview): field contents and the ID links between entities, records, evidence, and revisions.
 
-[Quick start](#quick-start-one-settings-file) · [A new book](#a-a-new-book) · [Continue a store](#b-continue-a-store) · [Reference](#commands)
+[Setup](#0-one-time-setup) · [A new book](#a-a-new-book) · [Continue a store](#b-continue-a-store) · [When a run fails](#c-when-a-run-fails) · [Reference](#commands)
 
 A terminal experiment for Loremark: build a story model of an EPUB **one section at a time,
 in reading order**. Each `update` sends the model built so far and the next section's text
@@ -22,167 +22,202 @@ The model never sees later sections, and identities, references, or causes the t
 settled yet are kept as open questions, not filled in. This tool is independent of the
 Flutter app, which only reads the resulting `story_model.json`.
 
-## Quick start: one settings file
+## Step-by-step guide
 
-1. Install once (see [step 0](#0-prepare-your-terminal)).
-2. Paste your API keys into `tools/story_model_lab/.env` (gitignored; copy `.env.example`
-   if it is missing). Keys exported in the shell take precedence.
-3. Edit the settings at the top of [`run_story_model.py`](run_story_model.py):
-   - `COMMAND`: `Command.UPDATE`, `Command.SHOW`, `Command.CHAPTERS`, ...
-   - `STORE`, `EPUB`
-   - `CHAPTER` / `SECTION`: both `None` means "the next section". A new store needs one of
-     them as its starting section.
-   - `MODEL` (`Model.DEEPSEEK_FLASH` or `Model.GPT_6_1_TERRA`; the provider follows from the
-     model), `EFFORT`, `DRY_RUN`, ...
-4. Run it from any directory, without activating the environment:
+Everything below runs from one file, [`run_story_model.py`](run_story_model.py): change the
+settings at its top, save, and run it. You never type command-line flags. The file prints
+the matching `story-model` command first, so the [command reference](#commands) still
+explains what happened.
+
+### 0. One-time setup
+
+**1. Install** (Python 3.11 or newer). In a terminal, from the repository root:
+
+```bash
+cd /Users/frankhao76/MineApps/vscode/loremark/Loremark
+python3 -m venv tools/story_model_lab/.venv
+tools/story_model_lab/.venv/bin/python -m pip install -e './tools/story_model_lab[dev]'
+```
+
+`requirements.lock.txt` records the exact versions this was tested with (Python 3.14.6 on
+macOS); install it with `tools/story_model_lab/.venv/bin/python -m pip install -r
+tools/story_model_lab/requirements.lock.txt` before the editable install to reproduce them.
+
+**2. Save your API key once.** Copy `tools/story_model_lab/.env.example` to
+`tools/story_model_lab/.env` (gitignored) and paste the key after the `=`:
+`DEEPSEEK_API_KEY=` for DeepSeek, `OPENAI_API_KEY=` for GPT. New terminals pick it up
+automatically. Listing chapters, `show`, and dry runs need no key.
+
+**3. Choose the interpreter in VS Code:** Command Palette (`Cmd+Shift+P`) → **Python: Select
+Interpreter** → `tools/story_model_lab/.venv/bin/python`.
+
+**How to run the file:** open `run_story_model.py` and click **Run Python File** (the ▶
+button at the top right), or in a terminal:
 
 ```bash
 tools/story_model_lab/.venv/bin/python tools/story_model_lab/run_story_model.py
 ```
 
-In VS Code, select `tools/story_model_lab/.venv/bin/python` as the interpreter and use
-**Run Python File**. The script prints the equivalent `story-model` command before running
-it, so everything below applies to it too.
+Either way works from any directory; relative paths in the settings are from the
+repository root.
 
-## Step-by-step guide
+**The settings you will change:**
 
-Run these commands in a **macOS zsh terminal**, one block at a time. Continue only after the
-previous step succeeds.
-
-### 0. Prepare your terminal
-
-Enter the repository root. Change this path if your checkout is elsewhere:
-
-```bash
-cd /Users/frankhao76/MineApps/vscode/loremark/Loremark
-```
-
-**Install once** (Python 3.11 or newer):
-
-```bash
-python3 -m venv tools/story_model_lab/.venv
-source tools/story_model_lab/.venv/bin/activate
-python -m pip install -e './tools/story_model_lab[dev]'
-```
-
-`requirements.lock.txt` records the exact versions this was tested with (Python 3.14.6 on
-macOS); install it with `python -m pip install -r tools/story_model_lab/requirements.lock.txt`
-before the editable install to reproduce them.
-
-**If already installed, activate the environment in each new terminal:**
-
-```bash
-source tools/story_model_lab/.venv/bin/activate
-```
-
-The `story-model` command reads keys and models only from environment variables (it does
-not load `.env`; `run_story_model.py` does). For DeepSeek:
-
-```zsh
-read -rs 'DEEPSEEK_API_KEY?Paste your DeepSeek API key and press Enter (input is hidden): '
-export DEEPSEEK_API_KEY
-export DEEPSEEK_MODEL=deepseek-flash
-```
-
-Hidden input is normal. Never put a key in this README or `.env.example`. Listing chapters,
-`show`, and `--dry-run` do not need a key.
+| Setting | What to put there |
+| --- | --- |
+| `COMMAND` | what to do: `Command.CHAPTERS` (list sections), `Command.UPDATE` (add a section), `Command.SHOW` (read the model), `Command.COMMIT` / `Command.VALIDATE` (after a failed run) |
+| `EPUB` | the book file, e.g. `"sample_epub/86v1_chapters.epub"` |
+| `STORE` | the folder that holds this book's model, e.g. `"tools/story_model_lab/stores/86v1"`; a missing folder is created by the first update |
+| `CHAPTER` / `SECTION` | which section to add. Both `None` = the next one. Only a new store needs one: its starting section |
+| `MODEL`, `EFFORT` | `Model.DEEPSEEK_FLASH` or `Model.GPT_6_1_TERRA`; reasoning effort such as `Effort.HIGH`, or `None` for the model's default |
+| `DRY_RUN` | `True` = only write what would be sent, no API call, store unchanged |
+| `RUN` | a run folder, for `Command.COMMIT` / `Command.VALIDATE` |
+| `REVISION`, `SHOW_JSON` | for `Command.SHOW`: an earlier revision (`None` = latest); `True` = full JSON instead of Markdown |
 
 ### A. A new book
 
-**Step 1: List the sections and check that the EPUB opens.**
+**Step 1: list the sections and check that the EPUB opens.**
 
-```bash
-story-model chapters --epub sample_epub/86v1_chapters.epub
+```python
+COMMAND = Command.CHAPTERS
+EPUB = "sample_epub/86v1_chapters.epub"
 ```
 
-`--chapter 1` selects the section whose title reads "Chapter 1" (`section-004` in this
-sample), not the first table-of-contents entry.
+Run. Each line is one section in reading order: its ID (`section-004`), chapter number,
+paragraph count, and title. `CHAPTER = 1` means the section titled "Chapter 1"
+(`section-004` in this sample), not the first line.
 
-**Step 2: Create the store from the first section you want covered.** This calls the API
-and may take several minutes. The store directory must not exist or must be empty.
+**Step 2: preview the first section without calling the API.** Pick a new store folder and
+the section the model should start from:
 
-```bash
-story-model update \
-  --store tools/story_model_lab/stores/my-book \
-  --epub sample_epub/86v1_chapters.epub \
-  --chapter 1 \
-  --provider deepseek
+```python
+COMMAND = Command.UPDATE
+STORE = "tools/story_model_lab/stores/my-book"
+CHAPTER = 1
+DRY_RUN = True
 ```
 
-`Status: committed` with `created at revision 1` means the store exists. Sections before the
-starting one (front matter, a prologue) are recorded as not covered and can never be added
-later, so start at the prologue (`--section ...`) if it matters. Add `--dry-run` first to see
-exactly what would be sent; it creates nothing.
+The output ends with `Context: new store + section-004` and `no store created`. The printed
+`Output:` folder holds `chapter.txt` (the exact text that would be sent) and `request.json`.
 
-**Step 3: Add the following sections, one per `update`.** Without `--chapter` / `--section`,
-`update` takes the next section in reading order:
+Sections before the starting one (front matter, a prologue) are recorded as not covered and
+can never be added later. If the prologue matters, start there with `SECTION =
+"section-003"` and `CHAPTER = None`.
 
-```bash
-story-model update \
-  --store tools/story_model_lab/stores/my-book \
-  --epub sample_epub/86v1_chapters.epub \
-  --provider deepseek
+**Step 3: create the store for real.** Change only:
+
+```python
+DRY_RUN = False
 ```
 
-If a run fails (`validation_failed`, `schema_invalid`, an API error), the store is unchanged:
-inspect `review.md` / `failure.json` in the printed run directory and run `update` again.
+This calls the API and may take several minutes. `Status: committed` with
+`created at revision 1` means the store exists. If the run fails instead, see
+[C](#c-when-a-run-fails).
+
+**Step 4: add the following sections.** Change only:
+
+```python
+CHAPTER = None
+```
+
+From now on, every run adds the next section in reading order, interludes included. Run the
+file again for each section; nothing else needs editing.
 
 ### B. Continue a store
 
-The demo store the app reads is `tools/story_model_lab/stores/86v1`. **Pass the directory to
-`--store`, not the JSON file.**
+The demo store the app reads is `tools/story_model_lab/stores/86v1`.
 
-```bash
-# What is covered so far (processed sections are listed at the top).
-story-model show --store tools/story_model_lab/stores/86v1
+**See what is covered so far:**
 
-# Optional: preview the next request without calling the API (store unchanged).
-story-model update --store tools/story_model_lab/stores/86v1 \
-  --epub sample_epub/86v1_chapters.epub --provider deepseek --dry-run
+```python
+COMMAND = Command.SHOW
+STORE = "tools/story_model_lab/stores/86v1"
+REVISION = None
+```
 
-# The real update of the next section.
-story-model update --store tools/story_model_lab/stores/86v1 \
-  --epub sample_epub/86v1_chapters.epub --provider deepseek
+The processed sections are listed at the top. `REVISION = 1` shows the model as it was after
+the first section.
 
-# A readable Markdown export of the latest revision, or of an earlier one.
-story-model show --store tools/story_model_lab/stores/86v1 > story_model_latest.md
-story-model show --store tools/story_model_lab/stores/86v1 --revision 1
+**Add the next section.** Optionally preview with `DRY_RUN = True` first, then:
+
+```python
+COMMAND = Command.UPDATE
+STORE = "tools/story_model_lab/stores/86v1"
+CHAPTER = None
+SECTION = None
+DRY_RUN = False
 ```
 
 After `Status: committed`, `stores/86v1/story_model.json` holds the knowledge up to that
 section; earlier snapshots are in `revisions/`. Interludes are sections too, so a revision
 number counts processed sections, **not novel chapters**.
 
+**Export a readable Markdown file:** set `COMMAND = Command.SHOW`, then run in a terminal:
+
+```bash
+tools/story_model_lab/.venv/bin/python tools/story_model_lab/run_story_model.py > story_model_latest.md
+```
+
+<a id="c-when-a-run-fails"></a>
+
+### C. When a run fails
+
+A failed run never changes the store. Open `review.md` in the printed `Output:` folder; it
+lists every problem at the top.
+
+- **Only evidence locations are wrong** (`quote_not_found`: a paragraph ID off by one, or a
+  quote with different quotation marks): fix them by hand without another API call. Write
+  `manual_corrections.json` in that run folder (format in
+  [Committing a run after manual corrections](#committing-a-run-after-manual-corrections)),
+  then:
+
+  ```python
+  COMMAND = Command.COMMIT
+  RUN = "tools/story_model_lab/runs/<run-folder>"
+  ```
+
+  `Command.VALIDATE` with the same `RUN` re-checks a run offline without committing it.
+- **Anything else** (wrong facts, API errors, `incomplete`): run the same update again.
+
 ### Results and troubleshooting
 
 | Status or question | What to do |
 | --- | --- |
-| `committed` | The update succeeded; inspect `story_model.json` of the store |
-| `already_processed` | That section is already in the store; no request was sent. Omit `--chapter` / `--section` to take the next one |
-| `validation_failed` / `schema_invalid` | The store is unchanged. Inspect `review.md` and `validation.json` in the printed run directory |
-| Other API errors or `incomplete` | Inspect `failure.json`; do not treat the run as successful or edit the store to bypass validation |
-| `A new store needs its starting section` | Pass `--chapter` or `--section` for the first `update` of a store |
-| A section would be skipped | Process the section named in the error first, or omit the selection |
-| Missing key or model | Repeat the environment setup in step 0, or fill in `.env` for `run_story_model.py` |
-| `story-model: command not found` | Enter the repository root and activate `.venv`; on first use, install the package |
-| What changed in this update? | Open `diff.md` in the directory printed as `Output:` |
+| `committed` | The update succeeded; inspect `story_model.json` in the store |
+| `already_processed` | That section is already in the store; no request was sent. Set `CHAPTER = None` and `SECTION = None` to take the next one |
+| `validation_failed` / `schema_invalid` | The store is unchanged; see [C](#c-when-a-run-fails) |
+| Other API errors or `incomplete` | Inspect `failure.json` in the run folder and run again; never edit the store to get around validation |
+| `A new store needs its starting section` | Set `CHAPTER` or `SECTION` for the first update of a store |
+| A section would be skipped | Set `CHAPTER = None` and `SECTION = None`, or pick the section named in the error |
+| `... is not set` (a missing key) | Put the key in `tools/story_model_lab/.env` |
+| `loremark_story_lab is not installed for this Python` | Run with `tools/story_model_lab/.venv/bin/python`, or select it as the VS Code interpreter |
+| What changed in this update? | Open `diff.md` in the printed `Output:` folder |
 
-A successful request does not establish factual accuracy. Fixing evidence locations by hand
-is described in [Committing a run after manual corrections](#committing-a-run-after-manual-corrections).
+A successful request does not establish factual accuracy; `review.md` and `diff.md` show
+what to check by hand.
 
-### Using OpenAI instead
+### Using GPT instead of DeepSeek
 
-Configure an OpenAI key and a model that supports Responses and Structured Outputs:
+Put `OPENAI_API_KEY` in `.env` and set `MODEL = Model.GPT_6_1_TERRA`; the provider follows
+from the model. `gpt-6.1-terra` accepts every `Effort` value. You can switch models between
+sections without rebuilding the store.
+
+### Using the terminal instead
+
+Every setting maps to a flag of the `story-model` command, which is what the file runs: the
+`$ story-model ...` line it prints can be pasted into a terminal. `story-model` reads keys
+and models only from exported environment variables, not from `.env`:
 
 ```zsh
-read -rs 'OPENAI_API_KEY?Paste your OpenAI API key and press Enter (input is hidden): '
-export OPENAI_API_KEY
-read 'OPENAI_MODEL?Enter the OpenAI model ID to use: '
-export OPENAI_MODEL
+source tools/story_model_lab/.venv/bin/activate
+read -rs 'DEEPSEEK_API_KEY?Paste your DeepSeek API key and press Enter (input is hidden): '
+export DEEPSEEK_API_KEY
+export DEEPSEEK_MODEL=deepseek-flash
+story-model update --store tools/story_model_lab/stores/86v1 \
+  --epub sample_epub/86v1_chapters.epub --provider deepseek --dry-run
 ```
 
-Replace `--provider deepseek` with `--provider openai`. Changing providers between sections
-does not require rebuilding the store. OpenAI and DeepSeek keys are not interchangeable.
+See the [command reference](#commands) for every command and option.
 
 ## Commands
 
