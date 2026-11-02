@@ -34,6 +34,8 @@ run with `flutter test`. It covers both kinds of automated test our plan needs f
 | Widget tests (screens and navigation) | `flutter test` | Yes, every push and PR |
 | Nondeterministic prompt tests | Tagged `live` | No: needs API keys, costs money, output varies (Risks 1 and 4) |
 | Weekly 150-question spoiler run | Two teammates review answers by hand | No |
+| Edge cases in EPUB text, page-end positions, paragraph pieces and search (odd markup, entities, ruby, nesting, huge paragraphs, strange queries) | `flutter test` (`test/corpus/edge_cases_test.dart`) | Yes, every push and PR |
+| Real-book corpus: 50 public-domain EPUBs in 18 languages plus 24 variants (no table of contents, broken, one file, damaged) | Tagged `corpus`; `flutter test --tags corpus test/corpus` with `LOREMARK_CORPUS` set, then `tool/corpus/device_run.py` on an emulator | No: needs about 300 MB of books and an emulator. See [corpus-testing.md](corpus-testing.md) |
 | Integration, reliability, scalability, privacy (force-quit, 500,000-word book, Proxyman) | Run on a device or simulator | No: needs a device and network capture |
 | Usability sessions | External readers | No |
 

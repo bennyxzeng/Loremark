@@ -122,6 +122,8 @@ if device:
         x = r.get(key)
         if not x:
             return '-'
+        if not (x['found'] or x.get('empty')):
+            return 'unclear'
         return 'ok' if x['found'] == want_found else 'WRONG'
     for r in drows:
         name, lang = title(r['id'])
