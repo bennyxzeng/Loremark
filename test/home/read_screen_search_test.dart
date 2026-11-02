@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:loremark/home/read_screen.dart';
 import 'package:loremark/library/book.dart';
 import 'package:loremark/reader/reader_position.dart';
+import 'package:loremark/reading/text_position.dart';
 import 'package:loremark/search/passage_search.dart';
 import 'package:loremark/search/search_sheet.dart';
 import 'package:loremark/theme/loremark_theme.dart';
@@ -187,6 +188,55 @@ void main() {
       expect(search.lastCutoff, const ReaderPosition(3, 1));
     });
 
+    testWidgets('opens the text of the page the reader is on', (tester) async {
+      final session = await openBook(tester);
+      await emit(tester, session, const ReaderPosition(2, 0.0));
+      session.emitPageTextEnd(const TextPosition(2, 0.3));
+      await tester.idle();
+      await tester.pump();
+      await openSheet(tester);
+
+      await type(tester, 'cat');
+
+      expect(search.lastCutoff, const ReaderPosition(2, 0.3));
+    });
+
+    testWidgets('keeps the furthest page when the reader turns back', (
+      tester,
+    ) async {
+      final session = await openBook(tester);
+      await emit(tester, session, const ReaderPosition(2, 0.5));
+      session.emitPageTextEnd(const TextPosition(2, 0.6));
+      session.emitPageTextEnd(const TextPosition(2, 0.2));
+      await tester.idle();
+      await tester.pump();
+      await openSheet(tester);
+
+      await type(tester, 'cat');
+
+      expect(search.lastCutoff, const ReaderPosition(2, 0.6));
+    });
+
+    testWidgets('follows the reader to the next page while the sheet is open', (
+      tester,
+    ) async {
+      final session = await openBook(tester);
+      await emit(tester, session, const ReaderPosition(2, 0.1));
+      session.emitPageTextEnd(const TextPosition(2, 0.2));
+      await tester.idle();
+      await tester.pump();
+      await openSheet(tester);
+      await type(tester, 'cat');
+      expect(search.lastCutoff, const ReaderPosition(2, 0.2));
+
+      session.emitPageTextEnd(const TextPosition(2, 0.4));
+      await tester.idle();
+      await tester.pump(searchDebounce);
+      await tester.pump();
+
+      expect(search.lastCutoff, const ReaderPosition(2, 0.4));
+    });
+
     testWidgets('is the start of the book before any position', (tester) async {
       await openBook(tester);
       await openSheet(tester);
@@ -202,7 +252,7 @@ void main() {
       await openSheet(tester);
 
       expect(
-        find.text("Searching completed sections, through Chapter One"),
+        find.text("Searching what you've read, through Chapter One"),
         findsOneWidget,
       );
     });
@@ -213,7 +263,7 @@ void main() {
       await openBook(tester);
       await openSheet(tester);
 
-      expect(find.text("Searching completed sections"), findsOneWidget);
+      expect(find.text("Searching what you've read"), findsOneWidget);
     });
 
     testWidgets('re-runs the query when the reader moves', (tester) async {
@@ -347,9 +397,7 @@ void main() {
       expect(highlightedParts(tester), ['ort']);
     });
 
-    testWidgets('say that more matches exist past the cutoff, not how many', (
-      tester,
-    ) async {
+    testWidgets('never hint at matches past the cutoff', (tester) async {
       search.onSearch = (_) =>
           SearchResults(hits: [fakeHit(sectionIndex: 1)], hiddenMatches: 3);
       await openBook(tester);
@@ -357,22 +405,9 @@ void main() {
 
       await type(tester, 'cat');
 
-      expect(
-        find.text("There's more in chapters you haven't reached yet"),
-        findsOneWidget,
-      );
-      expect(find.textContaining('3'), findsNothing);
-    });
-
-    testWidgets('show no footer without hidden matches', (tester) async {
-      search.onSearch = (_) =>
-          SearchResults(hits: [fakeHit(sectionIndex: 1)], hiddenMatches: 0);
-      await openBook(tester);
-      await openSheet(tester);
-
-      await type(tester, 'cat');
-
       expect(find.byKey(const ValueKey('search-hidden')), findsNothing);
+      expect(find.textContaining('more in'), findsNothing);
+      expect(find.textContaining('3'), findsNothing);
     });
 
     testWidgets('say so when nothing matches', (tester) async {
@@ -381,10 +416,10 @@ void main() {
 
       await type(tester, 'dragon');
 
-      expect(find.text("No matches in completed sections"), findsOneWidget);
+      expect(find.text("No matches in what you've read"), findsOneWidget);
     });
 
-    testWidgets('still count hidden matches when nothing visible matches', (
+    testWidgets('say nothing about hidden matches when nothing else matches', (
       tester,
     ) async {
       search.onSearch = (_) => const SearchResults(hits: [], hiddenMatches: 2);
@@ -394,7 +429,7 @@ void main() {
       await type(tester, 'dragon');
 
       expect(find.byKey(const ValueKey('search-empty')), findsOneWidget);
-      expect(find.byKey(const ValueKey('search-hidden')), findsOneWidget);
+      expect(find.byKey(const ValueKey('search-hidden')), findsNothing);
     });
   });
 

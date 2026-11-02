@@ -1,5 +1,6 @@
 import 'package:flutter/widgets.dart';
 
+import '../reading/text_position.dart';
 import 'reader_position.dart';
 
 /// Opens EPUBs for reading.
@@ -29,12 +30,12 @@ abstract interface class EpubReaderSession {
   /// exactly 1.0 first.
   Stream<ReaderPosition> get positions;
 
-  /// Where the text of each page the reader lands on starts. Unlike
-  /// [positions], the progression is a fraction of the section's plain text
-  /// (`readSectionTexts`), not of its pages, so everything before it was on
-  /// an earlier page. Pages whose first element can't be found in the text
-  /// are left out.
-  Stream<ReaderPosition> get pageTextStarts;
+  /// How far the reader has seen, in the book's text, for each page they land
+  /// on: everything before the reported point is on this page or an earlier
+  /// one. Unlike [positions], the progression is a fraction of the section's
+  /// plain text (`readSectionTexts`), counted in characters, not of its
+  /// pages. A page the renderer can't measure reports nothing.
+  Stream<TextPosition> get pageTextEnds;
 
   /// The rendered book, starting at [initialPosition] or the beginning.
   Widget buildView({ReaderPosition? initialPosition});

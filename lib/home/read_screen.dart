@@ -7,6 +7,7 @@ import '../library/library_screen.dart';
 import '../reader/epub_reader_service.dart';
 import '../reader/reader_position.dart';
 import '../reader/reading_position_store.dart';
+import '../reading/text_position.dart';
 import '../search/passage_search.dart';
 import '../search/search_cutoff.dart';
 import '../search/search_sheet.dart';
@@ -68,13 +69,13 @@ class _ReadScreenState extends State<ReadScreen> {
   /// platform view.
   Widget? _view;
   StreamSubscription<ReaderPosition>? _positionSubscription;
-  StreamSubscription<ReaderPosition>? _pageTextSubscription;
+  StreamSubscription<TextPosition>? _pageTextSubscription;
   ReadingPositionStore? _store;
   ReaderPosition? _position;
 
-  /// The start of the furthest page reached in this session, as a text
-  /// position, if the reader could locate it.
-  ReaderPosition? _furthestPageText;
+  /// How far the text of the furthest page reached in this session goes, if
+  /// the reader could measure it.
+  TextPosition? _furthestPageText;
   Object? _error;
 
   /// The opened search of the current book, kept so the index is built once.
@@ -160,7 +161,7 @@ class _ReadScreenState extends State<ReadScreen> {
       _store = store;
       _position = position;
       _positionSubscription = session.positions.listen(_onPosition);
-      _pageTextSubscription = session.pageTextStarts.listen(_onPageTextStart);
+      _pageTextSubscription = session.pageTextEnds.listen(_onPageTextEnd);
       _view = session.buildView(initialPosition: position);
     });
   }
@@ -226,11 +227,9 @@ class _ReadScreenState extends State<ReadScreen> {
     widget.onPositionChanged?.call(position);
   }
 
-  void _onPageTextStart(ReaderPosition start) {
-    _furthestPageText = searchCutoff(
-      current: start,
-      furthest: _furthestPageText,
-    );
+  void _onPageTextEnd(TextPosition end) {
+    final furthest = _furthestPageText;
+    if (furthest == null || end > furthest) _furthestPageText = end;
     _updateCutoff();
   }
 

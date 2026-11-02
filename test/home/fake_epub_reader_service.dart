@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import 'package:loremark/reader/epub_reader_service.dart';
 import 'package:loremark/reader/reader_position.dart';
 import 'package:loremark/reader/reading_position_store.dart';
+import 'package:loremark/reading/text_position.dart';
 
 /// A reader service that opens [FakeEpubReaderSession]s, so widget tests
 /// never touch native code.
@@ -84,6 +85,12 @@ class FakeEpubReaderSession implements EpubReaderSession {
   /// Whether the screen is still listening to [positions].
   bool get hasListener => _positions.hasListener;
 
+  final StreamController<TextPosition> _pageTextEnds =
+      StreamController<TextPosition>.broadcast();
+
+  /// Reports how far the text on the page the reader is on goes.
+  void emitPageTextEnd(TextPosition end) => _pageTextEnds.add(end);
+
   /// Pretends the reader moved to [position].
   void emit(ReaderPosition position) => _positions.add(position);
 
@@ -95,6 +102,9 @@ class FakeEpubReaderSession implements EpubReaderSession {
 
   @override
   Stream<ReaderPosition> get positions => _positions.stream;
+
+  @override
+  Stream<TextPosition> get pageTextEnds => _pageTextEnds.stream;
 
   @override
   Widget buildView({ReaderPosition? initialPosition}) {
@@ -125,6 +135,7 @@ class FakeEpubReaderSession implements EpubReaderSession {
   Future<void> close() async {
     closeCalls++;
     await _positions.close();
+    await _pageTextEnds.close();
   }
 }
 

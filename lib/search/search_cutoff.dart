@@ -1,4 +1,5 @@
 import '../reader/reader_position.dart';
+import '../reading/text_position.dart';
 
 /// How far search may look: everything the reader has finished up to the
 /// returned position, and nothing past it.
@@ -43,18 +44,27 @@ ReaderPosition completedSectionCutoff({
       : ReaderPosition(reached.sectionIndex - 1, 1);
 }
 
-/// The Read tab's search boundary: everything before the start of the
-/// furthest page the reader reached.
+/// The Read tab's search boundary: all text on the furthest page the reader
+/// reached or before it, except a paragraph that carries on past that page.
 ///
-/// [furthestPageText] is a text position (`EpubReaderSession.pageTextStarts`),
-/// exact to the character. [current] and [furthest] are renderer positions,
-/// which only count whole finished sections ([completedSectionCutoff]); they
-/// cover pages whose start couldn't be located. The later of the two wins.
+/// [furthestPageText] is a text position (`EpubReaderSession.pageTextEnds`):
+/// its progression is a share of the section's text in characters, and
+/// everything before it was on the page or an earlier one. [current] and
+/// [furthest] are renderer positions, measured in pages, which only count
+/// whole finished sections ([completedSectionCutoff]); they cover pages the
+/// renderer couldn't measure. The later of the two wins.
+// TODO(kevin): search still takes a ReaderPosition. Moving PassageSearch to
+// TextPosition would make this conversion the only one left to remove.
 ReaderPosition pageCutoff({
   ReaderPosition? current,
   ReaderPosition? furthest,
-  ReaderPosition? furthestPageText,
+  TextPosition? furthestPageText,
 }) => searchCutoff(
   current: completedSectionCutoff(current: current, furthest: furthest),
-  furthest: furthestPageText,
+  furthest: furthestPageText == null
+      ? null
+      : ReaderPosition(
+          furthestPageText.sectionIndex,
+          furthestPageText.progression,
+        ),
 );

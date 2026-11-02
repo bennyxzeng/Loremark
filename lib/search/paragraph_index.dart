@@ -6,7 +6,8 @@ import 'passage_search.dart';
 /// Where paragraphs are in a book and how much of it a reader has passed.
 ///
 /// A paragraph is a run of text between blank lines in a section's plain
-/// text, which is what `readSectionTexts` produces. Paragraphs get ids in
+/// text, which is what `readSectionTexts` produces, cut into sentence-sized
+/// pieces when it is long ([maxParagraphChars]). Paragraphs get ids in
 /// reading order (section by section, then top to bottom), so "everything the
 /// reader has fully passed" is always the prefix `[0, visibleCount)` and
 /// every cutoff question becomes one integer.
@@ -159,17 +160,60 @@ class ParagraphIndex {
 
 final _blankLine = RegExp(r'\n\s*\n');
 
+/// Paragraphs longer than this many characters are cut into pieces at
+/// sentence ends.
+///
+/// A page break inside a long paragraph then hides only the piece it falls
+/// in, a few lines, instead of the whole paragraph; novels often have
+/// paragraphs longer than a page.
+const maxParagraphChars = 500;
+
+/// Pieces of a long paragraph end at the first sentence end past this many
+/// characters, so a piece is a few sentences, enough for ranking to work on.
+const _pieceChars = 250;
+
+/// A piece shorter than this is joined to the one before it.
+const _minPieceChars = 60;
+
+/// The end of a sentence: closing punctuation with the space after it, or a
+/// CJK full stop, which has none.
+final _sentenceEnd = RegExp(
+  '[.!?…]+["\'”’)\\]]*\\s+'
+  '|[。！？]+[」』）]*',
+);
+
 /// The `(start, end)` of each non-empty paragraph of [text], without the
-/// whitespace around it.
+/// whitespace around it, with long ones cut into pieces.
 Iterable<(int, int)> _paragraphBounds(String text) sync* {
   var from = 0;
   for (final gap in _blankLine.allMatches(text)) {
     final bounds = _trimmed(text, from, gap.start);
-    if (bounds != null) yield bounds;
+    if (bounds != null) yield* _pieces(text, bounds);
     from = gap.end;
   }
   final last = _trimmed(text, from, text.length);
-  if (last != null) yield last;
+  if (last != null) yield* _pieces(text, last);
+}
+
+/// [paragraph] as is if it is short, otherwise cut after sentence ends.
+Iterable<(int, int)> _pieces(String text, (int, int) paragraph) {
+  final (start, end) = paragraph;
+  if (end - start <= maxParagraphChars) return [paragraph];
+  final pieces = <(int, int)>[];
+  var pieceStart = start;
+  for (final match in _sentenceEnd.allMatches(text, start)) {
+    if (match.end >= end) break;
+    if (match.end - pieceStart < _pieceChars) continue;
+    pieces.add(_trimmed(text, pieceStart, match.end)!);
+    pieceStart = match.end;
+  }
+  final rest = _trimmed(text, pieceStart, end)!;
+  if (pieces.isNotEmpty && rest.$2 - rest.$1 < _minPieceChars) {
+    pieces[pieces.length - 1] = (pieces.last.$1, rest.$2);
+  } else {
+    pieces.add(rest);
+  }
+  return pieces;
 }
 
 (int, int)? _trimmed(String text, int start, int end) {

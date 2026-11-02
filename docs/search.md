@@ -13,7 +13,7 @@ Full-text search over one book that only ever looks at what the reader has alrea
 - The word being typed matches longer words (`kle` finds Klein).
 - Quoted phrases (`"glass harbor"`) must appear exactly in that order.
 - Each result has a snippet with the matched words marked, and a quote the reader can use to jump to the passage and highlight it.
-- "3 more matches in chapters you haven't reached": counted, never shown.
+- Matches past the reader's place are never mentioned, not even as "there is more ahead": that would tell a reader a name turns up later. (The engine still counts them, see `hiddenMatches`; the screen doesn't show it.)
 
 ## Using it
 
@@ -30,7 +30,7 @@ print(results.hiddenMatches); // paragraphs past the cutoff with these words
 ```
 
 - `openPassageSearch` loads the saved index or builds it (a few seconds for a long novel, off the UI isolate) and saves it. Call it when the sheet opens, show "Indexing…" meanwhile, and keep the result for the session.
-- `cutoff` is a `ReaderPosition`, the same type the reader reports. Pass the furthest position the reader has reached, captured once per call. A section at exactly `1.0` is finished; one at `0.0` has nothing read.
+- `cutoff` is a `ReaderPosition`: a section (spine file) and how far through that file's **text** the reader has seen, counted in characters. Pass the furthest position the reader has reached, captured once per call. A section at exactly `1.0` is finished; one at `0.0` has nothing read. The Read tab builds it with `pageCutoff` ([below](#how-the-read-tab-decides-what-you-have-read)).
 - `search` is synchronous and takes a few milliseconds (see [Testing](#testing)), so it can run on every keystroke.
 
 ## How it works
@@ -58,7 +58,7 @@ flowchart LR
 
 ### Paragraphs
 
-A paragraph is the text between blank lines in a section's plain text. Ids run in reading order (section by section, top to bottom), so what the reader has fully passed is always the **prefix** `[0, k)` of the ids. Each paragraph knows its character offsets, so its start and end as a fraction of the section (`startProgression`) are exact. Non-linear spine items, such as footnotes, have no paragraphs: the reader can't navigate to them, so a hit there couldn't be shown.
+A paragraph is the text between blank lines in a section's plain text. A paragraph longer than 500 characters is cut into pieces of a few sentences each (about 250 to 400 characters, cut after a full stop, `?`, `!` or a Chinese 。), so "paragraph" below can mean such a piece; see [why](#why-long-paragraphs-are-cut-into-pieces). Ids run in reading order (section by section, top to bottom), so what the reader has fully passed is always the **prefix** `[0, k)` of the ids. Each paragraph knows its character offsets, so its start and end as a fraction of the section (`startProgression`) are exact. Non-linear spine items, such as footnotes, have no paragraphs: the reader can't navigate to them, so a hit there couldn't be shown.
 
 ### Tokens
 
@@ -84,7 +84,7 @@ BM25 as in Lucene, Tantivy and MiniSearch: `k1 = 1.2`, `b = 0.75`, `idf = ln(1 +
 
 These hold for every call of `search` and `retrievePassages`. Each is enforced in the code named and checked by `test/search/spoiler_property_test.dart` unless noted.
 
-1. **Only fully passed paragraphs.** `k` is the number of paragraphs of earlier sections plus, in the cutoff's section, those that end at or before `floor(progression × section length)`. Whole numbers, so no float comparison can let a paragraph slip across, and a paragraph the cutoff falls inside is excluded (`ParagraphIndex.visibleCount`). The reader reports where the page starts, so the page being read is excluded too, which is the safe side.
+1. **Only fully passed paragraphs.** `k` is the number of paragraphs of earlier sections plus, in the cutoff's section, those that end at or before `floor(progression × section length)`. Whole numbers, so no float comparison can let a paragraph slip across, and a paragraph the cutoff falls inside is excluded (`ParagraphIndex.visibleCount`). A paragraph that starts on the page but carries on to the next one is not fully read yet, so it is excluded too; that is the safe side.
 2. **No leaking statistics.** `N`, each word's document frequency and the average paragraph length are taken over the first `k` paragraphs only. Postings are sorted by paragraph id, so a word's visible frequency is a binary search for `k`. A word that only appears in the last chapter has, at the cutoff, exactly the weight it would have in a book that ended there. The test builds an index of only the first `k` paragraphs and requires identical hits, scores, snippets and quotes.
 3. **Hidden matches are counted from posting tails only.** `hiddenMatches` is the number of paragraphs from `k` on that contain the query's words (every word of a required phrase, at least one word otherwise). It is read from the ends of the postings lists; hidden text is never scored, phrase-checked, or turned into a snippet. The one exception is a single CJK character, which has no postings and is counted by scanning, without producing any text. The test compares it with a brute-force count.
 4. **Prefixes only use words already read.** The typed word expands to indexed words with a posting before `k`. Typing `kl` can't reveal a character who first appears later. (Typing a whole word is an exact search, so its hidden count is allowed.)
@@ -95,7 +95,7 @@ These hold for every call of `search` and `retrievePassages`. Each is enforced i
 9. **A stale index is never used.** The file carries the book id, the format version and the tokenizer version; any mismatch, truncation or corruption rebuilds it. Paragraph ids can't map to the wrong text. (`search_index_codec_test.dart`, `search_index_store_test.dart`)
 10. **Non-linear sections are excluded**, so they can neither leak nor fail to navigate.
 
-Counts are still information: a nonzero `hiddenMatches` for a rare name says it appears later. The UI may round it ("3+"); the AI-facing API doesn't give it at all.
+Counts are still information: a nonzero `hiddenMatches` for a rare name says it appears later. So neither the search screen nor the AI-facing API shows it. It stays in `SearchResults` only because the engine tests check it.
 
 ## For the AI features: `retrievePassages`
 
@@ -148,16 +148,70 @@ Measured on this Windows host with Flutter 3.47.7 / Dart VM JIT, using the seede
 - English stemming only; non-Latin scripts are folded and matched by exact word or CJK bigram. Other Latin languages may overmatch unless callers disable stemming. Thai, Lao and Khmer, which have no spaces, behave as one long word.
 - Phrase checks run on the best 60 to 2,000 candidates, so a phrase that is common may rank imperfectly in a very long book.
 - Plain text positions are not the page's scroll positions, so a jump relies on the quote; if the page text differs a lot (ruby text), the reader lands near the passage without the highlight.
-- The passage is the unit: a hit is a whole paragraph, even a long one.
+- The passage is the unit: a hit is a whole paragraph, or a few sentences of a long one. A piece can start mid-paragraph, so a result may begin with a lowercase word.
 
 
-## Renderer boundary limitation
+## How the Read tab decides what you have read
 
-The production Read tab searches **completed spine sections only**. Readium's page
-progression is a layout percentage, not an exact character offset: images and
-reflow can otherwise expose text not yet seen in a partially read section.
-`completedSectionCutoff` rounds the current/furthest renderer position down to the
-last completed section; a reported progression of exactly 1 unlocks that section.
-The engine's fractional cutoff remains available for callers with an exact text
-boundary. Until that boundary is available, within-current-section search is
-intentionally unavailable. A spine section is not necessarily a whole TOC chapter.
+**The goal:** if you are on a page in chapter 9 that says "Gatsby", searching "Gatsby" finds that page and everything before it. If you are on a page in chapter 6 that does not say it, you only see the earlier places it appears, never anything after your page.
+
+### Why this is harder than it sounds
+
+- **A book file is not a chapter.** An EPUB is a zip of web pages ("spine files"). Many have one file per chapter, but others pack a lot into one file. Our Great Gatsby copy has chapters 1 to 5 in one file (about 25,800 words) and chapters 6 to 9 in another. The first version of search only unlocked a file once you had *finished* it, so nothing was searchable until the end of chapter 5.
+- **Pages are not a share of the text.** Readium (the reading engine) says "you are 40% through this file" by *pages*. Images, headings and the screen size change how many pages the text takes, so 40% of the pages is not 40% of the words. Using that number to cut off text could show words you have not reached yet.
+
+So the cutoff has to come from the *words*, not from page percentages.
+
+### The idea: find where your page ends
+
+1. Readium lays the chapter out in columns, one per page. A small script we add to every chapter ([`assets/reader/page_end.js`](../assets/reader/page_end.js)) looks at the paragraphs ("text blocks") in order and finds the first one whose last line is not on your page. It reports two numbers: which paragraph ("the 28th of this chapter"), and how many of its characters, not counting spaces, are on your page ("1,076").
+2. The app counts paragraphs and characters the same way in its own copy of the chapter's text ([`textProgressionOfBlock`](../lib/reader/epub_sections.dart)) and works out exactly where in the text your page ends, as a share of the chapter: for example `0.0276`.
+3. That share becomes the search cutoff. Search only returns passages that *end* before it. Everything on your page up to the last full sentence piece is searchable, and the piece that carries on to the next page waits until you turn the page.
+
+We count *numbered paragraphs and non-space characters*, not "the third `<div>` inside `<body>`" or raw character positions. Readium sometimes adds empty helper elements to a page, and the app's text collapses whitespace, so positions like those would drift; paragraph numbers and non-space character counts do not. The app also refuses an answer that points past the end of its paragraph, so a wrong report can only make search more cautious (it then falls back, see below), never reveal more.
+
+### Why long paragraphs are cut into pieces
+
+Novels often have paragraphs longer than a page. If the paragraph were the unit, a page that sits inside one long paragraph would unlock nothing, and a name you can see on the page would not be searchable. Pieces of a few sentences mean a page break hides at most the piece it falls in, a couple of lines.
+
+Cutting is done when the index is built (`ParagraphIndex`, constant `maxParagraphChars`). Because it changes what a "passage" is, the saved index format version went from 1 to 2, so old index files are rebuilt automatically the first time a book is searched.
+
+### Example: The Great Gatsby
+
+Tested on the Android emulator with the Project Gutenberg copy, whose chapters 1 to 5 are one file of about 25,800 words. On the page that starts "from the East last autumn…":
+
+- The page ends inside paragraph 27 after 1,076 characters. Searching **Gatsby** finds the title lines before it and the sentences of that paragraph that are on the page ("Only Gatsby, the man who gives his name to this book…"), but not the later piece that runs onto the next page.
+- Searching **abortive**, a word that is only in the first line of the next page, finds nothing and shows no hint that there is more.
+- After turning the page, searching **abortive** finds it.
+
+### When it falls back to the old rule
+
+Anything unexpected leaves the page unmeasured and the app then does what the first version did, unlocking only finished files:
+
+- the book is right-to-left or vertical,
+- the script could not be added or did not run,
+- the chapter is not well-formed XML,
+- the page has no text block past it (the last page of a chapter, which is already counted as finished).
+
+The cutoff only ever moves forward during a reading session (`pageCutoff` takes the later of the finished-file rule and the measured page), so turning back to reread does not hide what you have already seen.
+
+### Where the pieces are
+
+| Piece | File | Role |
+| :-- | :-- | :-- |
+| Page script | `assets/reader/page_end.js` | Reports the first text block past the page, riding on Readium's own page report. |
+| Reader adapter | `lib/reader/readium_reader_service.dart` | Registers the script, reads the report (`pageEndBlock`), looks up the text offset in the background, and emits it on `pageTextEnds`. |
+| Text offsets | `lib/reader/epub_sections.dart` | `textProgressionOfBlock`: paragraph number to a share of the chapter text. Uses the same text as the search index. |
+| Cutoff | `lib/search/search_cutoff.dart` | `pageCutoff` combines the measured page with the finished-file rule. |
+| Screen | `lib/home/read_screen.dart` | Keeps the furthest measured page and updates the cutoff the search sheet watches. |
+
+### Known limits and risks
+
+- **A piece is the unit.** The piece of text that carries over onto the next page (a few lines, never more than about 400 characters unless one sentence is longer) becomes searchable once you turn the page. A single sentence longer than a page is never cut.
+- **The script is served through a font declaration.** The plugin's web view only serves its own files and the fonts an app declares. To get `page_end.js` served we declare it as a font file for a family nothing uses (`_servedScript` in `readium_reader_service.dart`). It is a workaround for a plugin limit, and the code says so; without it the page gets an error page instead of the script (seen in the first device test).
+- **Right-to-left and vertical books are not measured.** They use the finished-file rule.
+- **It depends on a Readium plugin detail.** The script puts its answer in the `physicalPage` field, which the plugin copies through untouched. The plugin is pinned to 0.8.0; after an upgrade, check that `pageTextEnds` still reports (the debug build logs `LOREMARK_PAGE_TEXT` lines). If it stops working, search quietly falls back to finished files, which is safe but coarse.
+- **Android only so far.** iOS was never run for this project; the same script would be injected there, but it is untested.
+- **Jumping ahead still counts as reading.** Choosing a late chapter from Contents moves the cutoff there, so everything before it becomes searchable. (Separate from search: on the Gatsby file, choosing chapter I from Contents landed at the end of the chapters 1 to 5 file instead of the start of chapter I, so the Contents jump for several chapters in one file needs its own look.) Gregory's `ReadingProgressTracker` (PR #2) is built to ask "did you read this?" before moving the boundary; once it is wired into the Read tab, search should use `tracker.boundary` instead of the furthest page. His tracker needs the same *kind* of position (characters, not pages) that this change produces.
+- **The measured page is not saved.** After closing and reopening the book, search starts from the saved reading position (finished files) until you turn a page. Saving it belongs with the tracker's saved state.
+- **The cutoff is a `ReaderPosition`.** Gregory's `TextPosition` (same shape, spine file plus share of its text) is what the reader reports for measured pages (`pageTextEnds`). `PassageSearch` itself still takes a `ReaderPosition`; moving it to `TextPosition` is a rename that was left out to keep this change small.

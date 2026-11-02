@@ -7,7 +7,6 @@ import 'dart:typed_data';
 import 'package:xml/xml.dart';
 
 import '../library/epub_package.dart';
-import 'css_selector.dart';
 
 /// One `itemref` of an EPUB spine.
 class SpineItem {
@@ -63,25 +62,102 @@ Future<String?> readSectionMarkup(String epubPath, String path) =>
       }
     });
 
-/// Where the element [cssSelector] picks out starts in the plain text of a
-/// section with markup [xhtml], as a fraction of that text: the same text
-/// [sectionTextsFromBytes] gives the section, so search can use it as a
-/// cutoff progression.
+/// The blocks that hold text, as the page script sees them. A "text block" is
+/// one of these elements that has no other of them inside it and contains
+/// something other than whitespace.
 ///
-/// Null if the markup is not well-formed XML, nothing matches, the element
-/// is outside the body, or the section has no text.
-double? textProgressionOf(String xhtml, String cssSelector) {
+/// Must match `BLOCKS` in assets/reader/page_end.js.
+const leafBlockTags = {
+  'p',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'li',
+  'blockquote',
+  'dt',
+  'dd',
+  'pre',
+  'figcaption',
+  'td',
+  'th',
+  'div',
+};
+
+/// Where the page ends inside a section with markup [xhtml], as a fraction of
+/// the section's plain text: the same text [sectionTextsFromBytes] gives, so
+/// search can use it as a cutoff progression.
+///
+/// The page ends inside text block number [blockNumber], after [characters]
+/// of its characters, not counting whitespace (0 if the block starts on the
+/// next page). Everything before that point was on this page or an earlier
+/// one, so a passage that ends before it is fully behind the reader. The
+/// fraction sits a quarter of a character past the point, so rounding can
+/// never push the passage just before it across the line.
+///
+/// Null if the markup is not well-formed XML, [blockNumber] is out of range,
+/// the block has fewer than [characters] + 1 characters, or the section has
+/// no text.
+double? textProgressionOfBlock(
+  String xhtml,
+  int blockNumber, {
+  int characters = 0,
+}) {
   final XmlDocument document;
   try {
     document = _parseXhtml(xhtml);
   } on XmlException {
     return null;
   }
-  final target = querySelector(document, cssSelector);
+  final body = document.findAllElements('body').firstOrNull;
+  if (body == null || blockNumber < 0 || characters < 0) return null;
+  final target = textBlocks(body).skip(blockNumber).firstOrNull;
   if (target == null) return null;
-  final (:text, :targetOffset) = _walkBody(document, target: target);
-  if (targetOffset == null || text.isEmpty) return null;
-  return targetOffset / text.length;
+  final (:text, :targetOffset, :targetEnd) = _walkBody(
+    document,
+    target: target,
+  );
+  if (targetOffset == null || targetEnd == null || text.isEmpty) return null;
+  // The first character past the page: the one after [characters] others.
+  // Never past the block, whatever the page script reported.
+  var seen = 0;
+  var at = targetOffset;
+  for (; at < targetEnd; at++) {
+    if (_isWhitespace(text.codeUnitAt(at))) continue;
+    if (seen == characters) break;
+    seen++;
+  }
+  if (at >= targetEnd) return null;
+  return (at + 0.25) / text.length;
+}
+
+/// Whether [unit] is whitespace the way JavaScript's `\s` sees it, which is
+/// how the page script counts characters.
+bool _isWhitespace(int unit) =>
+    (unit >= 0x09 && unit <= 0x0D) ||
+    unit == 0x20 ||
+    unit == 0xA0 ||
+    unit == 0x1680 ||
+    (unit >= 0x2000 && unit <= 0x200A) ||
+    unit == 0x2028 ||
+    unit == 0x2029 ||
+    unit == 0x202F ||
+    unit == 0x205F ||
+    unit == 0x3000 ||
+    unit == 0xFEFF;
+
+/// The text blocks of [body] in document order: see [leafBlockTags].
+Iterable<XmlElement> textBlocks(XmlElement body) sync* {
+  bool isBlock(XmlElement e) =>
+      leafBlockTags.contains(e.name.local.toLowerCase());
+  for (final element in body.descendantElements) {
+    if (!isBlock(element)) continue;
+    if (element.descendantElements.any(isBlock)) continue;
+    if (element.innerText.trim().isEmpty) continue;
+    yield element;
+  }
 }
 
 /// The index in [spine] of the item [href] points to, or null.
@@ -187,12 +263,13 @@ XmlDocument _parseXhtml(String xhtml) => XmlDocument.parse(
 
 /// The plain text of [document]'s body and, if [target] is in the body,
 /// how many characters of it come before [target]'s own text.
-({String text, int? targetOffset}) _walkBody(
+({String text, int? targetOffset, int? targetEnd}) _walkBody(
   XmlDocument document, {
   XmlElement? target,
 }) {
   final text = _TextBuilder();
   int? targetOffset;
+  int? targetEnd;
   void walk(XmlNode node) {
     switch (node) {
       case XmlText(:final value) || XmlCDATA(:final value):
@@ -208,6 +285,7 @@ XmlDocument _parseXhtml(String xhtml) => XmlDocument.parse(
             : 0;
         text.breakLines(gap);
         children.forEach(walk);
+        if (identical(node, target)) targetEnd = text.length;
         text.breakLines(gap);
         if (tag == 'td' || tag == 'th') text.add(' ');
       default:
@@ -215,7 +293,11 @@ XmlDocument _parseXhtml(String xhtml) => XmlDocument.parse(
   }
 
   walk(document.findAllElements('body').firstOrNull ?? document.rootElement);
-  return (text: text.toString(), targetOffset: targetOffset);
+  return (
+    text: text.toString(),
+    targetOffset: targetOffset,
+    targetEnd: targetEnd,
+  );
 }
 
 /// Collects text with whitespace collapsed to single spaces and line breaks

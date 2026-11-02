@@ -6,7 +6,7 @@ import 'search_index.dart';
 import 'tokenizer.dart';
 
 /// Bump when the layout below changes, so older files are rebuilt.
-const searchIndexFormatVersion = 1;
+const searchIndexFormatVersion = 2;
 
 const _magic = [0x4C, 0x4D, 0x53, 0x49]; // "LMSI"
 
