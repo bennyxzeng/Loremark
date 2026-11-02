@@ -1,0 +1,5 @@
+# Configuration for `flutter test`. See docs/testing.md.
+tags:
+  # Calls a real LLM provider: needs an API key, costs money, and the output is
+  # nondeterministic. Excluded from CI; run by hand with `flutter test --tags live`.
+  live:

@@ -1,0 +1,46 @@
+# Lints and tests the Flutter app. See docs/testing.md for details.
+name: CI
+
+on:
+  push:
+    # `ui` is our integration branch; checking pushes to it catches PRs that
+    # pass on their own but break once merged together.
+    branches: [main, ui]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A new push to the same branch or PR cancels the older, now outdated run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  flutter:
+    name: Flutter (format, analyze, test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          # Match the SDK revision in .metadata so CI and local runs agree.
+          flutter-version: 3.47.7
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get --enforce-lockfile
+
+      - name: Check formatting
+        run: dart format --output=none --set-exit-if-changed .
+
+      - name: Analyze
+        run: flutter analyze
+
+      # Tests tagged `live` call a real LLM provider and are run by hand.
+      - name: Run tests
+        run: flutter test --exclude-tags live
