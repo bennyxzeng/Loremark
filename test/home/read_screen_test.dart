@@ -338,6 +338,116 @@ void main() {
       expect(session.goToCalls, isEmpty);
     });
 
+    testWidgets(
+      'names the chapter the renderer reports, not the last in its file',
+      (tester) async {
+        final session = await openBook(tester);
+        // Chapter One and Section 1.1 are in files 1 and 2, so the position
+        // alone says Section 1.1.
+        await emit(tester, session, const ReaderPosition(2, 0.1));
+        expect(chapterTitle(tester), 'Section 1.1');
+
+        session.emitChapter(FakeEpubReaderService.defaultToc.first);
+        await tester.idle();
+        await tester.pump();
+
+        expect(chapterTitle(tester), 'Chapter One');
+      },
+    );
+
+    testWidgets('names a section Loremark made by where the reader is', (
+      tester,
+    ) async {
+      service = FakeEpubReaderService(
+        toc: const [
+          TocEntry(
+            title: 'Section 1',
+            href: '',
+            sectionIndex: 0,
+            position: ReaderPosition(0, 0),
+          ),
+          TocEntry(
+            title: 'Section 2',
+            href: '',
+            sectionIndex: 1,
+            position: ReaderPosition(1, 0.5),
+          ),
+          TocEntry(
+            title: 'Section 3',
+            href: '',
+            sectionIndex: 3,
+            position: ReaderPosition(3, 0),
+          ),
+        ],
+      );
+      final session = await openBook(tester);
+
+      await emit(tester, session, const ReaderPosition(1, 0.4));
+      expect(chapterTitle(tester), 'Section 1');
+      await emit(tester, session, const ReaderPosition(1, 0.5));
+      expect(chapterTitle(tester), 'Section 2');
+      await emit(tester, session, const ReaderPosition(2, 0.9));
+      expect(chapterTitle(tester), 'Section 2');
+      await emit(tester, session, const ReaderPosition(3, 0));
+      expect(chapterTitle(tester), 'Section 3');
+    });
+
+    testWidgets('explains sections Loremark made in the Contents sheet', (
+      tester,
+    ) async {
+      service = FakeEpubReaderService(
+        toc: const [
+          TocEntry(
+            title: 'Section 1',
+            href: '',
+            sectionIndex: 0,
+            position: ReaderPosition(0, 0),
+          ),
+          TocEntry(
+            title: 'Section 2',
+            href: '',
+            sectionIndex: 1,
+            position: ReaderPosition(1, 0.5),
+          ),
+        ],
+      );
+      await openBook(tester);
+
+      await tester.tap(find.byTooltip('Contents'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('contents-note')), findsOneWidget);
+      expect(find.text('Section 2'), findsOneWidget);
+    });
+
+    testWidgets('has no note for the contents list of the book itself', (
+      tester,
+    ) async {
+      await openBook(tester);
+
+      await tester.tap(find.byTooltip('Contents'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('contents-note')), findsNothing);
+    });
+
+    testWidgets('forgets the chapter of the previous book', (tester) async {
+      final session = await openBook(tester);
+      session.emitChapter(FakeEpubReaderService.defaultToc.first);
+      await tester.idle();
+      await tester.pump();
+      expect(chapterTitle(tester), 'Chapter One');
+
+      await tester.pumpWidget(
+        screen(
+          forBook: makeBook(id: 'other', path: 'o.epub'),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(chapterTitle(tester), 'The Glass Harbor');
+    });
+
     testWidgets('disables Contents when the book has none', (tester) async {
       service = FakeEpubReaderService(toc: const []);
       await openBook(tester);

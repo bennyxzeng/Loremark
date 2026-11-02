@@ -85,6 +85,12 @@ class FakeEpubReaderSession implements EpubReaderSession {
   /// Whether the screen is still listening to [positions].
   bool get hasListener => _positions.hasListener;
 
+  final StreamController<TocEntry> _chapters =
+      StreamController<TocEntry>.broadcast();
+
+  /// Reports the chapter the renderer says the reader is in.
+  void emitChapter(TocEntry chapter) => _chapters.add(chapter);
+
   final StreamController<TextPosition> _pageTextEnds =
       StreamController<TextPosition>.broadcast();
 
@@ -105,6 +111,9 @@ class FakeEpubReaderSession implements EpubReaderSession {
 
   @override
   Stream<TextPosition> get pageTextEnds => _pageTextEnds.stream;
+
+  @override
+  Stream<TocEntry> get chapterChanges => _chapters.stream;
 
   @override
   Widget buildView({ReaderPosition? initialPosition}) {
@@ -136,6 +145,7 @@ class FakeEpubReaderSession implements EpubReaderSession {
     closeCalls++;
     await _positions.close();
     await _pageTextEnds.close();
+    await _chapters.close();
   }
 }
 

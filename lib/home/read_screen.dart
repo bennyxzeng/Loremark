@@ -70,6 +70,10 @@ class _ReadScreenState extends State<ReadScreen> {
   Widget? _view;
   StreamSubscription<ReaderPosition>? _positionSubscription;
   StreamSubscription<TextPosition>? _pageTextSubscription;
+  StreamSubscription<TocEntry>? _chapterSubscription;
+
+  /// The chapter the renderer says the reader is in, if it could tell.
+  TocEntry? _chapter;
   ReadingPositionStore? _store;
   ReaderPosition? _position;
 
@@ -131,6 +135,7 @@ class _ReadScreenState extends State<ReadScreen> {
     _store = null;
     _position = null;
     _furthestPageText = null;
+    _chapter = null;
     _error = null;
     _searchFuture = null;
     _cutoff.value = searchCutoff();
@@ -162,6 +167,9 @@ class _ReadScreenState extends State<ReadScreen> {
       _position = position;
       _positionSubscription = session.positions.listen(_onPosition);
       _pageTextSubscription = session.pageTextEnds.listen(_onPageTextEnd);
+      _chapterSubscription = session.chapterChanges.listen(
+        (chapter) => setState(() => _chapter = chapter),
+      );
       _view = session.buildView(initialPosition: position);
     });
   }
@@ -189,6 +197,8 @@ class _ReadScreenState extends State<ReadScreen> {
     _positionSubscription = null;
     unawaited(_pageTextSubscription?.cancel());
     _pageTextSubscription = null;
+    unawaited(_chapterSubscription?.cancel());
+    _chapterSubscription = null;
     final session = _session;
     _session = null;
     _view = null;
@@ -250,15 +260,30 @@ class _ReadScreenState extends State<ReadScreen> {
       if (entry.sectionIndex != null) entry,
   ];
 
-  /// The last chapter that starts at or before the reader's section.
+  /// The chapter the reader is in.
+  ///
+  /// The renderer's own answer when it has one, since several chapters can
+  /// share one file. Otherwise, for a book cut into sections by us, the last
+  /// section that starts at or before the reader, and for any other book the
+  /// last chapter that starts in or before the reader's file.
   TocEntry? _currentEntry(List<TocEntry> entries) {
+    final chapter = _chapter;
+    if (chapter != null && entries.any((entry) => identical(entry, chapter))) {
+      return chapter;
+    }
     final position = _position;
     if (position == null) {
       return null;
     }
     TocEntry? current;
     for (final entry in entries) {
-      if (entry.sectionIndex! <= position.sectionIndex) {
+      final start = entry.position;
+      final started = start == null
+          ? entry.sectionIndex! <= position.sectionIndex
+          : start.sectionIndex < position.sectionIndex ||
+                (start.sectionIndex == position.sectionIndex &&
+                    start.progression <= position.progression);
+      if (started) {
         current = entry;
       }
     }

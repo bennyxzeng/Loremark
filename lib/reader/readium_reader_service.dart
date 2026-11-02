@@ -13,12 +13,18 @@ import 'epub_reader_service.dart';
 import 'epub_sections.dart';
 import 'position_normalizer.dart';
 import 'reader_position.dart';
+import 'toc_builder.dart';
 
 /// Renders EPUBs with Readium through the `flutter_readium` plugin.
 ///
 /// This is the only file that imports the plugin.
 class ReadiumReaderService implements EpubReaderService {
   const ReadiumReaderService();
+
+  /// How long a jump to another book file waits for it to show before asking
+  /// again. Tests shorten it.
+  @visibleForTesting
+  static Duration arrivalTimeout = const Duration(seconds: 2);
 
   // The plugin has one open publication at a time, so the service tracks the
   // open session globally and closes it before opening another book.
@@ -78,7 +84,13 @@ class ReadiumReaderService implements EpubReaderService {
       // Read by the reader view when it is built, so set it first.
       readium.setDefaultPreferences(_readerPreferences);
 
-      final session = _ReadiumSession(readium, publication, spine, epubPath);
+      final session = _ReadiumSession(
+        readium,
+        publication,
+        spine,
+        epubPath,
+        await _tableOfContents(publication, spine, epubPath),
+      );
       _current = session;
       return session;
     });
@@ -123,6 +135,32 @@ const _pageEndMarker = 'loremark-end:';
   return (block: block, characters: characters);
 }
 
+/// The book's own table of contents, or sections of about 5,000 words when
+/// it has none the reader can use.
+///
+/// "Can use" means at least two entries that point into the spine: a book
+/// whose contents list is missing, empty, or all links to nowhere has the
+/// same problem, and a single entry is not something to navigate with.
+Future<List<TocEntry>> _tableOfContents(
+  Publication publication,
+  List<SpineItem> spine,
+  String epubPath,
+) async {
+  final own = tocEntriesFromLinks(
+    publication.tableOfContents,
+    (href) => spineIndexOf(spine, href),
+  );
+  if (own.where((entry) => entry.sectionIndex != null).length >= 2) return own;
+  try {
+    final texts = await readSectionTexts(epubPath);
+    final sections = sectionsWithoutToc(texts, spine);
+    return sections.isEmpty ? own : sections;
+  } on Object catch (error) {
+    debugPrint('Could not split the book into sections: $error');
+    return own;
+  }
+}
+
 /// Paginated pages in the app's paper and ink colors.
 const _readerPreferences = EPUBPreferences(
   scroll: false,
@@ -131,12 +169,13 @@ const _readerPreferences = EPUBPreferences(
 );
 
 class _ReadiumSession implements EpubReaderSession {
-  _ReadiumSession(this._readium, this._publication, this._spine, this._epubPath)
-    : _normalizer = PositionNormalizer(_spine),
-      tableOfContents = tocEntriesFromLinks(
-        _publication.tableOfContents,
-        (href) => spineIndexOf(_spine, href),
-      ) {
+  _ReadiumSession(
+    this._readium,
+    this._publication,
+    this._spine,
+    this._epubPath,
+    this.tableOfContents,
+  ) : _normalizer = PositionNormalizer(_spine) {
     // Subscribed now, before the view exists, so the first locator isn't
     // missed. The plugin buffers it natively and the controller below buffers
     // it until the Read tab listens.
@@ -157,6 +196,7 @@ class _ReadiumSession implements EpubReaderSession {
   // listens, which it does once. A broadcast stream would drop them.
   final _positions = StreamController<ReaderPosition>();
   final _pageTextEnds = StreamController<TextPosition>();
+  final _chapterChanges = StreamController<TocEntry>();
 
   @override
   final List<TocEntry> tableOfContents;
@@ -169,6 +209,9 @@ class _ReadiumSession implements EpubReaderSession {
 
   @override
   Stream<TextPosition> get pageTextEnds => _pageTextEnds.stream;
+
+  @override
+  Stream<TocEntry> get chapterChanges => _chapterChanges.stream;
 
   int? _indexOf(String href) => spineIndexOf(_spine, href);
 
@@ -183,6 +226,12 @@ class _ReadiumSession implements EpubReaderSession {
     // Before the duplicate check: the page script's marker comes with the
     // second, full locator of a page, which has the same position as the bare
     // one.
+    _reportChapter(locator);
+    if (raw != null && raw.sectionIndex == _arrivalSection) {
+      _arrival?.complete();
+      _arrival = null;
+      _arrivalSection = null;
+    }
     final end = pageEnd(locator);
     if (raw != null && end != null) {
       unawaited(_onPageEnd(raw.sectionIndex, end.block, end.characters));
@@ -202,6 +251,20 @@ class _ReadiumSession implements EpubReaderSession {
     if (status == ReadiumReaderStatus.reachedEndOfPublication) {
       _emit(_normalizer.finish());
     }
+  }
+
+  TocEntry? _lastChapter;
+
+  /// Reports the chapter the plugin says [locator]'s page is in, if it is
+  /// one of ours. The plugin works it out from where the page starts, so it
+  /// is right for chapters that share a file, which the spine index is not.
+  void _reportChapter(Locator locator) {
+    final tocHref = locator.locations?.tocHref;
+    if (tocHref == null || _closed) return;
+    final entry = chapterForTocHref(tableOfContents, tocHref, _indexOf);
+    if (entry == null || identical(entry, _lastChapter)) return;
+    _lastChapter = entry;
+    _chapterChanges.add(entry);
   }
 
   (int, int, int)? _lastPageEnd;
@@ -266,10 +329,12 @@ class _ReadiumSession implements EpubReaderSession {
 
   @override
   Future<void> goTo(TocEntry entry) async {
+    final position = entry.position;
+    if (position != null) return goToPosition(position);
     for (final link in _publication.tocFlattened) {
       if (link.href != entry.href) continue;
       final locator = _publication.locatorFromLink(link);
-      if (locator != null) await _readium.goToLocator(locator);
+      if (locator != null) await _go(locator);
       return;
     }
   }
@@ -277,7 +342,37 @@ class _ReadiumSession implements EpubReaderSession {
   @override
   Future<void> goToPosition(ReaderPosition position) async {
     final locator = _locatorFor(position);
-    if (locator != null) await _readium.goToLocator(locator);
+    if (locator != null) await _go(locator);
+  }
+
+  Completer<void>? _arrival;
+  int? _arrivalSection;
+
+  /// Jumps to [locator], and asks again once its file is showing if it was in
+  /// another one.
+  ///
+  /// Readium opens the file a jump leaves for at its last page and ignores
+  /// the chapter or text asked for, as if the reader had turned back into it
+  /// (seen with chapters that start part way through a file). Once the file
+  /// is showing, a second jump scrolls to the right place. A jump inside the
+  /// file the reader is already in needs only one.
+  Future<void> _go(Locator locator) async {
+    final target = _indexOf(locator.href);
+    final from = _lastRaw?.sectionIndex;
+    final arrived = Completer<void>();
+    if (target != null && from != target) {
+      _arrival = arrived;
+      _arrivalSection = target;
+    }
+    await _readium.goToLocator(locator);
+    if (target == null || from == target) return;
+    await arrived.future.timeout(
+      ReadiumReaderService.arrivalTimeout,
+      onTimeout: () {},
+    );
+    if (identical(_arrival, arrived)) _arrival = null;
+    if (_closed) return;
+    await _readium.goToLocator(locator);
   }
 
   @override
@@ -297,7 +392,7 @@ class _ReadiumSession implements EpubReaderSession {
         style: passageHighlightStyle,
       ),
     ]);
-    await _readium.goToLocator(locator);
+    await _go(locator);
   }
 
   @override
@@ -329,6 +424,7 @@ class _ReadiumSession implements EpubReaderSession {
     // completes.
     unawaited(_positions.close());
     unawaited(_pageTextEnds.close());
+    unawaited(_chapterChanges.close());
     if (!identical(ReadiumReaderService._current, this)) return;
     ReadiumReaderService._current = null;
     await _readium.closePublication();
@@ -455,4 +551,29 @@ Locator? locatorForPassage(
       after: target.after,
     ),
   );
+}
+
+/// The entry of [entries] the plugin's `tocHref` ("path#fragment") names, or
+/// null if none does.
+///
+/// Entries match by spine item and fragment, so how the path is written
+/// (leading slash, percent-encoding) does not matter.
+TocEntry? chapterForTocHref(
+  List<TocEntry> entries,
+  String tocHref,
+  int? Function(String href) indexOf,
+) {
+  final section = indexOf(tocHref);
+  if (section == null) return null;
+  final fragment = _fragmentOf(tocHref);
+  for (final entry in entries) {
+    if (entry.isSynthetic || entry.sectionIndex != section) continue;
+    if (_fragmentOf(entry.href) == fragment) return entry;
+  }
+  return null;
+}
+
+String _fragmentOf(String href) {
+  final at = href.indexOf('#');
+  return at == -1 ? '' : Uri.decodeComponent(href.substring(at + 1));
 }
