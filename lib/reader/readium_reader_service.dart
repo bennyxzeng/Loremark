@@ -117,22 +117,31 @@ final _servedScript = [
 const _pageEndMarker = 'loremark-end:';
 
 /// Where the page [locator] is ends, as reported by the page script: the
-/// number of the first text block that doesn't fit on it, and how many of
-/// that block's characters, not counting whitespace, do. Null if the script
+/// number of the first text block that doesn't fit on it, how many of that
+/// block's characters, not counting whitespace, do, and the last few
+/// characters before the end to check the count against. Null if the script
 /// reported none.
 ///
 /// The plugin passes `physicalPage` through to the locator's other locations.
 @visibleForTesting
-({int block, int characters})? pageEnd(Locator locator) {
+({int block, int characters, String? tail})? pageEnd(Locator locator) {
   final value = locator.locations?.additionalProperties['physicalPage'];
   if (value is! String || !value.startsWith(_pageEndMarker)) return null;
   final parts = value.substring(_pageEndMarker.length).split(':');
-  if (parts.isEmpty || parts.length > 2) return null;
+  if (parts.isEmpty || parts.length > 3) return null;
   final block = int.tryParse(parts[0]);
-  final characters = parts.length == 2 ? int.tryParse(parts[1]) : 0;
+  final characters = parts.length >= 2 ? int.tryParse(parts[1]) : 0;
   if (block == null || characters == null) return null;
   if (block < 0 || characters < 0) return null;
-  return (block: block, characters: characters);
+  String? tail;
+  if (parts.length == 3 && parts[2].isNotEmpty) {
+    try {
+      tail = Uri.decodeComponent(parts[2]);
+    } on FormatException {
+      return null;
+    }
+  }
+  return (block: block, characters: characters, tail: tail);
 }
 
 /// The book's own table of contents, or sections of about 5,000 words when
@@ -234,7 +243,9 @@ class _ReadiumSession implements EpubReaderSession {
     }
     final end = pageEnd(locator);
     if (raw != null && end != null) {
-      unawaited(_onPageEnd(raw.sectionIndex, end.block, end.characters));
+      unawaited(
+        _onPageEnd(raw.sectionIndex, end.block, end.characters, end.tail),
+      );
     }
     // Readium reports every page twice, a bare locator and then a full one
     // with the same position.
@@ -267,15 +278,20 @@ class _ReadiumSession implements EpubReaderSession {
     _chapterChanges.add(entry);
   }
 
-  (int, int, int)? _lastPageEnd;
+  (int, int, int, String?)? _lastPageEnd;
   int? _markupSection;
   Future<String?>? _markup;
 
   /// Finds where the page ends in [section]'s text, inside the text block
   /// [block] after [characters] of it, and reports it on [pageTextEnds].
-  Future<void> _onPageEnd(int section, int block, int characters) async {
-    if (_lastPageEnd == (section, block, characters)) return;
-    _lastPageEnd = (section, block, characters);
+  Future<void> _onPageEnd(
+    int section,
+    int block,
+    int characters,
+    String? tail,
+  ) async {
+    if (_lastPageEnd == (section, block, characters, tail)) return;
+    _lastPageEnd = (section, block, characters, tail);
     // One section's markup is kept, since most page turns stay in it.
     if (_markupSection != section) {
       _markupSection = section;
@@ -284,7 +300,12 @@ class _ReadiumSession implements EpubReaderSession {
     final xhtml = await _markup;
     if (xhtml == null) return;
     final progression = await Isolate.run(
-      () => textProgressionOfBlock(xhtml, block, characters: characters),
+      () => textProgressionOfBlock(
+        xhtml,
+        block,
+        characters: characters,
+        tail: tail,
+      ),
     );
     // Debug and profile builds only; for checking cutoffs on a device.
     if (kDebugMode || kProfileMode) {
@@ -292,6 +313,7 @@ class _ReadiumSession implements EpubReaderSession {
         'section': section,
         'block': block,
         'characters': characters,
+        'tail': tail,
         'textProgression': progression,
       };
       debugPrintSynchronously('LOREMARK_PAGE_TEXT ${jsonEncode(fields)}');

@@ -74,6 +74,19 @@ class _ReadScreenState extends State<ReadScreen> {
 
   /// The chapter the renderer says the reader is in, if it could tell.
   TocEntry? _chapter;
+
+  /// How long after the last move a jump is taken to have landed.
+  static const _pickSettleDelay = Duration(milliseconds: 700);
+
+  /// The entry the reader chose from Contents. The bar shows it until they
+  /// move off the page the jump landed on: the renderer names a page's
+  /// chapter by its first line, which can still be the end of the one before.
+  TocEntry? _picked;
+
+  /// Where the jump landed once it settled.
+  ReaderPosition? _pickedAt;
+  bool _pickSettled = false;
+  Timer? _pickTimer;
   ReadingPositionStore? _store;
   ReaderPosition? _position;
 
@@ -119,6 +132,7 @@ class _ReadScreenState extends State<ReadScreen> {
   @override
   void dispose() {
     _generation++;
+    _pickTimer?.cancel();
     widget.searchController?.detach(_openSearchSheet);
     _releaseSession();
     _cutoff.dispose();
@@ -136,6 +150,7 @@ class _ReadScreenState extends State<ReadScreen> {
     _position = null;
     _furthestPageText = null;
     _chapter = null;
+    _clearPick();
     _error = null;
     _searchFuture = null;
     _cutoff.value = searchCutoff();
@@ -228,7 +243,10 @@ class _ReadScreenState extends State<ReadScreen> {
   }
 
   void _onPosition(ReaderPosition position) {
-    setState(() => _position = position);
+    setState(() {
+      _position = position;
+      _trackPick(position);
+    });
     _updateCutoff();
     final store = _store;
     if (store != null) {
@@ -262,11 +280,16 @@ class _ReadScreenState extends State<ReadScreen> {
 
   /// The chapter the reader is in.
   ///
-  /// The renderer's own answer when it has one, since several chapters can
+  /// The one they just chose from Contents, until they move on. Then the
+  /// renderer's own answer when it has one, since several chapters can
   /// share one file. Otherwise, for a book cut into sections by us, the last
   /// section that starts at or before the reader, and for any other book the
   /// last chapter that starts in or before the reader's file.
   TocEntry? _currentEntry(List<TocEntry> entries) {
+    final picked = _picked;
+    if (picked != null && entries.any((entry) => identical(entry, picked))) {
+      return picked;
+    }
     final chapter = _chapter;
     if (chapter != null && entries.any((entry) => identical(entry, chapter))) {
       return chapter;
@@ -290,6 +313,31 @@ class _ReadScreenState extends State<ReadScreen> {
     return current;
   }
 
+  void _clearPick() {
+    _picked = null;
+    _pickedAt = null;
+    _pickSettled = false;
+    _pickTimer?.cancel();
+    _pickTimer = null;
+  }
+
+  /// Starts waiting for the jump to settle, or waits again after a move.
+  void _waitForPick() {
+    _pickTimer?.cancel();
+    _pickTimer = Timer(_pickSettleDelay, () => _pickSettled = true);
+  }
+
+  /// Keeps the chosen entry until the reader moves off the page it landed on.
+  void _trackPick(ReaderPosition position) {
+    if (_picked == null) return;
+    if (!_pickSettled) {
+      _pickedAt = position;
+      _waitForPick();
+    } else if (position != _pickedAt) {
+      _clearPick();
+    }
+  }
+
   Future<void> _openContents(EpubReaderSession session) async {
     final entries = _usableEntries(session);
     final chosen = await showTableOfContentsSheet(
@@ -300,7 +348,12 @@ class _ReadScreenState extends State<ReadScreen> {
     if (chosen == null || !mounted || !identical(session, _session)) {
       return;
     }
+    setState(() {
+      _clearPick();
+      _picked = chosen;
+    });
     await _navigate(() => session.goTo(chosen));
+    if (mounted && identical(chosen, _picked)) _waitForPick();
   }
 
   /// Recomputes what search may look at, from the reader's position, the

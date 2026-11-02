@@ -8,12 +8,16 @@
 // It rides on the plugin's own page report. Readium calls
 // window.flutterReadium.getPageInformation() for every page and passes the
 // `physicalPage` string through to the app untouched, so a marker there
-// reaches Dart without any native code. The marker is "loremark-end:<n>:<k>":
-// <n> counts the chapter's text blocks from 0, in document order, and <k> is
-// how many characters of block <n>, not counting whitespace, are on the page
-// (0 if the block starts on the next one). epub_sections.dart counts the same
-// blocks and characters in its own copy of the chapter, so extra elements
-// Readium adds to the page, and different whitespace, cannot shift anything.
+// reaches Dart without any native code. The marker is
+// "loremark-end:<n>:<k>:<tail>": <n> counts the chapter's text blocks from 0,
+// in document order, <k> is how many characters of block <n>, not counting
+// whitespace, are on the page (0 if the block starts on the next one), and
+// <tail> is the last few of those characters before the page ends, URL-encoded.
+// epub_sections.dart counts the same blocks and characters in its own copy of
+// the chapter, so extra elements Readium adds to the page, and different
+// whitespace, cannot shift anything. It then checks the tail against its own
+// text, and drops the report if they differ, so a miscount can never open
+// more of the book than the reader has seen.
 //
 // Anything unexpected reports nothing, and the app then falls back to
 // counting only finished chapter files.
@@ -28,6 +32,9 @@
   // Text that is not part of the chapter's plain text. Must match the
   // elements skipped in epub_sections.dart.
   var SKIPPED = { script: 1, style: 1, svg: 1, rt: 1, rp: 1, head: 1 };
+
+  // How many characters of the text before the page end are sent to check.
+  var TAIL = 12;
 
   var leaves = null;
 
@@ -102,7 +109,14 @@
     }
     var found = shownAtOrAfter(low, blocks.length);
     if (found >= blocks.length || !past(found)) return null;
-    return { block: found, characters: charactersOnPage(blocks[found], width) };
+    var characters = charactersOnPage(blocks[found], width);
+    var tail = '';
+    try {
+      tail = encodeURIComponent(tailBefore(blocks, found, characters));
+    } catch (e) {
+      // A lone surrogate can't be encoded: send no tail, so no check.
+    }
+    return { block: found, characters: characters, tail: tail };
   }
 
   function isSkipped(node, block) {
@@ -171,6 +185,27 @@
     return 0;
   }
 
+  // All characters of [block], not counting whitespace.
+  function nonWhitespaceText(block) {
+    var walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+    var out = '';
+    for (var node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (isSkipped(node, block)) continue;
+      out += node.nodeValue.replace(/\s+/g, '');
+    }
+    return out;
+  }
+
+  // The last TAIL characters, not counting whitespace, before the page end:
+  // [characters] characters into block [index].
+  function tailBefore(blocks, index, characters) {
+    var text = nonWhitespaceText(blocks[index]).slice(0, characters);
+    for (var i = index - 1; text.length < TAIL && i >= 0; i--) {
+      text = nonWhitespaceText(blocks[i]) + text;
+    }
+    return text.slice(-TAIL);
+  }
+
   function install() {
     var tools = window.flutterReadium;
     if (!tools || typeof tools.getPageInformation !== 'function') return false;
@@ -180,7 +215,8 @@
       try {
         var end = firstBlockPastPage();
         if (info && end !== null) {
-          info.physicalPage = MARKER + end.block + ':' + end.characters;
+          info.physicalPage =
+            MARKER + end.block + ':' + end.characters + ':' + end.tail;
         }
       } catch (e) {
         // Report the page as Readium would have.

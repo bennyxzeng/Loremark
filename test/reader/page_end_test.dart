@@ -212,22 +212,174 @@ void main() {
     });
   });
 
+  group('the tail check', () {
+    const text = 'Gatsby waved from the end of the dock.';
+    final xhtml = _page('<p>One two three.</p><p>$text</p>');
+    // Characters of the second block, not counting whitespace.
+    String nonSpace(String value) => value.replaceAll(RegExp(r'\s'), '');
+
+    test('accepts the last characters before the page end', () {
+      // The page ends after "Gatsby waved from" in block 1.
+      final before = nonSpace('Gatsby waved from');
+      final tail = before.substring(before.length - 12);
+
+      expect(
+        textProgressionOfBlock(xhtml, 1, characters: before.length, tail: tail),
+        isNotNull,
+      );
+    });
+
+    test(
+      'accepts fewer characters when the block has fewer before the end',
+      () {
+        expect(
+          textProgressionOfBlock(xhtml, 1, characters: 3, tail: 'Gat'),
+          isNotNull,
+        );
+      },
+    );
+
+    test(
+      'reaches back into the block before when the page ends near a start',
+      () {
+        expect(
+          textProgressionOfBlock(xhtml, 1, characters: 3, tail: 'twothree.Gat'),
+          isNotNull,
+        );
+        // Only the characters of this block would not match what comes before.
+        expect(
+          textProgressionOfBlock(xhtml, 1, characters: 3, tail: 'XYZGat'),
+          isNull,
+        );
+        expect(
+          textProgressionOfBlock(xhtml, 1, characters: 3, tail: 'twothree.Gax'),
+          isNull,
+        );
+      },
+    );
+
+    test('accepts a shorter tail at the start of the chapter', () {
+      expect(
+        textProgressionOfBlock(xhtml, 0, characters: 3, tail: 'One'),
+        isNotNull,
+      );
+      expect(
+        textProgressionOfBlock(xhtml, 0, characters: 3, tail: 'Ona'),
+        isNull,
+      );
+    });
+
+    test('takes the end of the block before when the page ends at a block', () {
+      // Block 0 is "One two three." and block 1 starts the next page.
+      expect(
+        textProgressionOfBlock(xhtml, 1, characters: 0, tail: 'Onetwothree.'),
+        isNotNull,
+      );
+    });
+
+    test('drops a report whose tail is not the text before the end', () {
+      final before = nonSpace('Gatsby waved from');
+      expect(
+        textProgressionOfBlock(
+          xhtml,
+          1,
+          characters: before.length,
+          tail: 'XXXXXXXXXXXX',
+        ),
+        isNull,
+      );
+      // Off by one: the same count with the tail of one character earlier.
+      expect(
+        textProgressionOfBlock(
+          xhtml,
+          1,
+          characters: before.length + 1,
+          tail: before.substring(before.length - 12),
+        ),
+        isNull,
+      );
+    });
+
+    test('drops a report from the wrong block', () {
+      final before = nonSpace('Gatsby waved from');
+      final tail = before.substring(before.length - 12);
+
+      expect(
+        textProgressionOfBlock(xhtml, 0, characters: 3, tail: tail),
+        isNull,
+      );
+    });
+
+    test('does not check a report with no tail', () {
+      expect(textProgressionOfBlock(xhtml, 1, characters: 3), isNotNull);
+      expect(
+        textProgressionOfBlock(xhtml, 1, characters: 3, tail: ''),
+        isNotNull,
+      );
+    });
+
+    test('compares characters, not markup or spacing', () {
+      final marked = _page('<p>Gat<b>sby</b>   wav<i>ed</i> from</p>');
+      expect(
+        textProgressionOfBlock(
+          marked,
+          0,
+          characters: 7,
+          tail: 'Gatsbywaved'.substring(0, 7),
+        ),
+        isNotNull,
+      );
+    });
+
+    test('compares non-Latin text and characters outside the BMP', () {
+      final cjk = _page('<p>汉字文章内容很长</p>');
+      expect(
+        textProgressionOfBlock(cjk, 0, characters: 4, tail: '汉字文章'),
+        isNotNull,
+      );
+      expect(
+        textProgressionOfBlock(cjk, 0, characters: 4, tail: '汉字文内'),
+        isNull,
+      );
+      final emoji = _page('<p>ab\u{1F600}cd</p>');
+      expect(
+        textProgressionOfBlock(emoji, 0, characters: 4, tail: 'ab\u{1F600}'),
+        isNotNull,
+      );
+    });
+  });
+
   group('pageEnd', () {
-    test('reads the block and characters the page script reports', () {
-      expect(pageEnd(_withPhysicalPage('loremark-end:17:42')), (
+    test('reads the block, characters and tail the page script reports', () {
+      expect(pageEnd(_withPhysicalPage('loremark-end:17:42:abc')), (
         block: 17,
         characters: 42,
+        tail: 'abc',
       ));
-      expect(pageEnd(_withPhysicalPage('loremark-end:0:0')), (
+      expect(pageEnd(_withPhysicalPage('loremark-end:0:0:')), (
         block: 0,
         characters: 0,
+        tail: null,
       ));
     });
 
-    test('reads a marker without characters as the start of the block', () {
+    test('decodes the tail', () {
+      expect(
+        pageEnd(_withPhysicalPage('loremark-end:1:2:%E6%B1%89a%3Ab'))?.tail,
+        '汉a:b',
+      );
+    });
+
+    test('reads a marker without a tail or characters', () {
+      expect(pageEnd(_withPhysicalPage('loremark-end:5:9')), (
+        block: 5,
+        characters: 9,
+        tail: null,
+      ));
       expect(pageEnd(_withPhysicalPage('loremark-end:5')), (
         block: 5,
         characters: 0,
+        tail: null,
       ));
     });
 
@@ -243,7 +395,8 @@ void main() {
       expect(pageEnd(_withPhysicalPage('loremark-end:3:y')), isNull);
       expect(pageEnd(_withPhysicalPage('loremark-end:-2')), isNull);
       expect(pageEnd(_withPhysicalPage('loremark-end:2:-1')), isNull);
-      expect(pageEnd(_withPhysicalPage('loremark-end:1:2:3')), isNull);
+      expect(pageEnd(_withPhysicalPage('loremark-end:1:2:3:4')), isNull);
+      expect(pageEnd(_withPhysicalPage('loremark-end:1:2:%E6%B1')), isNull);
     });
   });
 }
