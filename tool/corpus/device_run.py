@@ -164,15 +164,17 @@ def pick_words(path):
     text = crude_words(path)
     words = re.findall(r"[a-z]{7,}", text.lower())
     counts = {}
+    # Search stems words and treats the last word as a prefix, so a word only
+    # counts as rare if no other word starts the same way.
     for w in words:
-        counts[w] = counts.get(w, 0) + 1
+        counts[w[:5]] = counts.get(w[:5], 0) + 1
     n = len(words)
     if n < 2000:
         return None
 
     def region(lo, hi):
         for i in range(int(n * lo), int(n * hi)):
-            if counts[words[i]] == 1:
+            if counts[words[i][:5]] == 1:
                 return words[i]
         return None
     return {'mid': region(0.20, 0.30), 'late': region(0.88, 0.95)}
@@ -250,18 +252,31 @@ def search(word):
         return None
     time.sleep(3)
     shell(f'input text {word}')
-    time.sleep(4)
-    seen = [n for n in texts() if not n['cls'].endswith('EditText')]
-    # The box also matches longer words that start with the query, so only a
-    # whole word counts.
+    # The first search of a book builds its index, which takes many seconds
+    # for a long one, so wait for an answer instead of a fixed time.
     whole = re.compile(r'(?<![a-z])' + re.escape(word) + r'(?![a-z])')
-    found = any(whole.search((n['text'] or n['desc']).lower()) for n in seen)
-    empty = any("No matches" in (n['text'] or n['desc']) for n in seen)
+    found = empty = False
+    waited = 0
+    while waited < 120:
+        time.sleep(4)
+        waited += 4
+        seen = [n for n in texts() if not n['cls'].endswith('EditText')]
+        # The box also matches longer words that start with the query, so
+        # only a whole word counts.
+        found = any(whole.search((n['text'] or n['desc']).lower()) for n in seen)
+        empty = any("No matches" in (n['text'] or n['desc']) for n in seen)
+        if found or empty:
+            break
     shell('input keyevent 4')
     time.sleep(1)
     shell('input keyevent 4')
     time.sleep(1)
-    return {'found': found, 'empty': empty}
+    return {'found': found, 'empty': empty, 'waited': waited}
+
+
+def no_answer(r, word, problems):
+    if r and not (r['found'] or r['empty']):
+        problems.append(f"search for '{word}' gave no answer in {r['waited']}s")
 
 
 def run_book(bid):
@@ -286,6 +301,7 @@ def run_book(bid):
     if words and words['mid']:
         r = search(words['mid'])
         result['searchMidAtStart'] = r
+        no_answer(r, words['mid'], problems)
         if r and r['found']:
             problems.append(f"'{words['mid']}' (20-30% in) found at the start of the book")
 
@@ -350,11 +366,13 @@ def run_book(bid):
     if words and words['mid'] and ahead is not None and ahead >= 40:
         r = search(words['mid'])
         result['searchMidAfterJump'] = r
+        no_answer(r, words['mid'], problems)
         if r and not r['found']:
             problems.append(f"'{words['mid']}' (20-30% in) not found after jumping to {ahead}%")
     if words and words['late'] and ahead is not None and ahead < 80:
         r = search(words['late'])
         result['searchLateAfterJump'] = r
+        no_answer(r, words['late'], problems)
         if r and r['found']:
             problems.append(f"'{words['late']}' (88-95% in) found at {ahead}%")
     return result

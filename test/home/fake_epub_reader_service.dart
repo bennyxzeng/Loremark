@@ -121,8 +121,14 @@ class FakeEpubReaderSession implements EpubReaderSession {
     return const Text('Fake reader view');
   }
 
+  /// If set, [goTo] waits for it before it returns.
+  Completer<void>? goToGate;
+
   @override
-  Future<void> goTo(TocEntry entry) async => goToCalls.add(entry);
+  Future<void> goTo(TocEntry entry) async {
+    goToCalls.add(entry);
+    await goToGate?.future;
+  }
 
   @override
   Future<void> goToPosition(ReaderPosition position) async {}

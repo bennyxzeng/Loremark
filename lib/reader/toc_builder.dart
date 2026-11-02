@@ -1,3 +1,6 @@
+import 'dart:io';
+import 'dart:isolate';
+
 import 'epub_reader_service.dart';
 import 'epub_sections.dart';
 import 'reader_position.dart';
@@ -92,6 +95,18 @@ ReaderPosition _positionAt(
   }
   return ReaderPosition(units.indexWhere((value) => value > 0), 0);
 }
+
+/// [sectionsWithoutToc] for the EPUB at [epubPath], with the reading and the
+/// counting done off the UI isolate: a very long book takes a second or more.
+Future<List<TocEntry>> readSectionsWithoutToc(
+  String epubPath,
+  List<SpineItem> spine,
+) => Isolate.run(
+  () => sectionsWithoutToc(
+    sectionTextsFromBytes(File(epubPath).readAsBytesSync()),
+    spine,
+  ),
+);
 
 final _cjk = RegExp(r'[぀-ヿ㐀-䶿一-鿿가-힯]');
 

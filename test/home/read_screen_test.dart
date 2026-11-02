@@ -501,6 +501,25 @@ void main() {
         expect(chapterTitle(tester), 'Chapter One');
       });
 
+      testWidgets('stays however long the jump itself takes', (tester) async {
+        final session = await openBook(tester);
+        session.goToGate = Completer<void>();
+        await tester.tap(find.byTooltip('Contents'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Chapter Two'));
+        await tester.pump();
+
+        // The jump is slow: it lands on the end of the file first, and the
+        // page it is going to is a few seconds later.
+        await emit(tester, session, const ReaderPosition(4, 1.0));
+        await tester.pump(const Duration(seconds: 3));
+        await emit(tester, session, const ReaderPosition(4, 0.0));
+        session.goToGate!.complete();
+        await tester.pumpAndSettle();
+
+        expect(chapterTitle(tester), 'Chapter Two');
+      });
+
       testWidgets('stays when the page it landed on is reported again', (
         tester,
       ) async {

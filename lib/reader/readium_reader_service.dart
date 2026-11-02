@@ -161,8 +161,7 @@ Future<List<TocEntry>> _tableOfContents(
   );
   if (own.where((entry) => entry.sectionIndex != null).length >= 2) return own;
   try {
-    final texts = await readSectionTexts(epubPath);
-    final sections = sectionsWithoutToc(texts, spine);
+    final sections = await readSectionsWithoutToc(epubPath, spine);
     return sections.isEmpty ? own : sections;
   } on Object catch (error) {
     debugPrint('Could not split the book into sections: $error');
@@ -489,21 +488,52 @@ ReaderPosition? positionFromLocator(
   final locations = locator.locations;
   return ReaderPosition(
     sectionIndex,
-    _isLastPage(locations) ? 1.0 : locations?.progression ?? 0,
+    isLastPage(locations) ? 1.0 : locations?.progression ?? 0,
     totalProgression: locations?.totalProgression,
   );
 }
 
 /// Whether [locations] is on the last page of its section, from the
 /// zero-based `currentPage` and `totalPages` the plugin adds to full locators.
-bool _isLastPage(Locations? locations) {
+///
+/// A book read right to left numbers its pages the other way: the first page
+/// of a file is `totalPages - 1` and the last is 0. Taken at face value that
+/// would call every file finished on its first page, and search would open
+/// the whole file, so the page index is read in the direction the progression
+/// runs (see [pageIndexOf]).
+@visibleForTesting
+bool isLastPage(Locations? locations) {
+  final properties = locations?.additionalProperties;
+  final totalPages = properties?['totalPages'];
+  if (totalPages is! int || totalPages <= 0) return false;
+  final index = pageIndexOf(locations);
+  return index != null && index >= totalPages - 1;
+}
+
+/// The zero-based page of [locations] counted in reading order, or null if
+/// the plugin gave no page numbers.
+///
+/// `currentPage` counts in reading order in a book read left to right and
+/// backwards in one read right to left. The progression is where the page
+/// starts, as a share of the file, so it always runs in reading order and
+/// `progression * totalPages` is about the page. Whichever of `currentPage` and
+/// its mirror is closer to that is the page. Without a progression,
+/// `currentPage` is taken as it is.
+@visibleForTesting
+int? pageIndexOf(Locations? locations) {
   final properties = locations?.additionalProperties;
   final currentPage = properties?['currentPage'];
   final totalPages = properties?['totalPages'];
-  return currentPage is int &&
-      totalPages is int &&
-      totalPages > 0 &&
-      currentPage >= totalPages - 1;
+  if (currentPage is! int || totalPages is! int || totalPages <= 0) {
+    return null;
+  }
+  final progression = locations?.progression;
+  if (progression == null) return currentPage;
+  final expected = progression * totalPages;
+  final mirrored = totalPages - 1 - currentPage;
+  return (mirrored - expected).abs() < (currentPage - expected).abs()
+      ? mirrored
+      : currentPage;
 }
 
 /// Whether [locations] carries the plugin's page numbers, which the bare

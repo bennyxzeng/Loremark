@@ -106,6 +106,94 @@ void main() {
     });
   });
 
+  group('the last page of a section', () {
+    Locations pages(int current, int total, double? progression) => Locations(
+      progression: progression,
+      additionalProperties: {'currentPage': current, 'totalPages': total},
+    );
+
+    // Values from the Android emulator, a book read right to left: Readium
+    // numbers the pages of a file backwards, 113 of 114 first, then 112.
+    test('a right-to-left file is not finished on its first page', () {
+      expect(isLastPage(pages(113, 114, 0.0)), isFalse);
+      expect(isLastPage(pages(112, 114, 0.00876395003167696)), isFalse);
+      expect(isLastPage(pages(111, 114, 0.01755226693091183)), isFalse);
+      expect(pageIndexOf(pages(113, 114, 0.0)), 0);
+      expect(pageIndexOf(pages(112, 114, 0.00876395003167696)), 1);
+    });
+
+    test('a right-to-left file is finished on its last page, which is 0', () {
+      expect(isLastPage(pages(0, 114, 113 / 114)), isTrue);
+      expect(isLastPage(pages(1, 114, 112 / 114)), isFalse);
+    });
+
+    test('a right-to-left position keeps the page start until the end', () {
+      Locator rtl(int current, double progression) => Locator(
+        href: 'OEBPS/ch1.xhtml',
+        type: _xhtml,
+        locations: pages(current, 114, progression),
+      );
+
+      expect(
+        positionFromLocator(rtl(113, 0.0), _indexOf),
+        const ReaderPosition(1, 0.0),
+      );
+      expect(
+        positionFromLocator(rtl(50, 63 / 114), _indexOf),
+        ReaderPosition(1, 63 / 114),
+      );
+      expect(
+        positionFromLocator(rtl(0, 113 / 114), _indexOf),
+        const ReaderPosition(1, 1.0),
+      );
+    });
+
+    // Values from the same device for a book read left to right.
+    test('a left-to-right file is as before', () {
+      expect(isLastPage(pages(0, 5, 0.0)), isFalse);
+      expect(isLastPage(pages(1, 5, 0.19970359392367543)), isFalse);
+      expect(isLastPage(pages(3, 5, 0.6000370507595406)), isFalse);
+      expect(isLastPage(pages(4, 5, 0.8)), isTrue);
+      expect(pageIndexOf(pages(1, 5, 0.19970359392367543)), 1);
+    });
+
+    test('a one-page file is finished on its only page either way', () {
+      expect(isLastPage(pages(0, 1, 0.0)), isTrue);
+      expect(isLastPage(pages(0, 1, null)), isTrue);
+    });
+
+    test('without a progression the page number is taken as it is', () {
+      expect(isLastPage(pages(4, 5, null)), isTrue);
+      expect(isLastPage(pages(3, 5, null)), isFalse);
+      expect(pageIndexOf(pages(2, 5, null)), 2);
+    });
+
+    test('is not known without page numbers', () {
+      expect(isLastPage(const Locations(progression: 0.9)), isFalse);
+      expect(isLastPage(null), isFalse);
+      expect(pageIndexOf(const Locations(progression: 0.9)), isNull);
+      expect(pageIndexOf(pages(0, 0, 0.5)), isNull);
+      expect(isLastPage(pages(0, 0, 0.5)), isFalse);
+    });
+
+    test('is right for every page of files of 1 to 200 pages, both ways', () {
+      for (var total = 1; total <= 200; total++) {
+        for (var page = 0; page < total; page++) {
+          // The progression is a little off the exact page start, as seen.
+          for (final noise in [-0.3, 0.0, 0.3]) {
+            final progression = ((page + noise) / total).clamp(0.0, 1.0);
+            final ltr = pages(page, total, progression);
+            final rtl = pages(total - 1 - page, total, progression);
+            final last = page == total - 1;
+            final why = 'page $page of $total, noise $noise';
+            expect(isLastPage(ltr), last, reason: 'left to right, $why');
+            expect(isLastPage(rtl), last, reason: 'right to left, $why');
+          }
+        }
+      }
+    });
+  });
+
   group('tocEntriesFromLinks', () {
     test('flattens a nested table of contents with depth', () {
       final entries = tocEntriesFromLinks([

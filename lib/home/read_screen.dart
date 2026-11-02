@@ -86,6 +86,10 @@ class _ReadScreenState extends State<ReadScreen> {
   /// Where the jump landed once it settled.
   ReaderPosition? _pickedAt;
   bool _pickSettled = false;
+
+  /// Whether the jump itself is still being made. A jump into another file
+  /// is two steps and can take a while, so moves during it are the jump.
+  bool _jumping = false;
   Timer? _pickTimer;
   ReadingPositionStore? _store;
   ReaderPosition? _position;
@@ -317,6 +321,7 @@ class _ReadScreenState extends State<ReadScreen> {
     _picked = null;
     _pickedAt = null;
     _pickSettled = false;
+    _jumping = false;
     _pickTimer?.cancel();
     _pickTimer = null;
   }
@@ -332,7 +337,7 @@ class _ReadScreenState extends State<ReadScreen> {
     if (_picked == null) return;
     if (!_pickSettled) {
       _pickedAt = position;
-      _waitForPick();
+      if (!_jumping) _waitForPick();
     } else if (position != _pickedAt) {
       _clearPick();
     }
@@ -351,9 +356,13 @@ class _ReadScreenState extends State<ReadScreen> {
     setState(() {
       _clearPick();
       _picked = chosen;
+      _jumping = true;
     });
     await _navigate(() => session.goTo(chosen));
-    if (mounted && identical(chosen, _picked)) _waitForPick();
+    if (mounted && identical(chosen, _picked)) {
+      _jumping = false;
+      _waitForPick();
+    }
   }
 
   /// Recomputes what search may look at, from the reader's position, the
