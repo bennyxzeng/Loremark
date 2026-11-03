@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loremark/story_map/chapter_digest_view.dart';
 import 'package:loremark/story_map/character_graph_view.dart';
+import 'package:loremark/story_map/graph_guide_sheet.dart';
 import 'package:loremark/story_map/story_facts.dart';
 import 'package:loremark/story_map/story_map_screen.dart';
 import 'package:loremark/story_model/story_model.dart';
@@ -124,6 +125,81 @@ void main() {
     expect(temporalTags(TemporalContext.future), ['future']);
     expect(temporalTags(TemporalContext.hypothetical), ['hypothetical']);
     expect(temporalTags(TemporalContext.unknown), ['unknown']);
+  });
+
+  group('graph guide', () {
+    final guideButton = find.byTooltip('Graph guide');
+
+    Future<void> pumpTallStoryMap(WidgetTester tester) async {
+      // Tall enough for the whole guide to be built without scrolling.
+      tester.view.physicalSize = const Size(1000, 4000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await pumpStoryMap(tester);
+    }
+
+    testWidgets('explains the graph in the model\'s words', (tester) async {
+      await pumpTallStoryMap(tester);
+
+      await tester.tap(guideButton);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(GraphGuideView), findsOne);
+      for (final heading in ['Nodes', 'Lines', 'Using the graph']) {
+        expect(find.text(heading), findsOne);
+      }
+      for (final label in ['character', 'past', 'inferred or reported']) {
+        expect(find.text(label), findsOne);
+      }
+      // The sheet covers the filter chips of the same names, which stay built.
+      expect(find.text('organization'), findsNWidgets(2));
+      expect(find.text('location'), findsNWidgets(2));
+      expect(find.text('New in Chapter 2'), findsNWidgets(2));
+      expect(find.byType(GraphLegendSample), findsNWidgets(10));
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is GraphLegendSample && widget.label == 'member of',
+        ),
+        findsOne,
+      );
+    });
+
+    testWidgets('follows the chapter slider', (tester) async {
+      await pumpTallStoryMap(tester);
+      await slideToFirstChapter(tester);
+
+      await tester.tap(guideButton);
+      await tester.pumpAndSettle();
+
+      expect(find.text('New in Chapter 1'), findsNWidgets(2));
+    });
+
+    testWidgets('closing it keeps the filters as they were', (tester) async {
+      await pumpTallStoryMap(tester);
+      final chip = find.widgetWithText(FilterChip, 'organization');
+      await tester.tap(chip);
+      await tester.pumpAndSettle();
+
+      await tester.tap(guideButton);
+      await tester.pumpAndSettle();
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(GraphGuideView), findsNothing);
+      expect(tester.widget<FilterChip>(chip).selected, isTrue);
+    });
+
+    testWidgets('only the graph has the button', (tester) async {
+      await pumpStoryMap(tester);
+      expect(guideButton, findsOne);
+
+      await showTab(tester, 'Characters');
+      expect(guideButton, findsNothing);
+
+      await showTab(tester, 'Chapter');
+      expect(guideButton, findsNothing);
+    });
   });
 
   test('graph layout is the same every time', () {

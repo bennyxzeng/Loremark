@@ -159,10 +159,12 @@ class CharacterGraphView extends StatefulWidget {
     super.key,
     required this.snapshot,
     required this.onEntityTap,
+    required this.onGuideTap,
   });
 
   final StorySnapshot snapshot;
   final ValueChanged<String> onEntityTap;
+  final VoidCallback onGuideTap;
 
   @override
   State<CharacterGraphView> createState() => _CharacterGraphViewState();
@@ -274,19 +276,32 @@ class _CharacterGraphViewState extends State<CharacterGraphView> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Wrap(
-            spacing: 8,
+          padding: const EdgeInsets.only(left: 16, right: 8),
+          child: Row(
             children: [
-              FilterChip(
-                label: Text(EntityKind.organization.name),
-                selected: _showGroups,
-                onSelected: (value) => setState(() => _showGroups = value),
+              Expanded(
+                child: Wrap(
+                  spacing: 8,
+                  children: [
+                    FilterChip(
+                      label: Text(EntityKind.organization.name),
+                      selected: _showGroups,
+                      onSelected: (value) =>
+                          setState(() => _showGroups = value),
+                    ),
+                    FilterChip(
+                      label: Text(EntityKind.location.name),
+                      selected: _showPlaces,
+                      onSelected: (value) =>
+                          setState(() => _showPlaces = value),
+                    ),
+                  ],
+                ),
               ),
-              FilterChip(
-                label: Text(EntityKind.location.name),
-                selected: _showPlaces,
-                onSelected: (value) => setState(() => _showPlaces = value),
+              IconButton(
+                icon: const Icon(Icons.help_outline),
+                tooltip: 'Graph guide',
+                onPressed: widget.onGuideTap,
               ),
             ],
           ),
@@ -324,17 +339,6 @@ class _CharacterGraphViewState extends State<CharacterGraphView> {
                     );
                   },
                 ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-          child: Text(
-            'Bold outline: new in ${snapshot.section.label} · '
-            'Dashed: in the past · Tap a name for its card · Pinch to zoom',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-            textAlign: TextAlign.center,
-          ),
         ),
       ],
     );
@@ -392,6 +396,80 @@ class _CharacterGraphViewState extends State<CharacterGraphView> {
       }
     }
     if (closest != null) widget.onEntityTap(closest.id);
+  }
+}
+
+/// One node or line drawn exactly as the graph draws it, for the graph guide.
+class GraphLegendSample extends StatelessWidget {
+  const GraphLegendSample.node(
+    EntityKind this.kind, {
+    super.key,
+    this.isNew = false,
+  }) : isPast = false,
+       isInferred = false,
+       label = '';
+
+  const GraphLegendSample.edge({
+    super.key,
+    this.isPast = false,
+    this.isInferred = false,
+    this.isNew = false,
+    this.label = '',
+  }) : kind = null;
+
+  static const _size = Size(72, 44);
+
+  /// Never changes, as samples are always drawn at 100%.
+  static final _view = TransformationController();
+
+  /// The kind of node to draw, or null to draw a line.
+  final EntityKind? kind;
+  final bool isPast;
+  final bool isInferred;
+  final bool isNew;
+
+  /// The relationship name to write on a line, if any.
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final center = _size.center(Offset.zero);
+    // A line starts and stops one node radius short of its ends, so the ends
+    // go that far outside the sample.
+    final reach = _GraphMetrics(1).radius;
+    return CustomPaint(
+      size: _size,
+      painter: _LegendPainter(
+        nodes: [
+          if (kind case final kind?)
+            _GraphNode(
+              id: '',
+              label: '',
+              kind: kind,
+              center: center,
+              degree: 0,
+              isNew: isNew,
+            ),
+        ],
+        edges: [
+          if (kind == null)
+            _GraphEdge(
+              from: Offset(4 - reach, center.dy),
+              to: Offset(_size.width + reach, center.dy),
+              normal: Offset.zero,
+              lane: 0,
+              label: label,
+              isPast: isPast,
+              isInferred: isInferred,
+              isNew: isNew,
+            ),
+        ],
+        view: _view,
+        colors: theme.colorScheme,
+        textStyle: theme.textTheme.bodySmall ?? const TextStyle(),
+      ),
+    );
   }
 }
 
@@ -589,14 +667,7 @@ class _GraphPainter extends CustomPainter {
     _GraphMetrics metrics,
     List<Rect> taken,
   ) {
-    final text = _text(
-      edge.label,
-      textStyle.copyWith(
-        fontSize: metrics.labelSize,
-        color: edge.isNew ? colors.primary : colors.onSurfaceVariant,
-      ),
-      maxWidth: 110 * metrics.point,
-    );
+    final text = _edgeLabelText(edge, metrics);
     final length = (edge.to - edge.from).distance;
     if (length < text.width + 2 * metrics.radius + 8 * metrics.point) return;
 
@@ -609,6 +680,15 @@ class _GraphPainter extends CustomPainter {
       taken,
     );
   }
+
+  TextPainter _edgeLabelText(_GraphEdge edge, _GraphMetrics metrics) => _text(
+    edge.label,
+    textStyle.copyWith(
+      fontSize: metrics.labelSize,
+      color: edge.isNew ? colors.primary : colors.onSurfaceVariant,
+    ),
+    maxWidth: 110 * metrics.point,
+  );
 
   void _paintNode(Canvas canvas, _GraphNode node, _GraphMetrics metrics) {
     final r = metrics.radius;
@@ -690,4 +770,41 @@ class _GraphPainter extends CustomPainter {
       oldDelegate.edges != edges ||
       oldDelegate.colors != colors ||
       oldDelegate.textStyle != textStyle;
+}
+
+/// Paints shapes and lines the way the graph does. Nodes go without names, and
+/// lines only have a name if the sample gives them one.
+class _LegendPainter extends _GraphPainter {
+  _LegendPainter({
+    required super.nodes,
+    required super.edges,
+    required super.view,
+    required super.colors,
+    required super.textStyle,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final metrics = _GraphMetrics(1);
+    for (final edge in edges) {
+      _paintEdge(canvas, edge, metrics);
+    }
+    for (final node in nodes) {
+      _paintNode(canvas, node, metrics);
+    }
+    for (final edge in edges) {
+      if (edge.label.isEmpty) continue;
+      // Above the line, not on it as in the graph: a sample is too short for
+      // the name to leave the line and arrowhead showing.
+      final text = _edgeLabelText(edge, metrics);
+      final middle = (edge.from + edge.to) / 2;
+      _paintLabel(
+        canvas,
+        text,
+        middle - Offset(0, text.height + 4),
+        metrics,
+        [],
+      );
+    }
+  }
 }
