@@ -114,6 +114,22 @@ class _ReadScreenState extends State<ReadScreen> {
   /// replaced or the screen was disposed.
   int _generation = 0;
 
+  /// How far from the saved progression still counts as having arrived there:
+  /// about one page in a long chapter. A reopened page can land a fraction of
+  /// a page off (seen on a device as 0.5298 -> 0.5238).
+  static const _arrivalTolerance = 0.02;
+
+  /// The saved position the reader was asked to open at, while it has not
+  /// shown it yet. Null when nothing was saved or the wait is over.
+  ///
+  /// Readium can report a first position that is not the saved one, because
+  /// it opens at the start and only then jumps. Saving that would overwrite
+  /// the good saved position, so saving waits until the reader gets here.
+  ReaderPosition? _restoring;
+
+  /// Whether the reader was already sent back to [_restoring] once.
+  bool _restoreRetried = false;
+
   @override
   void initState() {
     super.initState();
@@ -155,6 +171,8 @@ class _ReadScreenState extends State<ReadScreen> {
     _furthestPageText = null;
     _chapter = null;
     _clearPick();
+    _restoring = null;
+    _restoreRetried = false;
     _error = null;
     _searchFuture = null;
     _cutoff.value = searchCutoff();
@@ -184,6 +202,7 @@ class _ReadScreenState extends State<ReadScreen> {
       _session = session;
       _store = store;
       _position = position;
+      _restoring = position;
       _positionSubscription = session.positions.listen(_onPosition);
       _pageTextSubscription = session.pageTextEnds.listen(_onPageTextEnd);
       _chapterSubscription = session.chapterChanges.listen(
@@ -253,10 +272,52 @@ class _ReadScreenState extends State<ReadScreen> {
     });
     _updateCutoff();
     final store = _store;
-    if (store != null) {
+    if (store != null && _shouldSave(position)) {
       unawaited(_save(store, position));
     }
     widget.onPositionChanged?.call(position);
+  }
+
+  /// Whether [position] may overwrite the saved one.
+  ///
+  /// While restoring, only a position at the saved one may. If the reader
+  /// opened elsewhere it is sent back once. If it is still elsewhere after
+  /// that, it really is somewhere else now, so restoring is given up and
+  /// saving is never blocked for good.
+  bool _shouldSave(ReaderPosition position) {
+    final saved = _restoring;
+    if (saved == null) return true;
+    if (position.sectionIndex == saved.sectionIndex &&
+        (position.progression - saved.progression).abs() <= _arrivalTolerance) {
+      _restoring = null;
+      return true;
+    }
+    if (!_restoreRetried) {
+      _restoreRetried = true;
+      debugPrint(
+        'The reader opened at ${position.sectionIndex}/${position.progression} '
+        'instead of the saved ${saved.sectionIndex}/${saved.progression}; '
+        'jumping back.',
+      );
+      final session = _session;
+      if (session != null) unawaited(_restore(session, saved));
+      return false;
+    }
+    debugPrint(
+      'The reader is still not at the saved position; giving up restoring it.',
+    );
+    _restoring = null;
+    return true;
+  }
+
+  /// Sends the reader back to the saved position. Best effort: if it fails,
+  /// the reader just stays where it is.
+  Future<void> _restore(EpubReaderSession session, ReaderPosition saved) async {
+    try {
+      await session.goToPosition(saved);
+    } on Object catch (error) {
+      debugPrint('Could not return to the saved position: $error');
+    }
   }
 
   void _onPageTextEnd(TextPosition end) {
@@ -354,6 +415,8 @@ class _ReadScreenState extends State<ReadScreen> {
       return;
     }
     setState(() {
+      // A jump the reader chose beats the saved position.
+      _restoring = null;
       _clearPick();
       _picked = chosen;
       _jumping = true;
@@ -406,8 +469,16 @@ class _ReadScreenState extends State<ReadScreen> {
       initialQuery: initialQuery,
     );
     if (hit == null || !mounted || !identical(session, _session)) return;
+    _restoring = null;
     _highlightShown = true;
     await _navigate(() => session.showPassage(hit.target));
+  }
+
+  /// Turns the page. Like any move the reader starts, it ends the wait for
+  /// the saved position.
+  Future<void> _turnPage(Future<void> Function() turn) {
+    _restoring = null;
+    return _navigate(turn);
   }
 
   Future<void> _navigate(Future<void> Function() go) async {
@@ -457,8 +528,8 @@ class _ReadScreenState extends State<ReadScreen> {
         Expanded(child: view),
         _PageControls(
           progress: _position?.totalProgression,
-          onPrevious: () => unawaited(_navigate(session.goBackward)),
-          onNext: () => unawaited(_navigate(session.goForward)),
+          onPrevious: () => unawaited(_turnPage(session.goBackward)),
+          onNext: () => unawaited(_turnPage(session.goForward)),
         ),
       ],
     );

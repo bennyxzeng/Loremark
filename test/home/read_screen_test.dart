@@ -267,6 +267,145 @@ void main() {
     });
   });
 
+  group('restoring the saved position', () {
+    const saved = ReaderPosition(3, 0.5, totalProgression: 0.4);
+    const atStart = ReaderPosition(0, 1.0);
+
+    setUp(() {
+      store = FakeReadingPositionStore(positions: {'abc': saved});
+    });
+
+    testWidgets('holds the first position that is not the saved one and '
+        'jumps back once', (tester) async {
+      final session = await openBook(tester);
+
+      await emit(tester, session, atStart);
+
+      expect(store.saves, isEmpty);
+      expect(session.goToPositionCalls, [saved]);
+
+      await emit(tester, session, saved);
+
+      expect(store.saves, [('abc', saved)]);
+      expect(store.saves.map((save) => save.$2), isNot(contains(atStart)));
+      expect(session.goToPositionCalls, [saved]);
+    });
+
+    testWidgets('still reports and follows a held position', (tester) async {
+      final reported = <ReaderPosition>[];
+      final session = await openBook(tester, onPositionChanged: reported.add);
+
+      await emit(tester, session, atStart);
+
+      expect(reported, [atStart]);
+      expect(progressLabel(tester), '');
+      expect(chapterTitle(tester), 'The Glass Harbor');
+    });
+
+    testWidgets('a position within a page of the saved one has arrived', (
+      tester,
+    ) async {
+      final session = await openBook(tester);
+      const landed = ReaderPosition(3, 0.505);
+
+      await emit(tester, session, landed);
+
+      expect(store.saves, [('abc', landed)]);
+      expect(session.goToPositionCalls, isEmpty);
+    });
+
+    testWidgets('the same progression in another section has not arrived', (
+      tester,
+    ) async {
+      final session = await openBook(tester);
+
+      await emit(tester, session, const ReaderPosition(2, 0.5));
+
+      expect(store.saves, isEmpty);
+      expect(session.goToPositionCalls, [saved]);
+    });
+
+    testWidgets('gives up after one jump back and saves from then on', (
+      tester,
+    ) async {
+      final session = await openBook(tester);
+      const elsewhere = ReaderPosition(1, 0.2);
+      const later = ReaderPosition(1, 0.3);
+
+      await emit(tester, session, atStart);
+      await emit(tester, session, elsewhere);
+
+      expect(store.saves, [('abc', elsewhere)]);
+      expect(session.goToPositionCalls, [saved]);
+
+      await emit(tester, session, later);
+
+      expect(store.saves, [('abc', elsewhere), ('abc', later)]);
+      expect(session.goToPositionCalls, [saved]);
+    });
+
+    testWidgets('keeps reading when jumping back fails', (tester) async {
+      final session = await openBook(tester);
+      session.goToPositionError = const FormatException('no jump');
+
+      await emit(tester, session, atStart);
+
+      expect(tester.takeException(), isNull);
+      expect(store.saves, isEmpty);
+    });
+
+    testWidgets('the page buttons end the wait', (tester) async {
+      final session = await openBook(tester);
+      await emit(tester, session, atStart);
+      expect(store.saves, isEmpty);
+
+      await tester.tap(find.byTooltip('Next page'));
+      await tester.pump();
+      const next = ReaderPosition(0, 0.1);
+      await emit(tester, session, next);
+
+      expect(store.saves, [('abc', next)]);
+    });
+
+    testWidgets('the previous page button ends the wait too', (tester) async {
+      final session = await openBook(tester);
+
+      await tester.tap(find.byTooltip('Previous page'));
+      await tester.pump();
+      await emit(tester, session, atStart);
+
+      expect(store.saves, [('abc', atStart)]);
+      expect(session.goToPositionCalls, isEmpty);
+    });
+
+    testWidgets('a jump from Contents ends the wait', (tester) async {
+      final session = await openBook(tester);
+      await emit(tester, session, atStart);
+      expect(store.saves, isEmpty);
+
+      await tester.tap(find.byTooltip('Contents'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Chapter Two'));
+      await tester.pumpAndSettle();
+      const landed = ReaderPosition(4, 0.0);
+      await emit(tester, session, landed);
+
+      expect(store.saves, [('abc', landed)]);
+    });
+
+    testWidgets('saves the first position at once when nothing is saved', (
+      tester,
+    ) async {
+      store = FakeReadingPositionStore();
+      final session = await openBook(tester);
+
+      await emit(tester, session, atStart);
+
+      expect(store.saves, [('abc', atStart)]);
+      expect(session.goToPositionCalls, isEmpty);
+    });
+  });
+
   group('controls', () {
     testWidgets('the page buttons turn the page', (tester) async {
       final session = await openBook(tester);
