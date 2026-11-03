@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../library/book.dart';
 import '../reader/readium_reader_service.dart';
+import '../settings/ai_lock.dart';
 import '../search/search_index_store.dart';
 import '../story_map/story_map_screen.dart';
 import '../story_model/story_model.dart';
@@ -57,9 +58,9 @@ class _BookScreenState extends State<BookScreen> {
                       epubPath: widget.book.epubPath,
                     ),
                   ),
-                  const AskScreen(),
+                  const AiLock(feature: 'Ask', child: AskScreen()),
                   const NotesScreen(),
-                  _buildStoryMapTab(),
+                  AiLock(feature: 'Story Map', child: _buildStoryMapTab()),
                 ],
               ),
             ),

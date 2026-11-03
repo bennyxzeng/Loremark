@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../theme/decor.dart';
 import 'empty_state.dart';
 
 /// The Notes tab. Notes and theories are not saved yet, so it shows the empty
@@ -10,12 +11,11 @@ class NotesScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const EmptyState(
+      image: LoremarkArt.chibiPondering,
       label: 'IN THE MARGINS',
       title: 'Notes & theories',
       icon: Icons.edit_note,
-      message:
-          'Your notes and theories will appear here.\n'
-          'A theory stays unconfirmed until the story settles it.',
+      message: 'Your notes and theories will appear here.',
     );
   }
 }
