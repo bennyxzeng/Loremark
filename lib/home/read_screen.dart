@@ -130,6 +130,16 @@ class _ReadScreenState extends State<ReadScreen> {
   /// Whether the reader was already sent back to [_restoring] once.
   bool _restoreRetried = false;
 
+  /// How long after the jump back the reader's positions are still the
+  /// opening. Readium reports the opening and the jump back as a burst of
+  /// positions within about a second; positions in that burst must not count
+  /// as the reader moving on.
+  static const _restoreSettleTime = Duration(seconds: 2);
+  Timer? _restoreSettle;
+
+  /// Whether [_restoreSettleTime] has passed since the jump back.
+  bool _restoreSettled = false;
+
   @override
   void initState() {
     super.initState();
@@ -153,6 +163,7 @@ class _ReadScreenState extends State<ReadScreen> {
   void dispose() {
     _generation++;
     _pickTimer?.cancel();
+    _stopRestoring();
     widget.searchController?.detach(_openSearchSheet);
     _releaseSession();
     _cutoff.dispose();
@@ -171,8 +182,7 @@ class _ReadScreenState extends State<ReadScreen> {
     _furthestPageText = null;
     _chapter = null;
     _clearPick();
-    _restoring = null;
-    _restoreRetried = false;
+    _stopRestoring();
     _error = null;
     _searchFuture = null;
     _cutoff.value = searchCutoff();
@@ -278,22 +288,34 @@ class _ReadScreenState extends State<ReadScreen> {
     widget.onPositionChanged?.call(position);
   }
 
+  /// Ends the wait for the saved position, whichever way it ends.
+  void _stopRestoring() {
+    _restoring = null;
+    _restoreRetried = false;
+    _restoreSettled = false;
+    _restoreSettle?.cancel();
+    _restoreSettle = null;
+  }
+
   /// Whether [position] may overwrite the saved one.
   ///
   /// While restoring, only a position at the saved one may. If the reader
-  /// opened elsewhere it is sent back once. If it is still elsewhere after
-  /// that, it really is somewhere else now, so restoring is given up and
-  /// saving is never blocked for good.
+  /// opened elsewhere it is sent back once, and everything it reports for the
+  /// next [_restoreSettleTime] is still the opening, so none of it is saved.
+  /// After that, a position that is still elsewhere means the reader really
+  /// is somewhere else now, so restoring is given up and saving is never
+  /// blocked for good.
   bool _shouldSave(ReaderPosition position) {
     final saved = _restoring;
     if (saved == null) return true;
     if (position.sectionIndex == saved.sectionIndex &&
         (position.progression - saved.progression).abs() <= _arrivalTolerance) {
-      _restoring = null;
+      _stopRestoring();
       return true;
     }
     if (!_restoreRetried) {
       _restoreRetried = true;
+      _restoreSettle = Timer(_restoreSettleTime, () => _restoreSettled = true);
       debugPrint(
         'The reader opened at ${position.sectionIndex}/${position.progression} '
         'instead of the saved ${saved.sectionIndex}/${saved.progression}; '
@@ -303,10 +325,11 @@ class _ReadScreenState extends State<ReadScreen> {
       if (session != null) unawaited(_restore(session, saved));
       return false;
     }
+    if (!_restoreSettled) return false;
     debugPrint(
       'The reader is still not at the saved position; giving up restoring it.',
     );
-    _restoring = null;
+    _stopRestoring();
     return true;
   }
 
@@ -416,7 +439,7 @@ class _ReadScreenState extends State<ReadScreen> {
     }
     setState(() {
       // A jump the reader chose beats the saved position.
-      _restoring = null;
+      _stopRestoring();
       _clearPick();
       _picked = chosen;
       _jumping = true;
@@ -469,7 +492,7 @@ class _ReadScreenState extends State<ReadScreen> {
       initialQuery: initialQuery,
     );
     if (hit == null || !mounted || !identical(session, _session)) return;
-    _restoring = null;
+    _stopRestoring();
     _highlightShown = true;
     await _navigate(() => session.showPassage(hit.target));
   }
@@ -477,7 +500,7 @@ class _ReadScreenState extends State<ReadScreen> {
   /// Turns the page. Like any move the reader starts, it ends the wait for
   /// the saved position.
   Future<void> _turnPage(Future<void> Function() turn) {
-    _restoring = null;
+    _stopRestoring();
     return _navigate(turn);
   }
 

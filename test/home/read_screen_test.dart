@@ -275,6 +275,11 @@ void main() {
       store = FakeReadingPositionStore(positions: {'abc': saved});
     });
 
+    /// Takes the screen down, which cancels the wait's timer. The test
+    /// framework fails a test that leaves a timer pending.
+    Future<void> closeScreen(WidgetTester tester) =>
+        tester.pumpWidget(const SizedBox());
+
     testWidgets('holds the first position that is not the saved one and '
         'jumps back once', (tester) async {
       final session = await openBook(tester);
@@ -300,6 +305,7 @@ void main() {
       expect(reported, [atStart]);
       expect(progressLabel(tester), '');
       expect(chapterTitle(tester), 'The Glass Harbor');
+      await closeScreen(tester);
     });
 
     testWidgets('a position within a page of the saved one has arrived', (
@@ -323,24 +329,66 @@ void main() {
 
       expect(store.saves, isEmpty);
       expect(session.goToPositionCalls, [saved]);
+      await closeScreen(tester);
     });
 
-    testWidgets('gives up after one jump back and saves from then on', (
+    testWidgets(
+      'holds the rest of the opening burst, then gives up and saves',
+      (tester) async {
+        final session = await openBook(tester);
+        const elsewhere = ReaderPosition(1, 0.2);
+        const later = ReaderPosition(1, 0.3);
+
+        await emit(tester, session, atStart);
+        await emit(tester, session, const ReaderPosition(0, 0.0));
+
+        expect(store.saves, isEmpty);
+        expect(session.goToPositionCalls, [saved]);
+
+        // The wait running out saves nothing by itself.
+        await tester.pump(const Duration(seconds: 2));
+        expect(store.saves, isEmpty);
+
+        await emit(tester, session, elsewhere);
+
+        expect(store.saves, [('abc', elsewhere)]);
+        expect(session.goToPositionCalls, [saved]);
+
+        await emit(tester, session, later);
+
+        expect(store.saves, [('abc', elsewhere), ('abc', later)]);
+        expect(session.goToPositionCalls, [saved]);
+      },
+    );
+
+    testWidgets('one locator that makes two positions saves neither', (
+      tester,
+    ) async {
+      // Seen on the emulator: a one-page section is reported as (0, 0.0) and
+      // then (0, 1.0), back to back.
+      store = FakeReadingPositionStore(
+        positions: {'abc': const ReaderPosition(10, 0.5)},
+      );
+      final session = await openBook(tester);
+
+      await emit(tester, session, const ReaderPosition(0, 0.0));
+      await emit(tester, session, const ReaderPosition(0, 1.0));
+
+      expect(store.saves, isEmpty);
+      expect(session.goToPositionCalls, [const ReaderPosition(10, 0.5)]);
+      await closeScreen(tester);
+    });
+
+    testWidgets('arriving after the wait ran out is saved, not given up on', (
       tester,
     ) async {
       final session = await openBook(tester);
-      const elsewhere = ReaderPosition(1, 0.2);
-      const later = ReaderPosition(1, 0.3);
 
       await emit(tester, session, atStart);
-      await emit(tester, session, elsewhere);
+      await tester.pump(const Duration(seconds: 2));
+      await emit(tester, session, saved);
 
-      expect(store.saves, [('abc', elsewhere)]);
-      expect(session.goToPositionCalls, [saved]);
-
-      await emit(tester, session, later);
-
-      expect(store.saves, [('abc', elsewhere), ('abc', later)]);
+      expect(store.saves, [('abc', saved)]);
       expect(session.goToPositionCalls, [saved]);
     });
 
@@ -352,6 +400,7 @@ void main() {
 
       expect(tester.takeException(), isNull);
       expect(store.saves, isEmpty);
+      await closeScreen(tester);
     });
 
     testWidgets('the page buttons end the wait', (tester) async {
