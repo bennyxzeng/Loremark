@@ -13,6 +13,7 @@ class Options {
   const Options({
     this.help = false,
     this.ci = false,
+    this.captureOptional = false,
     this.serial,
     this.adb,
     this.apk,
@@ -34,6 +35,10 @@ class Options {
 
   /// Fail instead of warn when the capture is missing.
   final bool ci;
+
+  /// With [ci]: a capture that cannot be verified is reported as INCONCLUSIVE
+  /// but does not fail the run. The per-UID counters stay the pass/fail gate.
+  final bool captureOptional;
   final String? serial;
   final String? adb;
   final String? apk;
@@ -89,6 +94,11 @@ Options:
   --prepare-device       Turn off animations and Private DNS for the run
                          (restored afterwards). Default on for emulators.
   --ci                   A missing or empty capture is a failure, not a note.
+  --capture-optional     With --ci: a capture that cannot be verified (no DNS
+                         probe in it, or no packets) is reported INCONCLUSIVE
+                         and does not fail the run. The app's own network
+                         counters still decide pass or fail, and a capture
+                         that was verified and shows a violation still fails.
   -h, --help             This text.
 
 Exit code: 0 all checks passed, 1 a check failed, 2 the harness could not run.
@@ -118,6 +128,8 @@ Options parseOptions(List<String> args) {
         options = _copy(options, help: true);
       case '--ci':
         options = _copy(options, ci: true);
+      case '--capture-optional':
+        options = _copy(options, captureOptional: true);
       case '--no-install':
         options = _copy(options, install: false);
       case '--skip-offline':
@@ -173,6 +185,9 @@ Options parseOptions(List<String> args) {
       '--ci requires --pcap, at least 20 trials, offline and privacy checks',
     );
   }
+  if (options.captureOptional && !options.ci && !options.help) {
+    throw UsageError('--capture-optional only applies together with --ci');
+  }
   return _copy(options, allowedHosts: allowed);
 }
 
@@ -180,6 +195,7 @@ Options _copy(
   Options o, {
   bool? help,
   bool? ci,
+  bool? captureOptional,
   String? serial,
   String? adb,
   String? apk,
@@ -198,6 +214,7 @@ Options _copy(
 }) => Options(
   help: help ?? o.help,
   ci: ci ?? o.ci,
+  captureOptional: captureOptional ?? o.captureOptional,
   serial: serial ?? o.serial,
   adb: adb ?? o.adb,
   apk: apk ?? o.apk,

@@ -46,4 +46,66 @@ void main() {
       throwsFormatException,
     );
   });
+
+  group('describeCapture', () {
+    test('says what is in a capture that has no probe', () {
+      final text = describeCapture(
+        PcapCapture([
+          const CapturedPacket(
+            timeUs: 1000000,
+            length: 80,
+            dstPort: 53,
+            dnsQuestion: 'connectivitycheck.gstatic.com',
+          ),
+          const CapturedPacket(timeUs: 3500000, length: 60),
+          const CapturedPacket(
+            timeUs: 4000000,
+            length: 80,
+            dstPort: 53,
+            dnsQuestion: 'connectivitycheck.gstatic.com',
+          ),
+        ], linkType: 1),
+      );
+      expect(text, contains('3 packets over 3.0 s'));
+      expect(text, contains('link type 1'));
+      expect(
+        text,
+        contains('1 distinct DNS question: connectivitycheck.gstatic.com'),
+      );
+    });
+
+    test('says so when a capture is empty or has no DNS at all', () {
+      expect(
+        describeCapture(PcapCapture(const [], linkType: 1)),
+        'the capture holds no packets',
+      );
+      final noDns = describeCapture(
+        PcapCapture(const [CapturedPacket(timeUs: 1, length: 60)], linkType: 1),
+      );
+      expect(noDns, contains('0 distinct DNS questions'));
+      // No names, so no ": name, name" list after the count.
+      expect(noDns, isNot(contains(':')));
+    });
+
+    test('lists at most maxNames names and marks the rest', () {
+      final many = PcapCapture([
+        for (var i = 0; i < 12; i++)
+          CapturedPacket(
+            timeUs: 1000000 + i,
+            length: 80,
+            dstPort: 53,
+            dnsQuestion: 'host$i.example.com',
+          ),
+      ], linkType: 1);
+      final text = describeCapture(many, maxNames: 3);
+      expect(text, contains('12 distinct DNS questions'));
+      expect(
+        text,
+        contains(
+          'host0.example.com, host1.example.com, host2.example.com, ...',
+        ),
+      );
+      expect(text, isNot(contains('host3.example.com')));
+    });
+  });
 }

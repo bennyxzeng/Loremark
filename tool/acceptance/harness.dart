@@ -153,37 +153,52 @@ Future<int> runHarness(
         try {
           final copy = File('${scratch.path}/emulator.pcap');
           pcapFile.copySync(copy.path);
+          // Kept before anything is checked, so a capture that cannot be
+          // verified can still be opened from the report folder (the CI
+          // artifact) to see why.
+          copy.copySync('${reportDir.path}/emulator.pcap');
           final capture = parsePcap(copy.readAsBytesSync());
           if (capture.packets.isEmpty) {
             pcapNote = 'the capture file holds no packets';
           } else {
-            final offsetUs = captureClockOffset(
-              capture,
-              captureStart!,
-              captureEnd!,
-            );
-            notes.add(
-              'Capture clock offset: $offsetUs microseconds; '
-              'fresh DNS probes verified before and after the session.',
-            );
-            audit = auditPcap(
-              capture,
-              session: shiftWindow(
-                TimeWindow(
-                  sessionStart.microsecondsSinceEpoch,
-                  sessionEnd.microsecondsSinceEpoch,
+            int? offsetUs;
+            try {
+              offsetUs = captureClockOffset(
+                capture,
+                captureStart!,
+                captureEnd!,
+              );
+            } on FormatException catch (error) {
+              pcapNote =
+                  'could not verify the capture: ${error.message}. '
+                  'It holds ${describeCapture(capture)}';
+            }
+            if (offsetUs != null) {
+              notes.add(
+                'Capture clock offset: $offsetUs microseconds; '
+                'fresh DNS probes verified before and after the session.',
+              );
+              audit = auditPcap(
+                capture,
+                session: shiftWindow(
+                  TimeWindow(
+                    sessionStart.microsecondsSinceEpoch,
+                    sessionEnd.microsecondsSinceEpoch,
+                  ),
+                  offsetUs,
                 ),
-                offsetUs,
-              ),
-              control: control == null ? null : shiftWindow(control, offsetUs),
-              allowedHosts: options.allowedHosts,
-              markers: book.markers,
-              offline: [
-                for (final w in runner.offlineWindows) shiftWindow(w, offsetUs),
-              ],
-            );
+                control: control == null
+                    ? null
+                    : shiftWindow(control, offsetUs),
+                allowedHosts: options.allowedHosts,
+                markers: book.markers,
+                offline: [
+                  for (final w in runner.offlineWindows)
+                    shiftWindow(w, offsetUs),
+                ],
+              );
+            }
           }
-          copy.copySync('${reportDir.path}/emulator.pcap');
         } on Object catch (error) {
           pcapNote = 'could not read the capture: $error';
         }
@@ -203,7 +218,13 @@ Future<int> runHarness(
         captureRequired: pcapFile != null || options.ci,
       );
       if (options.ci && audit == null) {
-        notes.add('Capture required in CI but missing: $pcapNote');
+        notes.add(
+          options.captureOptional
+              ? 'The packet capture could not be verified, so it neither '
+                    'passes nor fails this run ($pcapNote). The app UID '
+                    'counters above decide the privacy result.'
+              : 'Capture required in CI but missing: $pcapNote',
+        );
       }
     }
 
@@ -223,9 +244,7 @@ Future<int> runHarness(
     File('${reportDir.path}/report.md').writeAsStringSync(report.toMarkdown());
     log('');
     log(report.toMarkdown());
-    final captureMissing =
-        options.ci && privacyResult != null && privacyResult.audit == null;
-    return report.pass && !captureMissing ? 0 : 1;
+    return report.pass && !captureFailsRun(options, privacyResult) ? 0 : 1;
   } on Object catch (error, stack) {
     log('Harness error: $error\n$stack');
     return 2;
@@ -255,6 +274,15 @@ Future<int> runHarness(
     scratch.deleteSync(recursive: true);
   }
 }
+
+/// Whether a capture that could not be verified fails the run. In `--ci` it
+/// does, unless `--capture-optional` says the per-UID counters are enough. A
+/// capture that was verified never gets here: its audit already decides.
+bool captureFailsRun(Options options, PrivacyResult? privacy) =>
+    options.ci &&
+    !options.captureOptional &&
+    privacy != null &&
+    privacy.audit == null;
 
 Future<CaptureProbe> _captureProbe(Adb adb) async {
   final before = DateTime.now().microsecondsSinceEpoch;

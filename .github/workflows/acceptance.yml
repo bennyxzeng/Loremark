@@ -77,6 +77,14 @@ jobs:
       # emulator stops when it ends, hence the report is written inside it.
       # emulator-options replaces the action's defaults, so they are restated,
       # plus -tcpdump for the privacy audit. API 36 matches the dev AVD.
+      #
+      # --capture-optional: on this runner the DNS probe never shows up in the
+      # emulator's capture (INCONCLUSIVE in every run so far), so the capture
+      # cannot be verified here. The run no longer fails for that; the app's
+      # per-UID network counters decide the privacy result, and the raw capture
+      # and a description of it go into the report. Remove the flag once the
+      # capture verifies on CI, and before the app makes any network request
+      # (the counters then stop being enough). See docs/acceptance.md.
       - name: Run acceptance checks
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -87,7 +95,7 @@ jobs:
           disable-animations: true
           emulator-boot-timeout: 300
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -tcpdump /tmp/emulator.pcap
-          script: dart run tool/acceptance/run.dart --ci --report build/acceptance --pcap /tmp/emulator.pcap
+          script: dart run tool/acceptance/run.dart --ci --capture-optional --report build/acceptance --pcap /tmp/emulator.pcap
 
       - name: Publish summary
         if: always()

@@ -1,6 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../tool/acceptance/harness.dart' show captureFailsRun;
 import '../../tool/acceptance/options.dart';
+import '../../tool/acceptance/privacy.dart';
+import '../../tool/acceptance/report.dart';
 
 void main() {
   test('defaults to the spec: 20 trials, report in build/acceptance', () {
@@ -81,6 +84,84 @@ void main() {
     }
   });
 
+  test('--capture-optional only relaxes the capture, and only in CI', () {
+    final relaxed = parseOptions([
+      '--ci',
+      '--capture-optional',
+      '--pcap',
+      '/tmp/e.pcap',
+    ]);
+    expect(relaxed.ci, isTrue);
+    expect(relaxed.captureOptional, isTrue);
+    expect(
+      parseOptions(['--ci', '--pcap', '/tmp/e.pcap']).captureOptional,
+      isFalse,
+    );
+    // It cannot be used to skip the other CI requirements.
+    expect(
+      () => parseOptions(['--ci', '--capture-optional', '--skip-offline']),
+      throwsA(isA<UsageError>()),
+    );
+    expect(
+      () => parseOptions(['--ci', '--capture-optional', '--trials', '5']),
+      throwsA(isA<UsageError>()),
+    );
+    expect(
+      () => parseOptions(['--capture-optional']),
+      throwsA(isA<UsageError>()),
+    );
+  });
+
+  group('an unverified capture and the exit code', () {
+    const counted = PrivacyResult(
+      uid: 10216,
+      before: UidTraffic(),
+      after: UidTraffic(),
+      uidsSeen: 16,
+      captureRequired: true,
+      pcapNote: 'could not verify the capture',
+    );
+    final ci = parseOptions(['--ci', '--pcap', '/tmp/e.pcap']);
+    final ciOptional = parseOptions([
+      '--ci',
+      '--capture-optional',
+      '--pcap',
+      '/tmp/e.pcap',
+    ]);
+
+    test('fails a plain --ci run, as before', () {
+      expect(captureFailsRun(ci, counted), isTrue);
+    });
+
+    test('does not fail a --capture-optional run', () {
+      expect(captureFailsRun(ciOptional, counted), isFalse);
+    });
+
+    test('never fails a run that is not --ci', () {
+      expect(captureFailsRun(parseOptions(const []), counted), isFalse);
+    });
+
+    test('is still not a pass: the report says INCONCLUSIVE', () {
+      expect(counted.captureInconclusive, isTrue);
+      expect(counted.audit, isNull);
+    });
+
+    test('the app counters still fail the run when the app sent bytes', () {
+      const noisy = PrivacyResult(
+        uid: 10216,
+        before: UidTraffic(),
+        after: UidTraffic(txBytes: 500, txPackets: 3),
+        uidsSeen: 16,
+        captureRequired: true,
+        pcapNote: 'could not verify the capture',
+      );
+      expect(noisy.netstatsPass, isFalse);
+      expect(noisy.pass, isFalse);
+      // captureFailsRun only covers the capture; the report's pass covers this.
+      expect(captureFailsRun(ciOptional, noisy), isFalse);
+    });
+  });
+
   test('rejects unknown flags, missing values and bad numbers', () {
     expect(() => parseOptions(['--bogus']), throwsA(isA<UsageError>()));
     expect(() => parseOptions(['--serial']), throwsA(isA<UsageError>()));
@@ -110,6 +191,7 @@ void main() {
       '--skip-privacy',
       '--prepare-device',
       '--ci',
+      '--capture-optional',
       '--help',
     ]) {
       expect(usage, contains(flag));

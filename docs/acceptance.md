@@ -170,6 +170,16 @@ on the default branch, so those two work once the file reaches `main`. The
 label trigger works from a PR branch before that. It is separate from `ci.yml`
 so the normal checks stay fast.
 
+The workflow runs the harness with `--ci --capture-optional`. `--ci` makes the
+run strict: at least 20 trials, the offline and privacy checks, and a capture
+file, none of which may be skipped. `--capture-optional` changes one thing: a
+capture that cannot be verified (the harness's DNS probe is not in it, or it
+holds no packets) is reported as INCONCLUSIVE and no longer fails the job. It
+does not weaken anything else: a failed force-quit trial, a failed offline
+trial, any app traffic in the per-UID counters, or a capture that *was*
+verified and shows a violation still fail the run. Without the flag, `--ci`
+fails on an unverified capture, as it did before.
+
 ## Latest results
 
 Local run, 2026-11-01, `loremark_api36`-style AVD (Android 16 / API 36,
@@ -199,4 +209,32 @@ capture's clock: on Windows the emulator stamps packets with local time as if
 it were UTC, an eight-hour offset here. On this host the probe lookups never
 appeared in the capture (other OS lookups did), so the capture result is
 INCONCLUSIVE: it neither passes nor fails the run, and the per-UID counters
-above stay the gate. It hasn't been tried on the Linux CI emulator yet.
+above stay the gate.
+
+**On CI it was inconclusive too, and used to fail the job.** In the GitHub run
+that made PR #11 red, every real check passed (20 of 20 force-quits, offline,
+open-from-library, 0 bytes of app traffic, and the report's own `pass` was
+true). The job failed only because `--ci` treated the unverified capture as a
+failure. That is why CI now passes `--capture-optional`.
+
+**What that does and does not mean for privacy.** Today the app makes no
+network requests, and the per-UID counters measure exactly that: 0 bytes sent
+and received by the app during the whole session. That is the evidence for
+"no unexpected traffic". The capture was meant to add two things the counters
+cannot: which hosts, and whether a request carries a whole book or more than
+one chapter. Neither matters until the app has an AI client, so an unverified
+capture loses nothing today. **Once the app makes any request, the counters
+stop being enough: remove `--capture-optional` from the workflow and get the
+capture to verify first.**
+
+**Finding the cause.** The cause is not known. The probe is `ping -c 1` on a
+unique name, run over adb, and the harness expects the resulting DNS question in
+the emulator's capture. Not checked yet: whether the shell's `ping` sends that
+lookup in a way `-tcpdump` records, whether Android's resolver answers or
+suppresses it before it reaches the capture, and whether the capture is flushed
+in time. To make this answerable, the harness now always keeps the raw capture
+as `emulator.pcap` in the report folder (it used to skip it exactly when the
+probe was missing), and its note says what the capture held: the packet count,
+the link type and the distinct DNS names it saw. The next CI run's `acceptance`
+artifact and summary therefore show whether the capture is empty or only the
+probe is missing.
