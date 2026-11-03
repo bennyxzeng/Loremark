@@ -6,19 +6,79 @@ import '../theme/decor.dart';
 import '../theme/loremark_theme.dart';
 import 'ai_settings.dart';
 import 'api_key_screen.dart';
+import 'connection_status.dart';
 
-/// Shows [child] blurred behind a lock until the reader adds an API key.
+/// Shows [child] blurred behind a lock until the reader adds an API key and,
+/// if [needsConnection], while the device is offline.
 class AiLock extends StatelessWidget {
-  const AiLock({super.key, required this.feature, required this.child});
+  const AiLock({
+    super.key,
+    required this.feature,
+    this.needsConnection = false,
+    required this.child,
+  });
 
   /// What the reader is missing, e.g. "Ask".
   final String feature;
+
+  /// Whether [feature] calls the provider each time it's used, so it can't
+  /// work offline.
+  final bool needsConnection;
+
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    if (AiSettingsScope.of(context).hasKey) return child;
+    final settings = AiSettingsScope.of(context);
+    // A missing key comes first: reconnecting wouldn't unlock anything.
+    if (!settings.hasKey) {
+      return _Locked(
+        badge: Icons.lock_outline,
+        title: '$feature needs an API key',
+        message:
+            'Ask and Story Map use an AI model through your own '
+            'OpenAI or DeepSeek API key. Reading works without one.',
+        action: FilledButton.icon(
+          onPressed: () => ApiKeyScreen.push(context),
+          icon: const Icon(Icons.key_outlined, size: 18),
+          label: const Text('Add API key'),
+        ),
+        child: child,
+      );
+    }
+    if (needsConnection && !ConnectionScope.of(context).isOnline) {
+      return _Locked(
+        badge: Icons.wifi_off,
+        title: '$feature needs a connection',
+        message:
+            '$feature sends your question to '
+            '${settings.credentials!.provider.label}, so it needs the '
+            'internet. It unlocks on its own once you’re back online.',
+        child: child,
+      );
+    }
+    return child;
+  }
+}
 
+class _Locked extends StatelessWidget {
+  const _Locked({
+    required this.badge,
+    required this.title,
+    required this.message,
+    this.action,
+    required this.child,
+  });
+
+  final IconData badge;
+  final String title;
+  final String message;
+  final Widget? action;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final action = this.action;
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -62,8 +122,8 @@ class AiLock extends StatelessWidget {
                                 width: 3,
                               ),
                             ),
-                            child: const Icon(
-                              Icons.lock_outline,
+                            child: Icon(
+                              badge,
                               size: 18,
                               color: LoremarkColors.onOlive,
                             ),
@@ -73,27 +133,21 @@ class AiLock extends StatelessWidget {
                     ),
                     const SizedBox(height: 14),
                     Text(
-                      '$feature needs an API key',
+                      title,
                       textAlign: TextAlign.center,
                       style: serif(21, height: 1.25),
                     ),
                     const SizedBox(height: 10),
-                    const Text(
-                      'Ask and Story Map use an AI model through your own '
-                      'OpenAI or DeepSeek API key. Reading works without one.',
+                    Text(
+                      message,
                       textAlign: TextAlign.center,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 13,
                         height: 1.6,
                         color: LoremarkColors.muted,
                       ),
                     ),
-                    const SizedBox(height: 18),
-                    FilledButton.icon(
-                      onPressed: () => ApiKeyScreen.push(context),
-                      icon: const Icon(Icons.key_outlined, size: 18),
-                      label: const Text('Add API key'),
-                    ),
+                    if (action != null) ...[const SizedBox(height: 18), action],
                   ],
                 ),
               ),

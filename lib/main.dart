@@ -5,6 +5,7 @@ import 'library/book_repository.dart';
 import 'library/library_screen.dart';
 import 'settings/ai_settings.dart';
 import 'settings/api_key_screen.dart';
+import 'settings/connection_status.dart';
 import 'theme/loremark_theme.dart';
 
 void main() {
@@ -12,7 +13,11 @@ void main() {
   // binding first.
   WidgetsFlutterBinding.ensureInitialized();
   runApp(
-    LoremarkApp(repository: BookRepository.open(), settings: AiSettings.open()),
+    LoremarkApp(
+      repository: BookRepository.open(),
+      settings: AiSettings.open(),
+      connection: ConnectionStatus.watchPlatform(),
+    ),
   );
 }
 
@@ -29,11 +34,13 @@ class LoremarkApp extends StatelessWidget {
     super.key,
     required this.repository,
     required this.settings,
+    required this.connection,
     this.pickEpub = _pickEpub,
   });
 
   final Future<BookRepository> repository;
   final Future<AiSettings> settings;
+  final ConnectionStatus connection;
   final EpubPicker pickEpub;
 
   @override
@@ -70,11 +77,14 @@ class LoremarkApp extends StatelessWidget {
         }
         return AiSettingsScope(
           settings: loaded,
-          child: MaterialApp(
-            title: 'Loremark',
-            debugShowCheckedModeBanner: false,
-            theme: buildLoremarkTheme(),
-            home: _Home(repository: repository, pickEpub: pickEpub),
+          child: ConnectionScope(
+            status: connection,
+            child: MaterialApp(
+              title: 'Loremark',
+              debugShowCheckedModeBanner: false,
+              theme: buildLoremarkTheme(),
+              home: _Home(repository: repository, pickEpub: pickEpub),
+            ),
           ),
         );
       },
