@@ -2,7 +2,8 @@
 
 Edit the settings, then run this file with the lab's virtual environment:
 
-    tools/story_model_lab/.venv/bin/python tools/story_model_lab/run_story_model.py
+tools/story_model_lab/.venv/bin/python tools/story_model_lab/run_story_model.py
+tools/story_model_lab/.venv/bin/python tools/story_model_lab/run_story_model.py > story_model_latest.md
 
 API keys come from tools/story_model_lab/.env (copy .env.example); variables already exported
 in the shell take precedence.
@@ -52,7 +53,7 @@ class Effort(StrEnum):
 # ---- Settings --------------------------------------------------------------------------------
 # Relative paths are from the repository root. None or False leaves an option out.
 
-COMMAND = Command.UPDATE
+COMMAND = Command.SHOW
 
 # chapters, update, commit
 EPUB = "sample_epub/86v1_chapters.epub"
@@ -66,7 +67,7 @@ SECTION: str | None = None  # section ID shown by Command.CHAPTERS, e.g. "sectio
 OUT: str | None = None  # new or empty directory; None = tools/story_model_lab/runs/<time>-<id>
 
 # update
-MODEL = Model.DEEPSEEK_FLASH
+MODEL = Model.GPT_6_1_TERRA
 EFFORT: Effort | None = Effort.HIGH  # None = not sent; the model's default applies
 MAX_OUTPUT_TOKENS: int | None = None  # None = no cap; the provider's limit applies
 TIMEOUT: float | None = None  # seconds per request; None = wait indefinitely

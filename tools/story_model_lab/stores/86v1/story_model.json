@@ -6,12 +6,12 @@
     "epub_sha256": "452d8183147c1d20a0d474b8d0c981556b2f1bdb4bfb7151c25729f413911317"
   },
   "revision": {
-    "number": 2,
-    "id": "b35d4891b1f5",
-    "created_at": "2026-11-01T23:00:43Z",
-    "source_run_id": "86v1-ch2",
-    "parent_snapshot_path": "revisions/000001-2bb47f1c1b58.json",
-    "parent_sha256": "15f8f6d1a8ee9b9c54c5c45395bddd2b6cc322d2ca1aa5d19099c5e141e0f4d6"
+    "number": 3,
+    "id": "5102de8a4915",
+    "created_at": "2026-11-02T00:26:01Z",
+    "source_run_id": "20261102T002241Z-b272de",
+    "parent_snapshot_path": "revisions/000002-b35d4891b1f5.json",
+    "parent_sha256": "39c06690daa6768d70b9511988043bb60ebaf37203d7cb0e49421704c0cef38e"
   },
   "processed_sections": [
     {
@@ -41,6 +41,20 @@
       "input_relative_path": "inputs/section-005-1f5791967938e77a.json",
       "input_file_sha256": "15f9de8354cd6255f807fd4d7950ea41add02e1972eb2ffff554634af4348cbd",
       "introduced_revision": 2
+    },
+    {
+      "section_id": "section-006",
+      "section_order": 6,
+      "chapter_number": 3,
+      "title": "Chapter 3: To Your Gallant Visage at the Underworld’s Edge",
+      "href": "EPUB/section-006.xhtml",
+      "fragment": "section-006",
+      "text_sha256": "c088eb42012207fdb8aeba61fb9554b3a657ff3f7295e330b99233a165df927d",
+      "extraction_version": "1.0",
+      "paragraph_count": 365,
+      "input_relative_path": "inputs/section-006-c088eb42012207fd.json",
+      "input_file_sha256": "5822ac66d5d791429e09ca28e604c5b699f18b6c6a4af09d3ebcd92a5eb718b1",
+      "introduced_revision": 3
     }
   ],
   "coverage": {
@@ -266,6 +280,36 @@
       "id": "l011",
       "kind": "location",
       "introduced_revision": 2
+    },
+    {
+      "id": "c025",
+      "kind": "character",
+      "introduced_revision": 3
+    },
+    {
+      "id": "c026",
+      "kind": "character",
+      "introduced_revision": 3
+    },
+    {
+      "id": "c027",
+      "kind": "character",
+      "introduced_revision": 3
+    },
+    {
+      "id": "l012",
+      "kind": "location",
+      "introduced_revision": 3
+    },
+    {
+      "id": "c028",
+      "kind": "character",
+      "introduced_revision": 3
+    },
+    {
+      "id": "g009",
+      "kind": "organization",
+      "introduced_revision": 3
     }
   ],
   "records": {
@@ -973,6 +1017,198 @@
             "quote": "They frequented the ruins of some nameless city when scavenging"
           }
         ]
+      },
+      {
+        "id": "f000256",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c025",
+          "text": "Shourei Nouzen"
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0288",
+            "quote": "The man who’d saved her introduced himself as Shourei Nouzen."
+          }
+        ]
+      },
+      {
+        "id": "f000257",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c026",
+          "text": "Theo's old captain"
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0333",
+            "quote": "He was my captain in the first squad I was assigned to."
+          }
+        ]
+      },
+      {
+        "id": "f000258",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c027",
+          "text": "Fido"
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0202",
+            "quote": "Having made its delivery, Fido flickered its optical sensor once as if blinking"
+          }
+        ]
+      },
+      {
+        "id": "f000259",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "l012",
+          "text": "point 478"
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0100",
+            "quote": "We’re preparing to intercept them at point 478."
+          }
+        ]
+      },
+      {
+        "id": "f000260",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c028",
+          "text": "the old hag"
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0015",
+            "quote": "What would the old hag say if I let her taste this?"
+          }
+        ]
+      },
+      {
+        "id": "f000261",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "g009",
+          "text": "Transport Division"
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0103",
+            "quote": "The officers over at the Transport Division weren’t willing to go to that sort of trouble"
+          }
+        ]
+      },
+      {
+        "id": "f000262",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c018",
+          "text": "Raiden Shuga"
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0227",
+            "quote": "Vice Captain Wehrwolf’s name is Raiden Shuga."
+          }
+        ]
+      },
+      {
+        "id": "f000263",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c016",
+          "text": "Theoto Rikka"
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0227",
+            "quote": "Laughing Fox is called Theoto Rikka."
+          }
+        ]
+      },
+      {
+        "id": "f000264",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c021",
+          "text": "Anju Emma"
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0227",
+            "quote": "Snow Witch is Anju Emma."
+          }
+        ]
+      },
+      {
+        "id": "f000265",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c020",
+          "text": "Kurena Kukumila"
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0227",
+            "quote": "Gunslinger is Kurena Kukumila."
+          }
+        ]
+      },
+      {
+        "id": "f000266",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c022",
+          "text": "Daiya Irma"
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0227",
+            "quote": "Black Dog is Daiya Irma—"
+          }
+        ]
+      },
+      {
+        "id": "f000267",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c008",
+          "text": "Václav Milizé"
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0261",
+            "quote": "Colonel Václav Milizé"
+          }
+        ]
       }
     ],
     "aliases": [
@@ -1325,6 +1561,198 @@
             "section_id": "section-005",
             "paragraph_id": "p0174",
             "quote": "Black Dog (Daiya)"
+          }
+        ]
+      },
+      {
+        "id": "f000268",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c019",
+          "text": "Kirschblüte"
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0224",
+            "quote": "That’s Kirschblüte’s—the Processor who died today."
+          }
+        ]
+      },
+      {
+        "id": "f000269",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c014",
+          "text": "Sirius"
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0063",
+            "quote": "Oh, that’s something Sirius (Kujo) told me before."
+          }
+        ]
+      },
+      {
+        "id": "f000270",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c025",
+          "text": "Rei"
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0292",
+            "quote": "You can just call me Rei."
+          }
+        ]
+      },
+      {
+        "id": "f000271",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c025",
+          "text": "Dullahan"
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0258",
+            "quote": "He was a Name Bearer called Dullahan"
+          }
+        ]
+      },
+      {
+        "id": "f000272",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c018",
+          "text": "Raiden"
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0227",
+            "quote": "Vice Captain Wehrwolf’s name is Raiden Shuga."
+          }
+        ]
+      },
+      {
+        "id": "f000273",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c016",
+          "text": "Theo"
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0349",
+            "quote": "You can call me Theo or Rikka"
+          }
+        ]
+      },
+      {
+        "id": "f000274",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c016",
+          "text": "Rikka"
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0349",
+            "quote": "You can call me Theo or Rikka"
+          }
+        ]
+      },
+      {
+        "id": "f000275",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c020",
+          "text": "Kurena"
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0227",
+            "quote": "Gunslinger is Kurena Kukumila."
+          }
+        ]
+      },
+      {
+        "id": "f000276",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c021",
+          "text": "Anju"
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0227",
+            "quote": "Snow Witch is Anju Emma."
+          }
+        ]
+      },
+      {
+        "id": "f000277",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c022",
+          "text": "Daiya"
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0227",
+            "quote": "Black Dog is Daiya Irma—"
+          }
+        ]
+      },
+      {
+        "id": "f000278",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c008",
+          "text": "Václav"
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0261",
+            "quote": "Colonel Václav Milizé"
+          }
+        ]
+      },
+      {
+        "id": "f000279",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c001",
+          "text": "Major Milizé"
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0232",
+            "quote": "Then I’ll refer to you as Major Milizé going forward."
           }
         ]
       }
@@ -3363,6 +3791,648 @@
             "quote": "Electronic Disruption types—the Eintagsfliege"
           }
         ]
+      },
+      {
+        "id": "f000280",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c025",
+          "label": "status",
+          "value": "deceased",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0315",
+            "quote": "He passed away."
+          }
+        ]
+      },
+      {
+        "id": "f000281",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c025",
+          "label": "death_time",
+          "value": "five years ago, on the eastern front",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0315",
+            "quote": "Five years ago, on the eastern front."
+          }
+        ]
+      },
+      {
+        "id": "f000282",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c025",
+          "label": "personal_name_unit",
+          "value": "Dullahan",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0258",
+            "quote": "He was a Name Bearer called Dullahan"
+          }
+        ]
+      },
+      {
+        "id": "f000283",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c025",
+          "label": "role",
+          "value": "squadron captain",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0275",
+            "quote": "A certain squadron’s captain"
+          }
+        ]
+      },
+      {
+        "id": "f000284",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c025",
+          "label": "occupation",
+          "value": "Juggernaut pilot/Processor",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0258",
+            "quote": "piloted a unit with a Personal Mark"
+          }
+        ]
+      },
+      {
+        "id": "f000285",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c025",
+          "label": "appearance",
+          "value": "bloodred hair and jet-black eyes hidden behind glasses",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0277",
+            "quote": "He had bloodred hair and jet-black eyes hidden behind his glasses."
+          }
+        ]
+      },
+      {
+        "id": "f000286",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c025",
+          "label": "appearance",
+          "value": "slender, intellectual-looking young man, roughly in his twenties",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0288",
+            "quote": "He was a slender, intellectual-looking young man who seemed to be roughly in his twenties."
+          }
+        ]
+      },
+      {
+        "id": "f000287",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c025",
+          "label": "ethnicity",
+          "value": "Colorata",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0297",
+            "quote": "You’re a Colorata, mister, so why did you protect me?"
+          }
+        ]
+      },
+      {
+        "id": "f000288",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c025",
+          "label": "origin",
+          "value": "parents born in the Empire; he and his brother born in the Republic",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0293",
+            "quote": "My parents were both born in the Empire, but my little brother and I were born in the Republic"
+          }
+        ]
+      },
+      {
+        "id": "f000289",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c025",
+          "label": "goal",
+          "value": "survive and return to his brother",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0307",
+            "quote": "I have to go back to where my brother is waiting."
+          }
+        ]
+      },
+      {
+        "id": "f000290",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c026",
+          "label": "status",
+          "value": "deceased",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0339",
+            "quote": "He stayed behind to defend other Processors and got himself killed."
+          }
+        ]
+      },
+      {
+        "id": "f000291",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c026",
+          "label": "affiliation",
+          "value": "former soldier",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0335",
+            "quote": "he was a former soldier"
+          }
+        ]
+      },
+      {
+        "id": "f000292",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c026",
+          "label": "ethnicity",
+          "value": "Alba",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0335",
+            "quote": "And he was an Alba."
+          }
+        ]
+      },
+      {
+        "id": "f000293",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c026",
+          "label": "role",
+          "value": "captain of Theo's first unit",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0333",
+            "quote": "He was my captain in the first squad I was assigned to."
+          }
+        ]
+      },
+      {
+        "id": "f000294",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c027",
+          "label": "role",
+          "value": "Scavenger",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0202",
+            "quote": "A Scavenger’s usual job consisted of carrying a container full of scrap metal and salvage from the battlefield to the automatic factory’s furnace for recycling."
+          }
+        ]
+      },
+      {
+        "id": "f000295",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c019",
+          "label": "status",
+          "value": "KIA",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0153",
+            "quote": "Kirschblüte, KIA."
+          }
+        ]
+      },
+      {
+        "id": "f000296",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c019",
+          "label": "cause_of_death",
+          "value": "decapitated by a Löwe's front legs; canopy torn off",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0145",
+            "quote": "Fifty tons traveling at high speed decapitated Kirschblüte with a sweeping blow."
+          }
+        ]
+      },
+      {
+        "id": "f000297",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c019",
+          "label": "personal_name_unit",
+          "value": "Kirschblüte",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0224",
+            "quote": "That’s Kirschblüte’s—the Processor who died today."
+          }
+        ]
+      },
+      {
+        "id": "f000298",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c006",
+          "label": "family",
+          "value": "older brother Shourei Nouzen",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0311",
+            "quote": "…That was my brother."
+          },
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0313",
+            "quote": "Shin was that little brother."
+          }
+        ]
+      },
+      {
+        "id": "f000299",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c006",
+          "label": "memorial_count",
+          "value": "561 Processors, including Kaie",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0246",
+            "quote": "Five hundred and sixty-one Processors, including Kaie."
+          }
+        ]
+      },
+      {
+        "id": "f000300",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c006",
+          "label": "memorial_practice",
+          "value": "etches the names of fallen comrades on Juggernaut remains and carries the fragments to his final destination",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0240",
+            "quote": "We would etch the names of those who fell in battle on the remains of their Juggernauts, and whoever stayed alive the longest carried these fragments with them."
+          }
+        ]
+      },
+      {
+        "id": "f000301",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c006",
+          "label": "search",
+          "value": "looking for his brother for five years",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0321",
+            "quote": "I’m looking for my brother. For the past five years, it’s all I’ve been doing."
+          }
+        ]
+      },
+      {
+        "id": "f000302",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c008",
+          "label": "rank",
+          "value": "Colonel",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0261",
+            "quote": "Colonel Václav Milizé"
+          }
+        ]
+      },
+      {
+        "id": "f000303",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c008",
+          "label": "war_record",
+          "value": "one of the Republic Armed Forces' few survivors",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0263",
+            "quote": "Václav was one of the Armed Forces’ few survivors"
+          }
+        ]
+      },
+      {
+        "id": "f000304",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c016",
+          "label": "personal_mark",
+          "value": "laughing fox",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0197",
+            "quote": "He’d inherited the Personal Mark of a laughing fox from him."
+          }
+        ]
+      },
+      {
+        "id": "f000305",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c016",
+          "label": "enlistment_age",
+          "value": "twelve",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0197",
+            "quote": "back when he’d enlisted at the young age of twelve"
+          }
+        ]
+      },
+      {
+        "id": "f000306",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c020",
+          "label": "family",
+          "value": "parents tortured to death by Alba soldiers; older sister sent to the battlefield at fourteen",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0055",
+            "quote": "They tortured her parents to death, laughing all the while."
+          },
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0055",
+            "quote": "They sent Kurena’s sister, who was seven years older, to the battlefield immediately after. She had been fourteen—just a year younger than Kurena was now."
+          }
+        ]
+      },
+      {
+        "id": "f000307",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "c020",
+          "label": "views",
+          "value": "Alba are white pigs and scum; she will never forgive them",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0056",
+            "quote": "The white pigs are all scum… I will never, ever forgive them."
+          }
+        ]
+      },
+      {
+        "id": "f000308",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "g004",
+          "label": "unit_type",
+          "value": "Anti-Tank Artillery type (Stier)",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0099",
+            "quote": "Anti-Tank Artillery types (Stier)"
+          }
+        ]
+      },
+      {
+        "id": "f000309",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "g004",
+          "label": "unit_type",
+          "value": "Anti-Aircraft Mobile Cannon type (Stachelschwein)",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0275",
+            "quote": "Hiding between the flocks of communication-jamming butterflies were the Anti-Aircraft Mobile Cannon–type Legion."
+          }
+        ]
+      },
+      {
+        "id": "f000310",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "g004",
+          "label": "operation",
+          "value": "operates fundamentally during daytime, running off electricity",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0273",
+            "quote": "The Legion fundamentally operated during daytime, since they ran off electricity."
+          }
+        ]
+      },
+      {
+        "id": "f000311",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "g004",
+          "label": "known_units",
+          "value": "Black Sheep and Shepherd",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0048",
+            "quote": "The heretical Black Sheep that hide among the flock of Legion."
+          },
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0048",
+            "quote": "And even the Shepherd, who was far more dangerous, hadn’t appeared yet, either."
+          }
+        ]
+      },
+      {
+        "id": "f000312",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "entity_id": "g005",
+          "label": "casualties",
+          "value": "zero for half a month",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0004",
+            "quote": "For the past half month, the Spearhead squadron had had zero casualties, despite deploying far more often than most squadrons."
+          }
+        ]
       }
     ],
     "relationships": [
@@ -4024,6 +5094,95 @@
             "section_id": "section-005",
             "paragraph_id": "p0146",
             "quote": "Handler One to all units."
+          }
+        ]
+      },
+      {
+        "id": "f000313",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "source_id": "c025",
+          "target_id": "c006",
+          "label": "sibling_of",
+          "description": "Shourei Nouzen is Shin's older brother.",
+          "assertion": "explicit",
+          "attributed_to_id": null,
+          "temporal_context": "current"
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0311",
+            "quote": "…That was my brother."
+          },
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0313",
+            "quote": "Shin was that little brother."
+          }
+        ]
+      },
+      {
+        "id": "f000314",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "source_id": "c001",
+          "target_id": "c025",
+          "label": "saved_by",
+          "description": "Shourei Nouzen rescued Lena from an Ameise after her father's plane crashed.",
+          "assertion": "explicit",
+          "attributed_to_id": null,
+          "temporal_context": "past"
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0288",
+            "quote": "The man who’d saved her introduced himself as Shourei Nouzen."
+          }
+        ]
+      },
+      {
+        "id": "f000315",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "source_id": "c026",
+          "target_id": "c016",
+          "label": "commanded",
+          "description": "Theo's old captain commanded the first unit Theo was assigned to.",
+          "assertion": "explicit",
+          "attributed_to_id": null,
+          "temporal_context": "past"
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0333",
+            "quote": "He was my captain in the first squad I was assigned to."
+          }
+        ]
+      },
+      {
+        "id": "f000316",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "source_id": "g009",
+          "target_id": "g002",
+          "label": "part_of",
+          "description": "The Transport Division is part of the Republic military.",
+          "assertion": "inferred",
+          "attributed_to_id": null,
+          "temporal_context": "current"
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0103",
+            "quote": "The officers over at the Transport Division weren’t willing to go to that sort of trouble"
           }
         ]
       }
@@ -5217,6 +6376,590 @@
             "quote": "Please send me reports on all your patrols so far, okay?"
           }
         ]
+      },
+      {
+        "id": "f000317",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "description": "Half a month after Lena is appointed to the Spearhead squadron, the unit has zero casualties despite frequent deployments, and Lena Resonates with the Processors after dinner.",
+          "participant_ids": [
+            "c001",
+            "g005"
+          ],
+          "location_id": null,
+          "narrative_order": 1,
+          "temporal_context": "current",
+          "story_time": "half a month after Lena's appointment",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0002",
+            "quote": "Half a month had passed since Lena was appointed to the Spearhead squadron."
+          },
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0004",
+            "quote": "For the past half month, the Spearhead squadron had had zero casualties, despite deploying far more often than most squadrons."
+          }
+        ]
+      },
+      {
+        "id": "f000318",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "description": "The squad discusses the black kitten they keep in the barracks; when Black Dog hesitates to explain why it has no set name, Kurena abruptly leaves the room.",
+          "participant_ids": [
+            "c006",
+            "c022",
+            "c020"
+          ],
+          "location_id": "l009",
+          "narrative_order": 2,
+          "temporal_context": "current",
+          "story_time": null,
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0026",
+            "quote": "What’s the cat’s name?"
+          },
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0039",
+            "quote": "Kurena suddenly sat up, as if kicking the chair away, and stormed out of the room."
+          }
+        ]
+      },
+      {
+        "id": "f000319",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "description": "Daiya follows Kurena out; Kurena says Alba soldiers tortured her parents to death and she will never forgive the Alba, while Daiya notes no Handler tolerates Resonating with the Reaper for long.",
+          "participant_ids": [
+            "c020",
+            "c022"
+          ],
+          "location_id": "l009",
+          "narrative_order": 3,
+          "temporal_context": "current",
+          "story_time": null,
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0054",
+            "quote": "They killed my mom and dad. They toyed with them like they were targets at a shooting range."
+          },
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0056",
+            "quote": "The white pigs are all scum… I will never, ever forgive them."
+          },
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0047",
+            "quote": "No Handler was ever able to tolerate being Resonated to the Reaper for long, after all."
+          }
+        ]
+      },
+      {
+        "id": "f000320",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "description": "Kaie tells Lena about a meteor shower and admits she resents discrimination but knows not all Alba are bad; she warns Lena she is not cut out to be their Handler.",
+          "participant_ids": [
+            "c019",
+            "c001"
+          ],
+          "location_id": null,
+          "narrative_order": 4,
+          "temporal_context": "current",
+          "story_time": null,
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0059",
+            "quote": "The whole sky was full of light… It was…such a sight."
+          },
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0095",
+            "quote": "You’re not cut out for this job and definitely not someone who should interact with us."
+          }
+        ]
+      },
+      {
+        "id": "f000321",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "description": "During a battle, Lena detects a mixed Legion force and directs Gunslinger to a ridge position; the Spearhead squadron intercepts at point 478.",
+          "participant_ids": [
+            "c001",
+            "c006",
+            "c020",
+            "g004"
+          ],
+          "location_id": "l012",
+          "narrative_order": 5,
+          "temporal_context": "current",
+          "story_time": null,
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0099",
+            "quote": "The bulk of the enemy offensive is a mixed force of Dragoon types and Tank types, with a company of Anti-Tank Artillery types (Stier) accompanying them—"
+          },
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0100",
+            "quote": "We’re preparing to intercept them at point 478."
+          },
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0110",
+            "quote": "Post her at three o’clock, three hundred meters from her current location."
+          }
+        ]
+      },
+      {
+        "id": "f000322",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "description": "Kirschblüte's Juggernaut becomes stuck in a marsh and a Löwe decapitates it; Anju tries to recover her but Shin stops her, warning of an ambush, and Kirschblüte is declared KIA.",
+          "participant_ids": [
+            "c019",
+            "c006",
+            "c021",
+            "g004"
+          ],
+          "location_id": "l012",
+          "narrative_order": 6,
+          "temporal_context": "current",
+          "story_time": null,
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0140",
+            "quote": "What had looked like a piece of grassland turned out to be a marsh"
+          },
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0145",
+            "quote": "Fifty tons traveling at high speed decapitated Kirschblüte with a sweeping blow."
+          },
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0153",
+            "quote": "Kirschblüte, KIA."
+          }
+        ]
+      },
+      {
+        "id": "f000323",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "description": "After the Legion is eradicated, Lena apologizes for Kirschblüte's death; Laughing Fox angrily calls her a hypocrite and says she never asked their names, and Raiden closes the Resonance.",
+          "participant_ids": [
+            "c001",
+            "c016",
+            "c018",
+            "g005"
+          ],
+          "location_id": null,
+          "narrative_order": 7,
+          "temporal_context": "current",
+          "story_time": null,
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0166",
+            "quote": "you hypocrite."
+          },
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0175",
+            "quote": "—not once have you ever even asked us our names!"
+          },
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0186",
+            "quote": "Handler One. Close the Resonance."
+          }
+        ]
+      },
+      {
+        "id": "f000324",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "description": "Theo regrets his outburst and talks with Anju, remembering his old captain.",
+          "participant_ids": [
+            "c016",
+            "c021"
+          ],
+          "location_id": "l009",
+          "narrative_order": 8,
+          "temporal_context": "current",
+          "story_time": null,
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0193",
+            "quote": "I know, okay?"
+          },
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0196",
+            "quote": "…Your old captain?"
+          }
+        ]
+      },
+      {
+        "id": "f000325",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "description": "Theo recalls his old captain's final radio transmission, in which the captain asked never to be forgiven and then died defending other Processors.",
+          "participant_ids": [
+            "c026",
+            "c016"
+          ],
+          "location_id": null,
+          "narrative_order": 9,
+          "temporal_context": "past",
+          "story_time": null,
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0341",
+            "quote": "I know you guys hate me. It’s natural—of course you would. That’s why I never said anything."
+          },
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0344",
+            "quote": "Please. Never forgive me."
+          },
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0339",
+            "quote": "He stayed behind to defend other Processors and got himself killed."
+          }
+        ]
+      },
+      {
+        "id": "f000326",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "description": "That night, Fido delivers a metal shard to Shin outside the barracks, and Lena contacts him through the Para-RAID.",
+          "participant_ids": [
+            "c006",
+            "c027",
+            "c001"
+          ],
+          "location_id": "l009",
+          "narrative_order": 10,
+          "temporal_context": "current",
+          "story_time": null,
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0201",
+            "quote": "Fido standing outside the barracks, extending its crane arm."
+          },
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0206",
+            "quote": "Do you need something, Handler One?"
+          }
+        ]
+      },
+      {
+        "id": "f000327",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "description": "Lena apologizes, gives her full name, and asks for Shin's name; Shin gives the squad's names, reveals Kaie's real name, and explains he carves and carries the names of the fallen, including 561 Processors.",
+          "participant_ids": [
+            "c001",
+            "c006"
+          ],
+          "location_id": "l009",
+          "narrative_order": 11,
+          "temporal_context": "current",
+          "story_time": null,
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0214",
+            "quote": "My name is…Lena. Vladilena…Milizé."
+          },
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0224",
+            "quote": "…Kaie Taniya. That’s Kirschblüte’s—the Processor who died today. That’s her real name."
+          },
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0246",
+            "quote": "Five hundred and sixty-one Processors, including Kaie."
+          }
+        ]
+      },
+      {
+        "id": "f000328",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "description": "Lena asks whether Shin is related to Shourei Nouzen; Shin confirms Shourei was his brother, says he died five years ago on the eastern front, and that he has been searching for him for five years.",
+          "participant_ids": [
+            "c001",
+            "c006",
+            "c025"
+          ],
+          "location_id": "l009",
+          "narrative_order": 12,
+          "temporal_context": "current",
+          "story_time": null,
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0258",
+            "quote": "Could you possibly be related to Shourei Nouzen?!"
+          },
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0311",
+            "quote": "…That was my brother."
+          },
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0315",
+            "quote": "He passed away. Five years ago, on the eastern front."
+          },
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0321",
+            "quote": "I’m looking for my brother."
+          }
+        ]
+      },
+      {
+        "id": "f000329",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "description": "In a flashback, Colonel Václav Milizé takes ten-year-old Lena on a reconnaissance plane to see the battlefield and the Republic's treatment of Colorata; a Stachelschwein shoots the plane down, killing Václav.",
+          "participant_ids": [
+            "c008",
+            "c001",
+            "g004"
+          ],
+          "location_id": null,
+          "narrative_order": 13,
+          "temporal_context": "past",
+          "story_time": "when Lena was ten",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0261",
+            "quote": "Colonel Václav Milizé had boarded a reconnaissance plane with his then ten-year-old daughter, Lena."
+          },
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0275",
+            "quote": "The reconnaissance plane plummeted"
+          },
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0279",
+            "quote": "Her father, too, was being roasted by the flames."
+          }
+        ]
+      },
+      {
+        "id": "f000330",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "description": "Shourei Nouzen sees the crashing plane, goes to rescue the survivors, destroys an Ameise threatening Lena, and introduces himself.",
+          "participant_ids": [
+            "c025",
+            "c001",
+            "g004"
+          ],
+          "location_id": null,
+          "narrative_order": 14,
+          "temporal_context": "past",
+          "story_time": "when Lena was ten",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0278",
+            "quote": "I’m going to rescue them"
+          },
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0286",
+            "quote": "Both its grappling arms aimed heavy machine guns at the monster and opened fire."
+          },
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0288",
+            "quote": "The man who’d saved her introduced himself as Shourei Nouzen."
+          }
+        ]
+      },
+      {
+        "id": "f000331",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "description": "Shourei tells Lena that despite discrimination he fights as a Republic citizen to prove his people's worth and vows to survive and return to his brother.",
+          "participant_ids": [
+            "c025",
+            "c001"
+          ],
+          "location_id": null,
+          "narrative_order": 15,
+          "temporal_context": "past",
+          "story_time": "when Lena was ten",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0302",
+            "quote": "Even if no one acknowledges that anymore, that’s exactly why we need to prove it."
+          },
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0307",
+            "quote": "I have to go back to where my brother is waiting."
+          }
+        ]
+      },
+      {
+        "id": "f000332",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "description": "The next day, the squadron gives Lena their names; Theo tells his old captain's story; Raiden apologizes but says they will never see her as an equal, and they agree to keep talking.",
+          "participant_ids": [
+            "c001",
+            "c016",
+            "c018",
+            "c006",
+            "g005"
+          ],
+          "location_id": "l009",
+          "narrative_order": 16,
+          "temporal_context": "current",
+          "story_time": "the next day",
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0326",
+            "quote": "She apologized and then asked each and every one of them for their names."
+          },
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0349",
+            "quote": "I’m Theoto Rikka, by the way. You can call me Theo or Rikka or your cute little piggy boy or whatever stupid name you want."
+          },
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0357",
+            "quote": "we don’t see you as an equal or a comrade."
+          },
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0358",
+            "quote": "If you’re willing to kill your time with me, I’ll keep Resonating."
+          }
+        ]
+      },
+      {
+        "id": "f000333",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "description": "Shin reflects on Shourei Nouzen's name and fastens his scarf, thinking 'Brother.'",
+          "participant_ids": [
+            "c006",
+            "c025"
+          ],
+          "location_id": "l009",
+          "narrative_order": 17,
+          "temporal_context": "current",
+          "story_time": null,
+          "assertion": "explicit",
+          "attributed_to_id": null
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0364",
+            "quote": "Shourei Nouzen. A name he hadn’t heard in a long time"
+          },
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0365",
+            "quote": "Brother."
+          }
+        ]
       }
     ],
     "uncertainties": [
@@ -5328,6 +7071,67 @@
             "quote": "I don’t feel anything for Shin"
           }
         ]
+      },
+      {
+        "id": "f000334",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "question": "Who is the old hag that Shin remembers from the production plants?",
+          "related_entity_ids": [
+            "c006",
+            "c028"
+          ]
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0015",
+            "quote": "What would the old hag say if I let her taste this?"
+          }
+        ]
+      },
+      {
+        "id": "f000335",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "question": "What does Shin mean by searching for his brother if he knows Shourei is dead?",
+          "related_entity_ids": [
+            "c006",
+            "c025"
+          ]
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0322",
+            "quote": "If Rei is already dead, and Shin already knows it, how…?"
+          }
+        ]
+      },
+      {
+        "id": "f000336",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "question": "What are the Black Sheep and the Shepherd among the Legion?",
+          "related_entity_ids": [
+            "g004"
+          ]
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0048",
+            "quote": "The heretical Black Sheep that hide among the flock of Legion."
+          },
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0048",
+            "quote": "And even the Shepherd, who was far more dangerous, hadn’t appeared yet, either."
+          }
+        ]
       }
     ],
     "identity_links": [
@@ -5346,6 +7150,29 @@
             "section_id": "section-004",
             "paragraph_id": "p0125",
             "quote": "You really do take after Václav…"
+          }
+        ]
+      },
+      {
+        "id": "f000337",
+        "introduced_revision": 3,
+        "learned_in_section_id": "section-006",
+        "payload": {
+          "left_entity_id": "c007",
+          "right_entity_id": "c008",
+          "assertion": "explicit",
+          "explanation": "The section identifies Colonel Václav Milizé as Lena's father, making the prior inferred identification of Lena's late father with Václav explicit."
+        },
+        "evidence": [
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0261",
+            "quote": "with his then ten-year-old daughter, Lena"
+          },
+          {
+            "section_id": "section-006",
+            "paragraph_id": "p0262",
+            "quote": "Aren’t they fighting there, Father?"
           }
         ]
       }
@@ -5385,6 +7212,169 @@
           "quote": "Shin, who was about to turn sixteen this year"
         }
       ]
+    },
+    {
+      "id": "t000003",
+      "introduced_revision": 3,
+      "learned_in_section_id": "section-006",
+      "target_record_id": "f000008",
+      "action": "supersede",
+      "replacement_record_id": "f000267",
+      "resolution": null,
+      "reason": "The section gives Václav's full name, Václav Milizé, as a better primary name while Václav remains in use.",
+      "evidence": [
+        {
+          "section_id": "section-006",
+          "paragraph_id": "p0261",
+          "quote": "Colonel Václav Milizé"
+        }
+      ]
+    },
+    {
+      "id": "t000004",
+      "introduced_revision": 3,
+      "learned_in_section_id": "section-006",
+      "target_record_id": "f000163",
+      "action": "supersede",
+      "replacement_record_id": "f000262",
+      "resolution": null,
+      "reason": "The section gives Raiden's full name, Raiden Shuga.",
+      "evidence": [
+        {
+          "section_id": "section-006",
+          "paragraph_id": "p0227",
+          "quote": "Vice Captain Wehrwolf’s name is Raiden Shuga."
+        }
+      ]
+    },
+    {
+      "id": "t000005",
+      "introduced_revision": 3,
+      "learned_in_section_id": "section-006",
+      "target_record_id": "f000161",
+      "action": "supersede",
+      "replacement_record_id": "f000263",
+      "resolution": null,
+      "reason": "The section gives Theo's full name, Theoto Rikka.",
+      "evidence": [
+        {
+          "section_id": "section-006",
+          "paragraph_id": "p0227",
+          "quote": "Laughing Fox is called Theoto Rikka."
+        }
+      ]
+    },
+    {
+      "id": "t000006",
+      "introduced_revision": 3,
+      "learned_in_section_id": "section-006",
+      "target_record_id": "f000165",
+      "action": "supersede",
+      "replacement_record_id": "f000265",
+      "resolution": null,
+      "reason": "The section gives Kurena's full name, Kurena Kukumila.",
+      "evidence": [
+        {
+          "section_id": "section-006",
+          "paragraph_id": "p0227",
+          "quote": "Gunslinger is Kurena Kukumila."
+        }
+      ]
+    },
+    {
+      "id": "t000007",
+      "introduced_revision": 3,
+      "learned_in_section_id": "section-006",
+      "target_record_id": "f000166",
+      "action": "supersede",
+      "replacement_record_id": "f000264",
+      "resolution": null,
+      "reason": "The section gives Anju's full name, Anju Emma.",
+      "evidence": [
+        {
+          "section_id": "section-006",
+          "paragraph_id": "p0227",
+          "quote": "Snow Witch is Anju Emma."
+        }
+      ]
+    },
+    {
+      "id": "t000008",
+      "introduced_revision": 3,
+      "learned_in_section_id": "section-006",
+      "target_record_id": "f000167",
+      "action": "supersede",
+      "replacement_record_id": "f000266",
+      "resolution": null,
+      "reason": "The section gives Daiya's full name, Daiya Irma.",
+      "evidence": [
+        {
+          "section_id": "section-006",
+          "paragraph_id": "p0227",
+          "quote": "Black Dog is Daiya Irma—"
+        }
+      ]
+    },
+    {
+      "id": "t000009",
+      "introduced_revision": 3,
+      "learned_in_section_id": "section-006",
+      "target_record_id": "f000156",
+      "action": "supersede",
+      "replacement_record_id": "f000337",
+      "resolution": null,
+      "reason": "The section explicitly identifies Colonel Václav Milizé as Lena's father, replacing the earlier inferred identity link.",
+      "evidence": [
+        {
+          "section_id": "section-006",
+          "paragraph_id": "p0261",
+          "quote": "with his then ten-year-old daughter, Lena"
+        },
+        {
+          "section_id": "section-006",
+          "paragraph_id": "p0262",
+          "quote": "Aren’t they fighting there, Father?"
+        }
+      ]
+    },
+    {
+      "id": "t000010",
+      "introduced_revision": 3,
+      "learned_in_section_id": "section-006",
+      "target_record_id": "f000153",
+      "action": "resolve",
+      "replacement_record_id": null,
+      "resolution": "The figure who saved Lena was Shourei Nouzen, Shin's older brother, whose Juggernaut bore the headless skeletal knight crest.",
+      "reason": "The section shows Shourei rescuing Lena and describes his bloodred hair, jet-black eyes, and headless-knight Personal Mark.",
+      "evidence": [
+        {
+          "section_id": "section-006",
+          "paragraph_id": "p0288",
+          "quote": "The man who’d saved her introduced himself as Shourei Nouzen."
+        },
+        {
+          "section_id": "section-006",
+          "paragraph_id": "p0277",
+          "quote": "He had bloodred hair and jet-black eyes hidden behind his glasses."
+        }
+      ]
+    },
+    {
+      "id": "t000011",
+      "introduced_revision": 3,
+      "learned_in_section_id": "section-006",
+      "target_record_id": "f000254",
+      "action": "resolve",
+      "replacement_record_id": null,
+      "resolution": "Shin is searching for his brother, Shourei Nouzen.",
+      "reason": "The section states that looking for his brother is what Shin has been doing for the past five years.",
+      "evidence": [
+        {
+          "section_id": "section-006",
+          "paragraph_id": "p0321",
+          "quote": "I’m looking for my brother. For the past five years, it’s all I’ve been doing."
+        }
+      ]
     }
   ],
   "current": {
@@ -5395,7 +7385,6 @@
       "f000004",
       "f000005",
       "f000007",
-      "f000008",
       "f000009",
       "f000010",
       "f000011",
@@ -5419,19 +7408,26 @@
       "f000158",
       "f000159",
       "f000160",
-      "f000161",
       "f000162",
-      "f000163",
       "f000164",
-      "f000165",
-      "f000166",
-      "f000167",
       "f000168",
       "f000169",
       "f000170",
       "f000171",
       "f000172",
       "f000173",
+      "f000256",
+      "f000257",
+      "f000258",
+      "f000259",
+      "f000260",
+      "f000261",
+      "f000262",
+      "f000263",
+      "f000264",
+      "f000265",
+      "f000266",
+      "f000267",
       "f000028",
       "f000029",
       "f000030",
@@ -5454,6 +7450,18 @@
       "f000181",
       "f000182",
       "f000183",
+      "f000268",
+      "f000269",
+      "f000270",
+      "f000271",
+      "f000272",
+      "f000273",
+      "f000274",
+      "f000275",
+      "f000276",
+      "f000277",
+      "f000278",
+      "f000279",
       "f000040",
       "f000041",
       "f000042",
@@ -5559,6 +7567,39 @@
       "f000222",
       "f000223",
       "f000224",
+      "f000280",
+      "f000281",
+      "f000282",
+      "f000283",
+      "f000284",
+      "f000285",
+      "f000286",
+      "f000287",
+      "f000288",
+      "f000289",
+      "f000290",
+      "f000291",
+      "f000292",
+      "f000293",
+      "f000294",
+      "f000295",
+      "f000296",
+      "f000297",
+      "f000298",
+      "f000299",
+      "f000300",
+      "f000301",
+      "f000302",
+      "f000303",
+      "f000304",
+      "f000305",
+      "f000306",
+      "f000307",
+      "f000308",
+      "f000309",
+      "f000310",
+      "f000311",
+      "f000312",
       "f000105",
       "f000106",
       "f000107",
@@ -5590,6 +7631,10 @@
       "f000233",
       "f000234",
       "f000235",
+      "f000313",
+      "f000314",
+      "f000315",
+      "f000316",
       "f000125",
       "f000126",
       "f000127",
@@ -5635,16 +7680,48 @@
       "f000250",
       "f000251",
       "f000252",
-      "f000153",
+      "f000317",
+      "f000318",
+      "f000319",
+      "f000320",
+      "f000321",
+      "f000322",
+      "f000323",
+      "f000324",
+      "f000325",
+      "f000326",
+      "f000327",
+      "f000328",
+      "f000329",
+      "f000330",
+      "f000331",
+      "f000332",
+      "f000333",
       "f000154",
       "f000155",
       "f000253",
-      "f000254",
       "f000255",
-      "f000156"
+      "f000334",
+      "f000335",
+      "f000336",
+      "f000337"
     ],
-    "resolved_uncertainty_ids": [],
-    "identity_groups": []
+    "resolved_uncertainty_ids": [
+      "f000153",
+      "f000254"
+    ],
+    "identity_groups": [
+      {
+        "canonical_id": "c007",
+        "member_ids": [
+          "c007",
+          "c008"
+        ],
+        "link_record_ids": [
+          "f000337"
+        ]
+      }
+    ]
   },
   "provenance": {
     "manual_corrections": [
