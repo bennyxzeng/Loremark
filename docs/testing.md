@@ -18,7 +18,7 @@ describes something we have not built or run, this page says so.
   [Evidence](#evidence)). Details are in [acceptance.md](acceptance.md).
 - **Suites we run by hand:** the 500,000-word benchmark ([benchmarks.md](benchmarks.md)) and the
   50-book corpus ([corpus-testing.md](corpus-testing.md)). Neither runs in CI.
-- **Bug tracking:** 36 bugs are in GitHub Issues (32 closed, 4 open), listed in
+- **Bug tracking:** 37 bugs are in GitHub Issues (32 closed, 5 open), listed in
   [bug-log.md](bug-log.md).
 - **Code coverage:** 94.6% of the lines in `lib/` run during the CI tests (3,231 of 3,415
   lines), and every file in `lib/` is loaded by at least one test. See
@@ -37,7 +37,7 @@ built or run yet.
 
 | Test plan item | Status | Where / how | Notes |
 | :--- | :--- | :--- | :--- |
-| EPUB reader: a big jump asks the user to confirm before sections count as read | Partly automated | `ReadingProgressTracker`: `test/reading/reading_progress_tracker_test.dart`, "big jump needs confirmation and keeps the boundary" | The rule is tested in sections (more than 2 sections ahead), not pages. No screen asks the user yet: nothing in `lib/` calls the tracker. |
+| EPUB reader: a big jump asks the user to confirm before sections count as read | Partly automated | `ReadingProgressTracker`: `test/reading/reading_progress_tracker_test.dart`, "big jump needs confirmation and keeps the boundary" | The rule is tested in sections (more than 2 sections ahead), not pages. No screen asks the user yet: nothing in `lib/` calls the tracker (issue #53). |
 | EPUB reader: position, sections, table of contents, page ends | Automated (CI) | `test/reader/`, `test/home/read_screen_test.dart`, `test/library/` | Uses a fake reader. The real renderer needs a device (emulator rows below). |
 | Story model: relationships that change across chapters, aliases connected only after the reveal | Partly automated | `test/story_model/story_snapshot_test.dart`, "merges entities with a revealed identity" and "applies the rename"; `test/acceptance/story_model_spoiler_test.dart`, "identity links merge entities only once revealed" | No test names a relationship that changes (enemies in chapter 12, allies from chapter 16). Changes are tested in general (supersede, retract, resolve). More story-model tests are on Frank's `story-model` branch, not merged. |
 | Story model: nothing past the reader is shown | Automated (CI) | `test/acceptance/story_model_spoiler_test.dart`, "shows nothing past the reader in any section", on the bundled model and seeded synthetic models; "audit catches planted leaks" checks that the audit can fail | Synthetic models have made-up facts. The audit does not cover a real book's model. |
@@ -60,7 +60,7 @@ built or run yet.
 | Privacy: all traffic is HTTPS, no unexpected destination | Automated (emulator) | Per-UID byte counters and a packet capture in the emulator workflow | Today the app makes no requests. The counters show 0 bytes. The capture check is inconclusive (issue #52), so the counters are the evidence. |
 | Privacy: no request has more than one chapter; notes only sent for recaps, chat and theory checks | Planned | None | A capture cannot read encrypted request bodies. Needs the AI client and a debug request log ([acceptance.md](acceptance.md#what-the-privacy-audit-cannot-see-yet)). |
 | Usability testing with outside readers | Planned | None | No session has been run. |
-| Bugs tracked in GitHub Issues with a template and P0/P1/P2 | Manual | `.github/ISSUE_TEMPLATE/bug_report.yml`; [Bug tracking](#bug-tracking) | 36 issues so far. |
+| Bugs tracked in GitHub Issues with a template and P0/P1/P2 | Manual | `.github/ISSUE_TEMPLATE/bug_report.yml`; [Bug tracking](#bug-tracking) | 37 issues so far. |
 
 ## Test automation infrastructure
 
@@ -290,8 +290,9 @@ assignee is set in the issue's sidebar. P0 bugs are fixed before new feature wor
 An issue is closed with a comment that names the fix commit.
 
 Many of our bugs were written up in fix commits, CI runs and session notes first. On 2026-11-02
-we collected them into Issues #17 to #52 and into [bug-log.md](bug-log.md). So far there are 36
-issues: 32 closed and 4 open. Ten are P0 (nine in the app, one in the test harness).
+we collected them into Issues #17 to #52 and into [bug-log.md](bug-log.md). Bugs found since then
+are filed when they are found (the first was #53). So far there are 37 issues: 32 closed and 5
+open. Ten are P0 (nine in the app, one in the test harness).
 
 ## Not automated yet
 
@@ -300,7 +301,7 @@ issues: 32 closed and 4 open. Ten are P0 (nine in the app, one in the test harne
 | Tests for the AI request coordinator, API errors and the `live` prompt tests | There is no LLM client, `ContextManager`, `ResponseValidator` or API code in `lib/`. The `live` tag is registered; no test uses it. | Written with each piece as it lands. `live` tests stay manual (Risk 4). |
 | Notes tests | Written in PR #12, not merged into `ui`. | When PR #12 merges. |
 | Theory tests | Theories are deferred. | After the beta. |
-| Large-jump confirmation on screen | The tracker logic is tested, but nothing in the app calls it yet. | When the confirmation is wired in. |
+| Large-jump confirmation on screen | The tracker logic is tested, but nothing in the app calls it yet (issue #53). | When the confirmation is wired in. |
 | End-to-end flow as a Flutter `integration_test` | There is no `integration_test/` folder. The "process chapters" step needs the AI client. | After the beta. |
 | Privacy: request size and what notes are sent | Encrypted request bodies cannot be read from a capture. | When the AI client exists. See [acceptance.md](acceptance.md#what-the-privacy-audit-cannot-see-yet). |
 | Privacy capture check (issue #52) | The harness's DNS probe never shows up in the emulator's capture, so the capture is inconclusive on CI and the workflow runs with `--capture-optional`. The per-UID counters are the evidence for now. | Before the app makes its first network request. |
@@ -323,6 +324,6 @@ issues: 32 closed and 4 open. Ten are P0 (nine in the app, one in the test harne
   `test/library` 20, `test/coverage` 15, `test/story_model` 14, `test/story_map` 6,
   `test/widget_test.dart` 3, `test/support` 1. The failing test is "native file location
   Android receives an encoded file URI" (issue #49, Windows only).
-- Bug issues #17 to #52, listed in [bug-log.md](bug-log.md).
+- Bug issues #17 to #53, listed in [bug-log.md](bug-log.md).
 - Method and results of the other suites: [acceptance.md](acceptance.md),
   [benchmarks.md](benchmarks.md), [corpus-testing.md](corpus-testing.md).

@@ -32,14 +32,15 @@ Priorities and labels follow the living doc's Test Plan & Bugs section:
 | App bugs fixed and merged into `ui` | 18 (7 of them P0) |
 | App bugs fixed in reading insights (PR #13, merges after the beta) | 9 (2 of them P0) |
 | Test-harness and CI failures | 5 (4 fixed, 1 worked around) |
-| Still open | 4 |
+| Still open | 5 |
 
 Nearly every fix came with a regression test. The exceptions are the build fixes (they change
 build settings, not app code) and one cosmetic text fix; each row says which.
 
 ## All bugs
 
-Each ID links to its GitHub issue (#17 to #52). Commit hashes link to `https://github.com/bennyxzeng/Loremark/commit/<hash>`. CI runs link to
+Each ID links to its GitHub issue (#17 to #53). Commit hashes link to
+`https://github.com/bennyxzeng/Loremark/commit/<hash>`. CI runs link to
 `https://github.com/bennyxzeng/Loremark/actions/runs/<id>`.
 
 | ID | Found | Priority | Label | What went wrong | Status | Fix |
@@ -80,6 +81,7 @@ Each ID links to its GitHub issue (#17 to #52). Commit hashes link to `https://g
 | [OPEN-02](https://github.com/bennyxzeng/Loremark/issues/50) | 2026-11-02 | P1 | AI-quality | Story-model quotes from the LLM differ from the book's text and fail validation | Open | |
 | [OPEN-03](https://github.com/bennyxzeng/Loremark/issues/51) | 2026-11-02 | P1 | bug | Building after pulling `main` looped for 15 minutes on Vitalii's machine | Open, cause unknown | |
 | [OPEN-04](https://github.com/bennyxzeng/Loremark/issues/52) | 2026-11-01 | P2 | test-harness | The emulator capture never contains the harness's DNS check lookups | Open, cause unknown | |
+| [OPEN-05](https://github.com/bennyxzeng/Loremark/issues/53) | 2026-11-02 | P1 | timeline | The large-jump confirmation is never shown, because nothing in the app calls `ReadingProgressTracker` | Open | |
 
 ## Details
 
@@ -265,3 +267,11 @@ analyzes and tests; it does not build the app, so a green CI run doesn't rule th
 **OPEN-04: Why the capture misses the lookups.** CI-05 works around this but does not fix it. It
 happens on GitHub's runners and on Windows. The raw capture is now saved with every report, so
 the next run can show whether the capture is empty or only the lookups are missing.
+
+**OPEN-05: The large-jump confirmation is never shown.** Found on 2026-11-02 while checking the
+test plan against the code. The plan says a big jump asks the reader to confirm before the skipped
+sections count as read. `ReadingProgressTracker` (PR #2) implements that rule and its tests pass,
+but nothing in `lib/` creates or calls it, so no confirmation appears. The reader still refuses to
+count a jumped-over chapter as finished (BUG-05), so search does not open skipped chapters; what
+is missing is the confirmation itself. Fix: call the tracker from the Read tab, show the
+confirmation, and add a widget test.
