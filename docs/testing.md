@@ -34,9 +34,11 @@ run with `flutter test`. It covers both kinds of automated test our plan needs f
 | Widget tests (screens and navigation) | `flutter test` | Yes, every push and PR |
 | Nondeterministic prompt tests | Tagged `live` | No: needs API keys, costs money, output varies (Risks 1 and 4) |
 | Weekly 150-question spoiler run | Two teammates review answers by hand | No |
+| Reliability, offline reading and privacy | Host-side adb harness with 20 force-quits, UID network counters and emulator packet capture ([acceptance.md](acceptance.md)) | Separate emulator workflow: manual, weekly, or PRs labeled `device-tests` |
+| Scalability (500,000-word book) | Tagged `benchmark`, plus standalone AOT runner ([benchmarks.md](benchmarks.md)) | Manual: timing a shared CI runner is noisy |
+| Story-model spoiler invariants | Exhaustive cutoff audits on the bundled model and seeded synthetic models | Yes, normal deterministic tests |
 | Edge cases in EPUB text, page-end positions, paragraph pieces and search (odd markup, entities, ruby, nesting, huge paragraphs, strange queries) | `flutter test` (`test/corpus/edge_cases_test.dart`) | Yes, every push and PR |
 | Real-book corpus: 50 public-domain EPUBs in 18 languages plus 24 variants (no table of contents, broken, one file, damaged) | Tagged `corpus`; `flutter test --tags corpus test/corpus` with `LOREMARK_CORPUS` set, then `tool/corpus/device_run.py` on an emulator | No: needs about 300 MB of books and an emulator. See [corpus-testing.md](corpus-testing.md) |
-| Integration, reliability, scalability, privacy (force-quit, 500,000-word book, Proxyman) | Run on a device or simulator | No: needs a device and network capture |
 | Usability sessions | External readers | No |
 
 ## How to add a new test
@@ -78,9 +80,9 @@ of testing components as they are built. For example, the reading position PR ad
 
    ```bash
    flutter pub get
-   dart format .
+   dart format lib test tool
    flutter analyze
-   flutter test --exclude-tags live
+   flutter test --exclude-tags "live || benchmark"
    ```
 
    Run a single file with `flutter test test/reading/text_position_test.dart`, or one test by
@@ -137,7 +139,7 @@ request. The steps are:
 2. `dart format --output=none --set-exit-if-changed .`: fails if any file is not formatted
    (Effective Dart, as in `coding-guidelines.md`).
 3. `flutter analyze`: fails on any analyzer error, warning or `flutter_lints` issue.
-4. `flutter test --exclude-tags live`: runs every unit and widget test except `live` ones.
+4. `flutter test --exclude-tags "live || benchmark"`: runs deterministic unit and widget tests; excludes provider calls and timing benchmarks.
 
 Any failing step fails the build and marks the commit or pull request with a red check.
 

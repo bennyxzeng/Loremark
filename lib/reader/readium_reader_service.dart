@@ -234,6 +234,11 @@ class _ReadiumSession implements EpubReaderSession {
     final previousHadPageInfo = _lastHadPageInfo;
     _lastHadPageInfo = _hasPageInfo(locator.locations);
     final raw = positionFromLocator(locator, _indexOf);
+    // Debug and profile builds only; tool/acceptance reads it from logcat.
+    if (kDebugMode || kProfileMode) {
+      final line = positionLogLine(locator, raw?.sectionIndex);
+      if (line != null) debugPrintSynchronously(line);
+    }
     // Before the duplicate check: the page script's marker comes with the
     // second, full locator of a page, which has the same position as the bare
     // one.
@@ -537,6 +542,28 @@ int? pageIndexOf(Locations? locations) {
   return (mirrored - expected).abs() < (currentPage - expected).abs()
       ? mirrored
       : currentPage;
+}
+
+/// The `LOREMARK_POSITION {json}` logcat line the acceptance harness reads
+/// for [locator] on [section], or null for the bare locator that lacks page
+/// numbers.
+///
+/// The harness measures "within one page" in Readium pages, which the saved
+/// position file doesn't hold. Printed synchronously, unlike `debugPrint`,
+/// so a line survives a SIGKILL right after the page turn.
+@visibleForTesting
+String? positionLogLine(Locator locator, int? section, {DateTime? now}) {
+  final locations = locator.locations;
+  if (!_hasPageInfo(locations)) return null;
+  final properties = locations!.additionalProperties;
+  final fields = {
+    'section': section,
+    'progression': locations.progression,
+    'currentPage': properties['currentPage'],
+    'totalPages': properties['totalPages'],
+    'tUs': (now ?? DateTime.now()).microsecondsSinceEpoch,
+  };
+  return 'LOREMARK_POSITION ${jsonEncode(fields)}';
 }
 
 /// Whether [locations] carries the plugin's page numbers, which the bare
