@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:loremark/home/book_screen.dart';
 import 'package:loremark/library/book_repository.dart';
 import 'package:loremark/main.dart';
+import 'package:loremark/settings/ai_settings.dart';
 
 import 'test_epub.dart';
 
@@ -45,6 +46,14 @@ void main() {
     await tester.pumpWidget(
       LoremarkApp(
         repository: Future.value(repository),
+        // Past the first-run API key screen.
+        settings: Future(() async {
+          final settings = AiSettings(
+            MemorySecretStore({'ai_onboarding_seen': 'true'}),
+          );
+          await settings.load();
+          return settings;
+        }),
         pickEpub: () async => picked,
       ),
     );
@@ -62,6 +71,8 @@ void main() {
     final path = await writeEpub(tester, 'The Glass Harbor');
     await pumpApp(tester, picked: path);
 
+    await tester.ensureVisible(find.text('Import EPUB'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Import EPUB'));
     await waitFor(tester, () => find.byType(BookScreen).evaluate().isNotEmpty);
 
@@ -78,6 +89,8 @@ void main() {
   testWidgets('cancelling the picker changes nothing', (tester) async {
     await pumpApp(tester);
 
+    await tester.ensureVisible(find.text('Import EPUB'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Import EPUB'));
     await tester.pumpAndSettle();
 
@@ -102,6 +115,8 @@ void main() {
 
     expect(find.byType(BookScreen), findsNothing);
     expect(find.text('LAST OPENED'), findsOne);
-    expect(find.text('The Glass Harbor'), findsOne);
+    // Once in the banner's "Continue reading" card, once in the list.
+    expect(find.text('The Glass Harbor'), findsNWidgets(2));
+    expect(find.text('Continue reading'), findsOne);
   });
 }

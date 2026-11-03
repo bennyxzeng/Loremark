@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../theme/decor.dart';
 import 'empty_state.dart';
 
 /// The Ask tab. Recaps and answers need an open book, so it shows the empty
@@ -10,6 +11,7 @@ class AskScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const EmptyState(
+      image: LoremarkArt.chibiHush,
       label: 'A THREAD BACK INTO THE STORY',
       title: 'Where we left off.',
       icon: Icons.chat_bubble_outline,

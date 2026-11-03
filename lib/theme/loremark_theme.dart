@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// Colors from the reading studio mockup: warm paper, brown ink, and an olive
 /// accent.
@@ -94,6 +95,11 @@ ThemeData buildLoremarkTheme() {
     useMaterial3: true,
     colorScheme: scheme,
     scaffoldBackgroundColor: LoremarkColors.paper,
+    // Every screen is light paper, so status bar icons stay dark even under a
+    // transparent app bar.
+    appBarTheme: const AppBarTheme(
+      systemOverlayStyle: SystemUiOverlayStyle.dark,
+    ),
     dividerColor: LoremarkColors.line,
     textTheme: Typography.blackMountainView.apply(
       bodyColor: LoremarkColors.ink,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loremark/home/book_screen.dart';
 import 'package:loremark/library/book.dart';
+import 'package:loremark/settings/ai_settings.dart';
 import 'package:loremark/theme/loremark_theme.dart';
 
 // Smoke tests for an open book's tabs. They only check navigation, not the
@@ -17,12 +18,24 @@ void main() {
     importedAt: DateTime(2026),
   );
 
-  Future<void> pumpBook(WidgetTester tester) => tester.pumpWidget(
-    MaterialApp(
-      theme: buildLoremarkTheme(),
-      home: BookScreen(book: book),
-    ),
-  );
+  Future<void> pumpBook(WidgetTester tester, {bool hasKey = true}) async {
+    final settings = AiSettings(
+      MemorySecretStore({
+        'ai_onboarding_seen': 'true',
+        if (hasKey) ...{'ai_provider': 'openai', 'ai_api_key': 'sk-test'},
+      }),
+    );
+    await settings.load();
+    await tester.pumpWidget(
+      AiSettingsScope(
+        settings: settings,
+        child: MaterialApp(
+          theme: buildLoremarkTheme(),
+          home: BookScreen(book: book),
+        ),
+      ),
+    );
+  }
 
   int selectedTab(WidgetTester tester) =>
       tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex;
@@ -62,5 +75,28 @@ void main() {
 
       expect(selectedTab(tester), index, reason: label);
     }
+  });
+
+  testWidgets('without an API key, Ask and Story Map are locked', (
+    tester,
+  ) async {
+    await pumpBook(tester, hasKey: false);
+
+    for (final label in ['Ask', 'Story Map']) {
+      await tester.tap(
+        find.descendant(
+          of: find.byType(NavigationBar),
+          matching: find.text(label),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('$label needs an API key'), findsOne, reason: label);
+    }
+  });
+
+  testWidgets('with an API key, nothing is locked', (tester) async {
+    await pumpBook(tester);
+
+    expect(find.textContaining('needs an API key'), findsNothing);
   });
 }
