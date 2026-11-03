@@ -32,7 +32,7 @@ Priorities and labels follow the living doc's Test Plan & Bugs section:
 | App bugs fixed and merged into `ui` | 18 (7 of them P0) |
 | App bugs fixed in reading insights (PR #13, merges after the beta) | 9 (2 of them P0) |
 | Test-harness and CI failures | 5 (4 fixed, 1 worked around) |
-| Still open | 5 |
+| Still open | 7 (2 with fixes in review: BUG-19, CI-06) |
 
 Nearly every fix came with a regression test. The exceptions are the build fixes (they change
 build settings, not app code) and one cosmetic text fix; each row says which.
@@ -63,6 +63,7 @@ Each ID links to its GitHub issue (#17 to #53). Commit hashes link to
 | [BUG-16](https://github.com/bennyxzeng/Loremark/issues/32) | 2026-11-01 | P2 | usability | Very large books without a table of contents froze the screen for over a second | Fixed | `e4462fc` (PR #16) |
 | [BUG-17](https://github.com/bennyxzeng/Loremark/issues/33) | 2026-11-01 | P0 | spoiler | A miscount between the page and our copy of the chapter could unlock too much text | Fixed | `eacf524` (PR #16) |
 | [BUG-18](https://github.com/bennyxzeng/Loremark/issues/34) | 2026-11-02 | P1 | bug | iOS could not open any EPUB and called it "damaged" | Fixed | `9def285` (PR #15) |
+| [BUG-19](https://github.com/bennyxzeng/Loremark/issues/59) | 2026-11-03 | P1 | timeline | Opening a book saved its first position before reaching the saved one, overwriting it | Fix in review | `98779d1` (PR #62) |
 | [INS-01](https://github.com/bennyxzeng/Loremark/issues/35) | 2026-11-01 | P0 | spoiler | Jumping ahead and back made search open every chapter | Fixed, PR #13 | `ce58ab6` |
 | [INS-02](https://github.com/bennyxzeng/Loremark/issues/36) | 2026-11-01 | P0 | spoiler | A damaged reading-log line could make search open the whole book | Fixed, PR #13 | `dff3096` |
 | [INS-03](https://github.com/bennyxzeng/Loremark/issues/37) | 2026-11-01 | P1 | bug | Reading time kept counting while the Read tab was hidden | Fixed, PR #13 | `9075d7e` |
@@ -77,6 +78,7 @@ Each ID links to its GitHub issue (#17 to #53). Commit hashes link to
 | [CI-03](https://github.com/bennyxzeng/Loremark/issues/46) | 2026-11-01 | P1 | test-harness | The harness waited forever for the network after airplane mode | Fixed | `361033a` (PR #11) |
 | [CI-04](https://github.com/bennyxzeng/Loremark/issues/47) | 2026-11-01 | P1 | test-harness | One force-quit trial failed on a rounding difference, not a real wrong page | Fixed | `27f5fae` (PR #11) |
 | [CI-05](https://github.com/bennyxzeng/Loremark/issues/48) | 2026-11-01 | P2 | test-harness | CI failed whenever the capture could not be checked, even with every real check passing | Worked around | `e0d5fc8` (PR #11) |
+| [CI-06](https://github.com/bennyxzeng/Loremark/issues/60) | 2026-11-03 | P1 | test-harness | The harness stopped at the first-run API key screen added in PR #58 | Fix in review | `d4fff53` (PR #61) |
 | [OPEN-01](https://github.com/bennyxzeng/Loremark/issues/49) | 2026-11-02 | P2 | test-harness | One iOS-fix test fails on Windows only | Open | |
 | [OPEN-02](https://github.com/bennyxzeng/Loremark/issues/50) | 2026-11-02 | P1 | AI-quality | Story-model quotes from the LLM differ from the book's text and fail validation | Open | |
 | [OPEN-03](https://github.com/bennyxzeng/Loremark/issues/51) | 2026-11-02 | P1 | bug | Building after pulling `main` looped for 15 minutes on Vitalii's machine | Open, cause unknown | |
@@ -171,6 +173,19 @@ passed a `file://` address, but flutter_readium 0.8.0 on iOS needs a plain file 
 was shown as "this EPUB may be damaged", which hid the cause. iOS now gets a plain path and
 Android keeps the address (`9def285`). Frank reported 197 related tests passing. Has a test.
 
+**BUG-19: Opening a book could overwrite the saved position.** Kevin saw "Continue reading" go
+back to the chapter start on Android, and Greg traced it to the Read tab saving the very first
+position the reader reports. Readium can report a position before it reaches the saved one (or
+never reach it), and that position replaced the good one. On the emulator, a saved position the
+reader could not land on was overwritten with the book's start within a second. The Read tab now
+holds saves until the reader reports the saved position, sends it back once if it opened
+elsewhere, and only gives up when the reader moves to another section or the reader uses the
+page buttons, Contents or search. Two earlier versions of the rule (give up on the second
+position, then after 2 seconds) still overwrote it on the device, because the full report of
+the same page can come seconds later. Fixed in `75046cf`, `e0f9ca2`, `98779d1` (PR #62), with
+widget tests including the exact device sequence. The exact chapter-start case from the video
+was not reproduced on the emulator.
+
 ### Reading insights (PR #13, merging after the beta)
 
 These were found and fixed on `feat/reading-insights` before its pull request. They reach `ui`
@@ -246,6 +261,14 @@ new `--capture-optional` flag reports such a capture as INCONCLUSIVE without fai
 any failed trial, any app traffic, or a verified capture showing a violation still fails it
 (`e0d5fc8`). The flag must come off once the app makes any network request. Every emulator run
 since has passed.
+
+**CI-06: The harness stopped at the first-run API key screen.** PR #58 makes a fresh install open
+on "Connect an AI provider" instead of the library, so every trial would wait for the book and
+time out. The device job did not catch it on #58 because it only runs with the `device-tests`
+label. The screen's "seen" flag is in encrypted storage the harness cannot seed, so the harness
+now skips the screen once per session through the UI (`d4fff53`, PR #61). Checked on the
+emulator with #58 and a cleared app: the skip, trial 0, 4 of 4 force-quits and the offline trial
+passed. Has tests for the dump and screen-size parsing.
 
 ### Still open
 
