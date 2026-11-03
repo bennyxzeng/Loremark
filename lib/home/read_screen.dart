@@ -127,18 +127,10 @@ class _ReadScreenState extends State<ReadScreen> {
   /// the good saved position, so saving waits until the reader gets here.
   ReaderPosition? _restoring;
 
-  /// Whether the reader was already sent back to [_restoring] once.
-  bool _restoreRetried = false;
-
-  /// How long after the jump back the reader's positions are still the
-  /// opening. Readium reports the opening and the jump back as a burst of
-  /// positions within about a second; positions in that burst must not count
-  /// as the reader moving on.
-  static const _restoreSettleTime = Duration(seconds: 2);
-  Timer? _restoreSettle;
-
-  /// Whether [_restoreSettleTime] has passed since the jump back.
-  bool _restoreSettled = false;
+  /// The section the reader opened in when it was not the saved one, once it
+  /// was sent back to [_restoring]. Null until then, which also means the
+  /// jump back has not been made yet.
+  int? _landedSection;
 
   @override
   void initState() {
@@ -163,7 +155,6 @@ class _ReadScreenState extends State<ReadScreen> {
   void dispose() {
     _generation++;
     _pickTimer?.cancel();
-    _stopRestoring();
     widget.searchController?.detach(_openSearchSheet);
     _releaseSession();
     _cutoff.dispose();
@@ -291,20 +282,27 @@ class _ReadScreenState extends State<ReadScreen> {
   /// Ends the wait for the saved position, whichever way it ends.
   void _stopRestoring() {
     _restoring = null;
-    _restoreRetried = false;
-    _restoreSettled = false;
-    _restoreSettle?.cancel();
-    _restoreSettle = null;
+    _landedSection = null;
   }
 
   /// Whether [position] may overwrite the saved one.
   ///
   /// While restoring, only a position at the saved one may. If the reader
-  /// opened elsewhere it is sent back once, and everything it reports for the
-  /// next [_restoreSettleTime] is still the opening, so none of it is saved.
-  /// After that, a position that is still elsewhere means the reader really
-  /// is somewhere else now, so restoring is given up and saving is never
-  /// blocked for good.
+  /// opened elsewhere it is sent back once. After that, positions in the
+  /// section it opened in or in the saved section are still the opening (or
+  /// Readium honouring the jump only partly), so they are held too. A
+  /// position in any other section means the reader really moved on, so
+  /// restoring is given up and saving is never blocked for good.
+  ///
+  /// This goes by section and not by time on purpose: Readium sends a bare
+  /// locator first and the full locator for the same page can come seconds
+  /// later, which on a one-page section reads as progression 1.0. Only the
+  /// section tells "same page, more detail" from "the reader moved on".
+  ///
+  /// Known limit: if the jump back fails and the reader swipes on inside the
+  /// opened or saved section without the page buttons, those pages are not
+  /// saved until they reach another section or use the controls. That is the
+  /// price of never overwriting a good position with an opening one.
   bool _shouldSave(ReaderPosition position) {
     final saved = _restoring;
     if (saved == null) return true;
@@ -313,9 +311,9 @@ class _ReadScreenState extends State<ReadScreen> {
       _stopRestoring();
       return true;
     }
-    if (!_restoreRetried) {
-      _restoreRetried = true;
-      _restoreSettle = Timer(_restoreSettleTime, () => _restoreSettled = true);
+    final landed = _landedSection;
+    if (landed == null) {
+      _landedSection = position.sectionIndex;
       debugPrint(
         'The reader opened at ${position.sectionIndex}/${position.progression} '
         'instead of the saved ${saved.sectionIndex}/${saved.progression}; '
@@ -325,9 +323,13 @@ class _ReadScreenState extends State<ReadScreen> {
       if (session != null) unawaited(_restore(session, saved));
       return false;
     }
-    if (!_restoreSettled) return false;
+    if (position.sectionIndex == saved.sectionIndex ||
+        position.sectionIndex == landed) {
+      return false;
+    }
     debugPrint(
-      'The reader is still not at the saved position; giving up restoring it.',
+      'The reader moved on to section ${position.sectionIndex}; giving up '
+      'restoring the saved position.',
     );
     _stopRestoring();
     return true;
