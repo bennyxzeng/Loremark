@@ -166,6 +166,18 @@ Things we learned on the emulator that shaped this:
 - Saves are queued, and fast page turns coalesce, so only the newest position is written. A save keeps any other keys in the file, so PR #2's tracker can store `furthest` and `boundary` next to `current`.
 - On the emulator, 5 force-quit and relaunch cycles each reopened on the same page. (The living doc's check is 20 of 20 within one page.)
 
+**The first position after opening must not overwrite the saved one (issue #59, BUG-19).** The screen saved every position the reader reported, including the first. Readium can report a first position that is not the saved one: it opens at the start of the book or chapter and only then jumps, or it never applies the position it was given. On a device, a saved position the reader did not land on was overwritten by `{sectionIndex: 0, progression: 1.0}` within a second of opening, so the next open started at the start. The rule now, in `read_screen.dart`:
+
+- When a book opens with a saved position, saving is held until the reader shows that position. Positions are still passed on and still move the chapter bar and the search cutoff; they are only not written to disk.
+- If the first position is somewhere else, the screen asks the reader to jump back to the saved position, once.
+- Once the reader shows the saved position, it is saved (this also records the exact progression the reader landed on) and saving is normal from then on.
+- "Shows the saved position" means the same section and a progression within 0.02 of the saved one. 0.02 is about one page in a long chapter; a reopened page can land a fraction of a page off (seen on a device: 0.5298 saved, 0.5238 shown).
+- After the jump back, positions in the section the reader opened in, or in the saved section, are still held. They are the opening, or Readium honouring the jump only partly. A position in any other section means the reader really moved on: the wait ends and that position is saved, so saving is never blocked for good.
+- Why section and not time: Readium sends a bare locator first, and the full locator for the same page can come seconds later. On the emulator a one-page section came out as (0, 0.0) and then (0, 1.0), more than 2 seconds apart on a big book. A time limit (we tried 2 seconds) gave up on the second one and overwrote the saved position. Both arrive in the same section, so the section tells "same page, more detail" from "the reader moved on".
+- Known limit: if the jump back fails and the reader swipes on inside the opened or saved section without using the page buttons, those pages are not saved until they reach another section or use the controls. That is the price of never overwriting a good position with an opening one.
+- Anything the reader does from the Read tab to move (a Contents jump, a search result, the previous or next page buttons) ends the wait before it moves, so their next position is saved as usual.
+- A book with no saved position has nothing to protect, so its first position is saved at once, as before.
+
 ### Table of contents
 
 The book's own TOC, flattened with nesting depth. Each entry knows its section index, and entries pointing outside the spine are hidden.
@@ -303,6 +315,7 @@ Options for letting the TA/professor install it easily:
 | Book with no TOC | Fixed: cut into sections of about 5,000 words | See Table of contents |
 | Plugin is 0.x and young (first release June 2026) | API breaks between minor versions; open issues (#229 scroll-mode back links, #254 release AAB crash report) | Pinned to 0.8.0; everything is behind `EpubReaderService`; only one file changes on upgrade |
 | Page count differs between the first open and a cold start (seen: 15 vs 13 pages in one chapter) | The restored progression value differs slightly | Still the same page (page index is what's restored); the living doc only needs "within one page" |
+| The first position after opening overwrote the saved one (BUG-19, issue #59): the reader reported the start of the book before, or instead of, the saved place | The next open started at the beginning | Fixed: saving is held until the reader shows the saved position (same section, progression within 0.02), the reader is sent back once if it opens elsewhere, positions in the opened or saved section stay held, and a position in any other section ends the wait; see Save and resume |
 | Deleting a book leaves its position file | A tiny orphan file; re-importing the same book resumes there | Delete `reading_state/<id>.json` in `BookRepository.remove` |
 | Fonts/themes not adjustable | Accessibility | `EPUBPreferences` supports font size, family, line height and night mode; add a settings sheet |
 | iOS untested | Could hit a build or runtime difference | Kevin's Mac test (steps above); the plugin's iOS page info could be 1-based (then the 1.0 would come one page early, harmless) |
