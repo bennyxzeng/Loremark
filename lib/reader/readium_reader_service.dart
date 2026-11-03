@@ -259,15 +259,22 @@ ReaderPosition? positionFromLocator(
 }
 
 /// Whether [locations] is on the last page of its section, from the
-/// zero-based `currentPage` and `totalPages` the plugin adds to full locators.
+/// `currentPage` and `totalPages` the plugin adds to full locators.
+///
+/// flutter_readium 0.8.0 counts pages differently per platform: Android passes
+/// the Kotlin navigator's zero-based page index, while iOS reads a one-based
+/// page number from its JavaScript helper.
 bool _isLastPage(Locations? locations) {
   final properties = locations?.additionalProperties;
   final currentPage = properties?['currentPage'];
   final totalPages = properties?['totalPages'];
-  return currentPage is int &&
-      totalPages is int &&
-      totalPages > 0 &&
-      currentPage >= totalPages - 1;
+  if (currentPage is! int || totalPages is! int || totalPages <= 0) {
+    return false;
+  }
+  final lastPage = defaultTargetPlatform == TargetPlatform.iOS
+      ? totalPages
+      : totalPages - 1;
+  return currentPage >= lastPage;
 }
 
 /// Whether [locations] carries the plugin's page numbers, which the bare

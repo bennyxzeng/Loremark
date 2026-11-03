@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_readium/flutter_readium.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loremark/reader/epub_reader_service.dart';
@@ -103,6 +104,39 @@ void main() {
       );
 
       expect(positionFromLocator(locator, _indexOf)?.progression, 1.0);
+    });
+
+    group('on iOS', () {
+      // iOS reports a one-based currentPage: 1, 2 and 3 for a 3-page section.
+      setUp(() => debugDefaultTargetPlatformOverride = TargetPlatform.iOS);
+      tearDown(() => debugDefaultTargetPlatformOverride = null);
+
+      test('the second to last page is not reported as finished', () {
+        expect(
+          positionFromLocator(paged(2, 0.3329215565163681), _indexOf),
+          const ReaderPosition(1, 0.3329215565163681),
+        );
+      });
+
+      test('reports the last page of a section as exactly 1.0', () {
+        expect(
+          positionFromLocator(paged(3, 0.6664607782581841), _indexOf),
+          const ReaderPosition(1, 1.0),
+        );
+      });
+
+      test('a one-page section is finished on its only page', () {
+        final locator = Locator(
+          href: 'OEBPS/cover.xhtml',
+          type: _xhtml,
+          locations: Locations(
+            progression: 0,
+            additionalProperties: {'currentPage': 1, 'totalPages': 1},
+          ),
+        );
+
+        expect(positionFromLocator(locator, _indexOf)?.progression, 1.0);
+      });
     });
   });
 
