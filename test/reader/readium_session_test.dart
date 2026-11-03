@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' show Color;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_readium/flutter_readium.dart';
@@ -600,6 +601,33 @@ void main() {
 
       expect(fake.goToLocators, hasLength(2));
       expect(fake.goToLocators.last.text?.highlight, 'a grey cat');
+    });
+
+    test('note highlights are drawn apart from the search highlight', () async {
+      final session = await open(bookA);
+      await session.showPassage(
+        const PassageTarget(sectionIndex: 1, progression: 0, highlight: 'hit'),
+      );
+
+      await session.showNoteHighlights(const [
+        NoteHighlight(
+          id: 'note-1',
+          target: PassageTarget(
+            sectionIndex: 2,
+            progression: 0.4,
+            highlight: 'a grey cat',
+          ),
+          color: Color(0x66FFC107),
+        ),
+      ]);
+
+      expect(fake.decorations[passageHighlightGroup], hasLength(1));
+      expect(fake.decorations[noteHighlightGroup]?.single.id, 'note-1');
+
+      await session.showNoteHighlights(const []);
+
+      expect(fake.decorations[noteHighlightGroup], isEmpty);
+      expect(fake.decorations[passageHighlightGroup], hasLength(1));
     });
   });
 

@@ -59,6 +59,17 @@ abstract interface class EpubReaderSession {
   /// Removes the highlight [showPassage] drew, if any.
   Future<void> clearPassageHighlight();
 
+  /// Text the reader selected, each time they pick an action from the menu
+  /// over it.
+  Stream<PassageSelection> get selections;
+
+  /// The id of each [NoteHighlight] the reader taps on the page.
+  Stream<String> get highlightTaps;
+
+  /// Draws [highlights] on the pages, replacing the ones drawn before. They
+  /// are kept apart from the search highlight, so neither clears the other.
+  Future<void> showNoteHighlights(List<NoteHighlight> highlights);
+
   /// Turns to the next page.
   Future<void> goForward();
 
@@ -132,6 +143,65 @@ class PassageTarget {
 
   @override
   String toString() => 'PassageTarget($sectionIndex, $progression, $highlight)';
+}
+
+/// What the reader can do with text they selected, in menu order.
+enum SelectionCommand { highlight, addNote, copy }
+
+/// Text the reader selected, and the menu action they picked for it.
+class PassageSelection {
+  const PassageSelection({
+    required this.command,
+    required this.sectionIndex,
+    required this.progression,
+    required this.text,
+    this.before = '',
+    this.after = '',
+  });
+
+  final SelectionCommand command;
+  final int sectionIndex;
+
+  /// About where the selection is in its section, as the renderer reports
+  /// it.
+  final double progression;
+
+  final String text;
+
+  /// The text just before and after the selection, to find it again where
+  /// the same words repeat.
+  final String before;
+  final String after;
+
+  /// The selection as a passage to jump to and highlight later.
+  PassageTarget get target => PassageTarget(
+    sectionIndex: sectionIndex,
+    progression: progression,
+    highlight: text,
+    before: before,
+    after: after,
+  );
+
+  @override
+  String toString() =>
+      'PassageSelection($command, $sectionIndex, $progression, $text)';
+}
+
+/// A saved note or highlight to draw on the page.
+class NoteHighlight {
+  const NoteHighlight({
+    required this.id,
+    required this.target,
+    required this.color,
+  });
+
+  /// Reported on [EpubReaderSession.highlightTaps] when it is tapped.
+  final String id;
+
+  final PassageTarget target;
+
+  /// The fill, translucent so the text shows through.
+  final Color color;
 }
 
 enum EpubOpenFailure {

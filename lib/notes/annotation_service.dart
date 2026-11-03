@@ -93,6 +93,20 @@ class AnnotationService extends ChangeNotifier {
     DateTime Function()? clock,
   }) : _clock = clock ?? DateTime.now;
 
+  /// This creates the service for a book's notes saved on the device and loads them.
+  /// The Read and Notes tabs share the one it returns.
+  /// Parameters:
+  /// - bookId: The id of the book. (Ex. 'abc123')
+  /// Returns: The loaded service. A corrupted notes file shows up in [loadError] instead.
+  static Future<AnnotationService> openForBook(String bookId) async {
+    final service = AnnotationService(
+      bookId: bookId,
+      repository: await NoteRepository.forBook(bookId),
+    );
+    await service.load();
+    return service;
+  }
+
   /// These are all the notes of the book in reading order.
   List<Note> get notes => List.unmodifiable(_notes);
 
@@ -123,6 +137,7 @@ class AnnotationService extends ChangeNotifier {
   /// - anchor: Where the selected passage is in the book.
   /// - chapterLabel: The chapter name to show in the Notes tab.
   /// - selectedText: The passage the reader selected.
+  /// - textBefore, textAfter: The text just around the passage. (Optional)
   /// - body: What the reader wrote. (Required, cannot be blank)
   /// - color: The highlight color of the passage.
   /// Returns: The saved note, or throws an [EmptyNoteException] if the body is blank.
@@ -130,11 +145,21 @@ class AnnotationService extends ChangeNotifier {
     required NoteAnchor anchor,
     required String chapterLabel,
     required String selectedText,
+    String textBefore = '',
+    String textAfter = '',
     required String body,
     HighlightColor color = HighlightColor.yellow,
   }) async {
     if (body.trim().isEmpty) throw const EmptyNoteException();
-    return _add(anchor, chapterLabel, selectedText, body.trim(), color);
+    return _add(
+      anchor: anchor,
+      chapterLabel: chapterLabel,
+      selectedText: selectedText,
+      textBefore: textBefore,
+      textAfter: textAfter,
+      body: body.trim(),
+      color: color,
+    );
   }
 
   /// This saves a colored highlight on a passage without any written text.
@@ -143,8 +168,18 @@ class AnnotationService extends ChangeNotifier {
     required NoteAnchor anchor,
     required String chapterLabel,
     required String selectedText,
+    String textBefore = '',
+    String textAfter = '',
     HighlightColor color = HighlightColor.yellow,
-  }) => _add(anchor, chapterLabel, selectedText, '', color);
+  }) => _add(
+    anchor: anchor,
+    chapterLabel: chapterLabel,
+    selectedText: selectedText,
+    textBefore: textBefore,
+    textAfter: textAfter,
+    body: '',
+    color: color,
+  );
 
   /// This changes the text and/or color of a saved note.
   /// Parameters:
@@ -191,13 +226,15 @@ class AnnotationService extends ChangeNotifier {
     ];
   }
 
-  Future<Note> _add(
-    NoteAnchor anchor,
-    String chapterLabel,
-    String selectedText,
-    String body,
-    HighlightColor color,
-  ) async {
+  Future<Note> _add({
+    required NoteAnchor anchor,
+    required String chapterLabel,
+    required String selectedText,
+    required String textBefore,
+    required String textAfter,
+    required String body,
+    required HighlightColor color,
+  }) async {
     final now = _clock();
     final note = Note(
       id: '${now.microsecondsSinceEpoch}-${_idCounter++}',
@@ -205,6 +242,8 @@ class AnnotationService extends ChangeNotifier {
       anchor: anchor,
       chapterLabel: chapterLabel,
       selectedText: selectedText,
+      textBefore: textBefore,
+      textAfter: textAfter,
       body: body,
       color: color,
       createdAt: now,

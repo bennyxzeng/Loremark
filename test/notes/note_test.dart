@@ -54,6 +54,40 @@ void main() {
       expect(sampleNote().isHighlightOnly, isFalse);
     });
 
+    test('keeps the text around the passage through a JSON round trip', () {
+      final note = sampleNote();
+      final withContext = Note(
+        id: note.id,
+        bookId: note.bookId,
+        anchor: note.anchor,
+        chapterLabel: note.chapterLabel,
+        selectedText: note.selectedText,
+        textBefore: 'She said, ',
+        textAfter: ' Then silence.',
+        body: note.body,
+        color: note.color,
+        createdAt: created,
+        updatedAt: created,
+      );
+
+      final restored = Note.fromJson(withContext.toJson());
+
+      expect(restored.textBefore, 'She said, ');
+      expect(restored.textAfter, ' Then silence.');
+      expect(restored, withContext);
+    });
+
+    test('loads notes saved before the text around them was kept', () {
+      final json = sampleNote().toJson()
+        ..remove('textBefore')
+        ..remove('textAfter');
+
+      final restored = Note.fromJson(json);
+
+      expect(restored.textBefore, '');
+      expect(restored.textAfter, '');
+    });
+
     test('rejects JSON with a missing field', () {
       final json = sampleNote().toJson()..remove('selectedText');
 

@@ -106,6 +106,21 @@ class FakeEpubReaderSession implements EpubReaderSession {
   /// Pretends the reader moved to [position].
   void emit(ReaderPosition position) => _positions.add(position);
 
+  final StreamController<PassageSelection> _selections =
+      StreamController<PassageSelection>.broadcast();
+
+  /// Pretends the reader picked an action from the selection menu.
+  void select(PassageSelection selection) => _selections.add(selection);
+
+  final StreamController<String> _highlightTaps =
+      StreamController<String>.broadcast();
+
+  /// Pretends the reader tapped the note highlight with [id].
+  void tapHighlight(String id) => _highlightTaps.add(id);
+
+  /// Every list [showNoteHighlights] was given, in order.
+  final List<List<NoteHighlight>> shownNoteHighlights = [];
+
   @override
   List<TocEntry> get tableOfContents => toc;
 
@@ -152,6 +167,16 @@ class FakeEpubReaderSession implements EpubReaderSession {
   Future<void> clearPassageHighlight() async => clearHighlightCalls++;
 
   @override
+  Stream<PassageSelection> get selections => _selections.stream;
+
+  @override
+  Stream<String> get highlightTaps => _highlightTaps.stream;
+
+  @override
+  Future<void> showNoteHighlights(List<NoteHighlight> highlights) async =>
+      shownNoteHighlights.add(highlights);
+
+  @override
   Future<void> goForward() async => forwardCalls++;
 
   @override
@@ -163,6 +188,8 @@ class FakeEpubReaderSession implements EpubReaderSession {
     await _positions.close();
     await _pageTextEnds.close();
     await _chapters.close();
+    await _selections.close();
+    await _highlightTaps.close();
   }
 }
 

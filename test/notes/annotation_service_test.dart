@@ -69,6 +69,34 @@ void main() {
       expect(service.notes, [highlight]);
     });
 
+    test(
+      'keeps the text around the passage for notes and highlights',
+      () async {
+        final note = await service.addNote(
+          anchor: const NoteAnchor(2, 0.5),
+          chapterLabel: 'Chapter 3',
+          selectedText: 'went out',
+          textBefore: 'The harbor lights ',
+          textAfter: '.',
+          body: 'A blackout?',
+        );
+        final highlight = await service.addHighlight(
+          anchor: const NoteAnchor(2, 0.6),
+          chapterLabel: 'Chapter 3',
+          selectedText: 'went out',
+          textBefore: 'The lamp ',
+          textAfter: ' again.',
+        );
+
+        final reopened = newService();
+        await reopened.load();
+
+        expect(reopened.notes, [note, highlight]);
+        expect(note.textBefore, 'The harbor lights ');
+        expect(highlight.textAfter, ' again.');
+      },
+    );
+
     test('trims the body and gives every note its own id', () async {
       final first = await addNote('  First  ');
       final second = await addNote('Second');

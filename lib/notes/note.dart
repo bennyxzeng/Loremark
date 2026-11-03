@@ -90,6 +90,12 @@ class Note {
   /// This is the passage of the book the reader selected.
   final String selectedText;
 
+  /// This is the text just before and after the passage in the book.
+  /// The reader uses it to find the right spot when the same passage shows up
+  /// more than once. (Empty for notes saved before it was kept)
+  final String textBefore;
+  final String textAfter;
+
   /// This is what the reader wrote. (Empty when it is only a highlight)
   final String body;
 
@@ -109,6 +115,8 @@ class Note {
     required this.anchor,
     required this.chapterLabel,
     required this.selectedText,
+    this.textBefore = '',
+    this.textAfter = '',
     required this.body,
     required this.color,
     this.kind = NoteKind.personalNote,
@@ -131,6 +139,9 @@ class Note {
         anchor: NoteAnchor.fromJson(json['anchor'] as Map<String, dynamic>),
         chapterLabel: json['chapterLabel'] as String,
         selectedText: json['selectedText'] as String,
+        // Older notes files do not have these, so a missing one is empty.
+        textBefore: json['textBefore'] as String? ?? '',
+        textAfter: json['textAfter'] as String? ?? '',
         body: json['body'] as String,
         color: HighlightColor.values.byName(json['color'] as String),
         kind: NoteKind.values.byName(json['kind'] as String),
@@ -153,6 +164,8 @@ class Note {
     'anchor': anchor.toJson(),
     'chapterLabel': chapterLabel,
     'selectedText': selectedText,
+    'textBefore': textBefore,
+    'textAfter': textAfter,
     'body': body,
     'color': color.name,
     'kind': kind.name,
@@ -173,6 +186,8 @@ class Note {
     anchor: anchor,
     chapterLabel: chapterLabel,
     selectedText: selectedText,
+    textBefore: textBefore,
+    textAfter: textAfter,
     body: body ?? this.body,
     color: color ?? this.color,
     kind: kind ?? this.kind,
@@ -188,6 +203,8 @@ class Note {
       other.anchor == anchor &&
       other.chapterLabel == chapterLabel &&
       other.selectedText == selectedText &&
+      other.textBefore == textBefore &&
+      other.textAfter == textAfter &&
       other.body == body &&
       other.color == color &&
       other.kind == kind &&
@@ -201,6 +218,8 @@ class Note {
     anchor,
     chapterLabel,
     selectedText,
+    textBefore,
+    textAfter,
     body,
     color,
     kind,

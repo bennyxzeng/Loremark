@@ -208,6 +208,8 @@ class _ReadiumSession implements EpubReaderSession {
   final _positions = StreamController<ReaderPosition>();
   final _pageTextEnds = StreamController<TextPosition>();
   final _chapterChanges = StreamController<TocEntry>();
+  final _selections = StreamController<PassageSelection>();
+  final _highlightTaps = StreamController<String>();
 
   @override
   final List<TocEntry> tableOfContents;
@@ -223,6 +225,22 @@ class _ReadiumSession implements EpubReaderSession {
 
   @override
   Stream<TocEntry> get chapterChanges => _chapterChanges.stream;
+
+  @override
+  Stream<PassageSelection> get selections => _selections.stream;
+
+  @override
+  Stream<String> get highlightTaps => _highlightTaps.stream;
+
+  void _onSelectionAction(SelectionActionEvent event) {
+    final selection = passageSelectionFrom(event, _indexOf);
+    if (selection != null && !_closed) _selections.add(selection);
+  }
+
+  void _onDecorationInteraction(DecorationInteractionEvent event) {
+    if (event.group != noteHighlightGroup || _closed) return;
+    _highlightTaps.add(event.decorationId);
+  }
 
   int? _indexOf(String href) => spineIndexOf(_spine, href);
 
@@ -341,11 +359,15 @@ class _ReadiumSession implements EpubReaderSession {
 
   @override
   Widget buildView({ReaderPosition? initialPosition}) {
-    // Plugin issue #298: the view ignores callbacks changed on rebuild, so none
-    // are passed. Positions come from the streams instead.
+    // Plugin issue #298: the view ignores callbacks changed on rebuild.
+    // Positions come from the streams instead, and the two callbacks below are
+    // this session's own methods, which never change.
     return ReadiumReaderWidget(
       publication: _publication,
       fontFamilyDeclarations: _servedScript,
+      selectionActions: selectionMenu,
+      onSelectionAction: _onSelectionAction,
+      onDecorationInteraction: _onDecorationInteraction,
       initialLocator: initialPosition == null
           ? null
           : _locatorFor(initialPosition),
@@ -429,6 +451,13 @@ class _ReadiumSession implements EpubReaderSession {
       _readium.applyDecorations(passageHighlightGroup, const []);
 
   @override
+  Future<void> showNoteHighlights(List<NoteHighlight> highlights) =>
+      _readium.applyDecorations(
+        noteHighlightGroup,
+        noteDecorations(highlights, _publication.readingOrder, _indexOf),
+      );
+
+  @override
   Future<void> goForward() => _readium.goForward();
 
   @override
@@ -454,6 +483,8 @@ class _ReadiumSession implements EpubReaderSession {
     unawaited(_positions.close());
     unawaited(_pageTextEnds.close());
     unawaited(_chapterChanges.close());
+    unawaited(_selections.close());
+    unawaited(_highlightTaps.close());
     if (!identical(ReadiumReaderService._current, this)) return;
     ReadiumReaderService._current = null;
     await _readium.closePublication();
@@ -642,6 +673,71 @@ Locator? locatorForPassage(
     ),
   );
 }
+
+/// The menu over selected text, one action per [SelectionCommand], each with
+/// the command's name as its id.
+///
+/// On Android these replace the system menu, Copy included, which is why Copy
+/// is one of ours.
+const selectionMenu = [
+  SelectionAction(id: 'highlight', title: 'Highlight'),
+  SelectionAction(id: 'addNote', title: 'Add note'),
+  SelectionAction(id: 'copy', title: 'Copy'),
+];
+
+/// The selection [event] reports, or null if its action isn't one of
+/// [selectionMenu], it is outside the spine, or no text came with it.
+///
+/// Readium puts the selected text and the text around it in the locator's
+/// quote; the event's own text is only the fallback.
+PassageSelection? passageSelectionFrom(
+  SelectionActionEvent event,
+  int? Function(String href) indexOf,
+) {
+  final command = SelectionCommand.values
+      .where((command) => command.name == event.actionId)
+      .firstOrNull;
+  final sectionIndex = indexOf(event.locator.href);
+  final quote = event.locator.text;
+  final text = quote?.highlight ?? event.selectedText ?? '';
+  if (command == null || sectionIndex == null || text.trim().isEmpty) {
+    return null;
+  }
+  return PassageSelection(
+    command: command,
+    sectionIndex: sectionIndex,
+    progression: event.locator.locations?.progression ?? 0,
+    text: text,
+    before: quote?.before ?? '',
+    after: quote?.after ?? '',
+  );
+}
+
+/// The decoration group of saved notes and highlights, apart from
+/// [passageHighlightGroup] so search and notes never clear each other.
+const noteHighlightGroup = 'loremark-notes';
+
+/// The decorations that draw [highlights], each at its text quote. A highlight
+/// whose section isn't in [readingOrder] is left out.
+///
+/// Every style has a tint, which Android needs (see [passageHighlightStyle]).
+List<ReaderDecoration> noteDecorations(
+  List<NoteHighlight> highlights,
+  List<Link> readingOrder,
+  int? Function(String href) indexOf,
+) => [
+  for (final highlight in highlights)
+    if (locatorForPassage(highlight.target, readingOrder, indexOf)
+        case final locator?)
+      ReaderDecoration(
+        id: highlight.id,
+        locator: locator,
+        style: ReaderDecorationStyle(
+          style: DecorationStyle.highlight,
+          tint: highlight.color,
+        ),
+      ),
+];
 
 /// The entry of [entries] the plugin's `tocHref` ("path#fragment") names, or
 /// null if none does.

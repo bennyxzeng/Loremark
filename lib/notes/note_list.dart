@@ -44,25 +44,6 @@ class _NoteListState extends State<NoteList> {
     color: _color,
   );
 
-  // This opens the note sheet with the note's current text so the reader can change it.
-  Future<void> _editNote(Note note) async {
-    final result = await showAddNoteSheet(
-      context,
-      selectedText: note.selectedText,
-      initialBody: note.body,
-      initialColor: note.color,
-      title: note.isHighlightOnly ? 'Add note' : 'Edit note',
-    );
-    if (result == null) return;
-    await _runAndReportErrors(
-      () => widget.service.editNote(
-        note.id,
-        body: result.body,
-        color: result.color,
-      ),
-    );
-  }
-
   // This asks the reader to confirm and only then deletes the note.
   Future<void> _deleteNote(Note note) async {
     final confirmed = await showDialog<bool>(
@@ -82,21 +63,8 @@ class _NoteListState extends State<NoteList> {
         ],
       ),
     );
-    if (confirmed != true) return;
-    await _runAndReportErrors(() => widget.service.deleteNote(note.id));
-  }
-
-  // This runs a save and shows a small message at the bottom if it fails,
-  // so a failed save never closes the app or loses the reader's other notes.
-  Future<void> _runAndReportErrors(Future<void> Function() action) async {
-    try {
-      await action();
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not save your change. Try again.')),
-      );
-    }
+    if (confirmed != true || !mounted) return;
+    await saveOrReport(context, () => widget.service.deleteNote(note.id));
   }
 
   @override
@@ -151,7 +119,11 @@ class _NoteListState extends State<NoteList> {
                               onTap: widget.onOpenNote == null
                                   ? null
                                   : () => widget.onOpenNote!(note),
-                              onEdit: () => _editNote(note),
+                              onEdit: () => editNoteWithSheet(
+                                context,
+                                widget.service,
+                                note,
+                              ),
                               onDelete: () => _deleteNote(note),
                             ),
                         ],
@@ -215,6 +187,49 @@ class _NoteListState extends State<NoteList> {
         ],
       ),
     );
+  }
+}
+
+/// This opens the note sheet with the note's current text and color, and saves
+/// what the reader changes. Used by the Notes tab and by tapping a highlight in
+/// the Read tab.
+/// Parameters:
+/// - service: The service that holds the note.
+/// - note: The note to edit. A highlight with no text gets "Add note" as its title.
+Future<void> editNoteWithSheet(
+  BuildContext context,
+  AnnotationService service,
+  Note note,
+) async {
+  final result = await showAddNoteSheet(
+    context,
+    selectedText: note.selectedText,
+    initialBody: note.body,
+    initialColor: note.color,
+    title: note.isHighlightOnly ? 'Add note' : 'Edit note',
+  );
+  if (result == null || !context.mounted) return;
+  await saveOrReport(
+    context,
+    () => service.editNote(note.id, body: result.body, color: result.color),
+  );
+}
+
+/// This runs a save and shows a small message at the bottom if it fails,
+/// so a failed save never closes the app or loses the reader's other notes.
+/// Parameters:
+/// - save: The change to save. (Ex. adding, editing, or deleting a note)
+/// - failureMessage: What to show if it fails. (Optional)
+Future<void> saveOrReport(
+  BuildContext context,
+  Future<void> Function() save, {
+  String failureMessage = 'Could not save your change. Try again.',
+}) async {
+  final messenger = ScaffoldMessenger.of(context);
+  try {
+    await save();
+  } catch (_) {
+    messenger.showSnackBar(SnackBar(content: Text(failureMessage)));
   }
 }
 
