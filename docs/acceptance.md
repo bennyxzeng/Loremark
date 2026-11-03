@@ -198,6 +198,11 @@ within one page, 19 on the exact page. In trial 7 the app was killed while the
 last page turn was still being saved and reopened one page early. Offline and
 app traffic passed; the capture was inconclusive there too.
 
+GitHub Actions again, 2026-11-03 (run 41584263390, 21 minutes, with
+`--capture-optional`): force-quit **20 of 20**, open from the library pass,
+offline pass, app traffic **0 bytes**, capture **inconclusive** (see below). The
+job passed.
+
 Each force-quit trial takes 20 to 30 seconds, so the full run is about 12
 minutes.
 
@@ -227,14 +232,24 @@ capture loses nothing today. **Once the app makes any request, the counters
 stop being enough: remove `--capture-optional` from the workflow and get the
 capture to verify first.**
 
-**Finding the cause.** The cause is not known. The probe is `ping -c 1` on a
-unique name, run over adb, and the harness expects the resulting DNS question in
-the emulator's capture. Not checked yet: whether the shell's `ping` sends that
-lookup in a way `-tcpdump` records, whether Android's resolver answers or
-suppresses it before it reaches the capture, and whether the capture is flushed
-in time. To make this answerable, the harness now always keeps the raw capture
-as `emulator.pcap` in the report folder (it used to skip it exactly when the
-probe was missing), and its note says what the capture held: the packet count,
-the link type and the distinct DNS names it saw. The next CI run's `acceptance`
-artifact and summary therefore show whether the capture is empty or only the
-probe is missing.
+**Finding the cause.** The probe is `ping -c 1` on a unique name, run over adb,
+and the harness expects the resulting DNS question in the emulator's capture.
+The harness now always keeps the raw capture as `emulator.pcap` in the report
+folder (it used to skip it exactly when the probe was missing), and its note
+says what the capture held: the packet count, the link type and the distinct
+DNS names it saw.
+
+That answered the first question. In CI run 41584263390 the capture held 177
+packets over 714.1 s (Ethernet, link type 1) and 3 distinct DNS questions:
+`connectivitycheck.gstatic.com`, `www.google.com` and `mtalk.google.com`. So the
+capture works and spans the whole session; it records the operating system's own
+lookups. What never appears is the harness's probe. **The fault is in the probe,
+not in the capture.**
+
+Still unknown is why the probe does not reach the wire: whether the shell's
+`ping` resolves the name in a way the emulator does not capture, or Android's
+resolver stops the lookup before sending it. The next step is to replace the
+`ping` probe with a lookup that is known to appear in the capture, check it on
+both the Windows host and the CI emulator, and then remove `--capture-optional`
+from the workflow. Until that is done the capture proves nothing, and the
+per-UID counters are the privacy evidence.
