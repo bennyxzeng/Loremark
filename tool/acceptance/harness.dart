@@ -108,6 +108,15 @@ Future<int> runHarness(
     }
 
     final sessionStart = DateTime.now();
+    try {
+      if (await driver.passFirstRun()) {
+        log('Skipped the first-run API key screen');
+        notes.add('Skipped the first-run API key screen before trial 0.');
+      }
+    } on Object catch (error) {
+      log('Could not get past the first-run API key screen: $error');
+      return 2;
+    }
     log('Trial 0: open the book from the library');
     final open = await runner.openFromLibrary();
     log('  ${open.pass ? 'pass' : 'FAIL'}: ${open.note}');

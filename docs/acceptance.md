@@ -17,6 +17,23 @@ run without a device.
 
 ## What each check proves
 
+### First run
+
+Since PR #58 a fresh install opens on the "Connect an AI provider" screen
+instead of the library, so every trial would wait for the book card and time
+out. At the start of the session, before trial 0, the harness skips that
+screen through the UI: it scrolls to "Skip for now", taps it, and confirms
+"Skip for now" in the "Continue without AI?" dialog. It cannot seed this the
+way it seeds the library, because the "seen" flag is in encrypted storage
+(`flutter_secure_storage`) that `run-as` cannot write. Once is enough: the
+flag survives `am force-stop`, `kill -9` and the seeder's file copies, and
+nothing in a session clears the app's data. A build without the screen, or a
+device that already skipped it, is unaffected: the harness sees the library
+and carries on (the report notes when it did skip). The screen is found by
+its text, not by position: "Connect an AI provider", "Skip for now" and
+"Continue without AI?". Renaming any of them breaks the harness (issue #60,
+CI-06).
+
 ### Force-quit trials
 
 Each of the 20 trials (`--trials`):
@@ -78,6 +95,10 @@ Two layers, because a capture alone cannot say which app sent a packet:
   - no TLS or QUIC flow to a stranger without a readable name;
   - none of the marker phrases planted in each chapter appears in any packet;
   - nothing routable leaves the guest while airplane mode is on.
+
+With PR #58 the app can contact api.openai.com or api.deepseek.com, but only
+after the user saves a key. The harness never saves one, so the app must still
+make no requests during a run.
 
 Proves: during the scripted session the app moved no bytes over the network,
 and the capture shows no destination outside the baseline and allow-list.

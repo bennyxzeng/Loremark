@@ -16,6 +16,20 @@ const _dump = '''
 </hierarchy>
 UI hierchary dumped to: /dev/tty''';
 
+/// The first-run API key screen with its confirmation dialog open: the page's
+/// own "Skip for now" is below the fold, and the dialog's comes after it.
+const _dialogDump = '''
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" resource-id="" class="android.widget.FrameLayout" content-desc="" clickable="false" bounds="[0,0][1080,2400]">
+    <node index="0" text="" resource-id="" class="android.view.View" content-desc="Connect an AI provider" clickable="false" bounds="[48,200][1032,300]" />
+    <node index="1" text="" resource-id="" class="android.widget.Button" content-desc="Skip for now" clickable="true" bounds="[300,2500][780,2620]" />
+    <node index="2" text="" resource-id="" class="android.view.View" content-desc="Continue without AI?" clickable="false" bounds="[100,900][980,1000]" />
+    <node index="3" text="" resource-id="" class="android.widget.Button" content-desc="Add a key" clickable="true" bounds="[500,1400][700,1500]" />
+    <node index="4" text="" resource-id="" class="android.widget.Button" content-desc="Skip for now" clickable="true" bounds="[720,1400][960,1500]" />
+  </node>
+</hierarchy>''';
+
 void main() {
   group('parseUiDump', () {
     test('reads content descriptions, bounds and clickability', () {
@@ -59,6 +73,24 @@ void main() {
       );
 
       expect(nodes.single.bounds, isNull);
+    });
+  });
+
+  group('findLastByDesc', () {
+    test('returns the dialog button, not the page button under it', () {
+      final nodes = parseUiDump(_dialogDump);
+
+      final dialog = findLastByDesc(nodes, 'Skip for now')!;
+      expect(dialog.bounds!.left, 720);
+      expect(dialog.bounds!.bottom, 1500);
+
+      final page = findByDesc(nodes, 'Skip for now')!;
+      expect(page.bounds!.top, 2500);
+    });
+
+    test('finds nothing for an absent description', () {
+      expect(findLastByDesc(parseUiDump(_dialogDump), 'Import EPUB'), isNull);
+      expect(findLastByDesc(const [], 'Skip for now'), isNull);
     });
   });
 }

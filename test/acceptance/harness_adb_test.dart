@@ -218,4 +218,25 @@ emulator-5556\toffline
       );
     });
   });
+
+  group('parseWmSize', () {
+    test('reads the physical size', () {
+      final size = parseWmSize('Physical size: 1080x2400\n');
+
+      expect(size, (width: 1080, height: 2400));
+    });
+
+    test('prefers the override size', () {
+      final size = parseWmSize(
+        'Physical size: 1080x2400\nOverride size: 720x1600\n',
+      );
+
+      expect(size, (width: 720, height: 1600));
+    });
+
+    test('gives null for output that is not a size', () {
+      expect(parseWmSize(''), isNull);
+      expect(parseWmSize('error: closed'), isNull);
+    });
+  });
 }

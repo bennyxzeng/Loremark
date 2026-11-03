@@ -95,6 +95,108 @@ class AppDriver {
     }
   }
 
+  /// Like [waitForNode], for several screens: returns the first of [needles]
+  /// (in list order) that appears in a dump.
+  Future<String> waitForAny(
+    List<String> needles, {
+    Duration timeout = const Duration(seconds: 45),
+  }) async {
+    final deadline = DateTime.now().add(timeout);
+    while (true) {
+      try {
+        final nodes = parseUiDump(await adb.uiDump());
+        for (final needle in needles) {
+          if (findByDesc(nodes, needle) != null) return needle;
+        }
+      } on CommandTimeout {
+        // Try again until the deadline.
+      }
+      if (DateTime.now().isAfter(deadline)) {
+        throw TimeoutException(
+          'None of ${needles.map((n) => '"$n"').join(', ')} on screen',
+          timeout,
+        );
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+    }
+  }
+
+  Future<({int width, int height})> _screenSize() async {
+    final output = await adb.shell('wm size');
+    final size = parseWmSize(output);
+    if (size == null) {
+      throw StateError('Could not read the screen size from: $output');
+    }
+    return size;
+  }
+
+  /// Gets past the first-run API key screen by skipping it, once per session.
+  ///
+  /// The screen's "seen" flag is in encrypted storage that the seeder cannot
+  /// write, but it survives force-stop and kill -9, and nothing in a session
+  /// clears app data, so one skip covers every trial. Returns whether the
+  /// screen was there: builds without it, and devices that already skipped it,
+  /// return false at once.
+  Future<bool> passFirstRun({
+    Duration timeout = const Duration(seconds: 45),
+  }) async {
+    await forceStop();
+    await launch();
+    final first = await waitForAny(const [
+      'Connect an AI provider',
+      'Books',
+      'Next page',
+    ], timeout: timeout);
+    if (first != 'Connect an AI provider') {
+      await forceStop();
+      return false;
+    }
+
+    // "Skip for now" sits below the fold: scroll until it is fully on screen.
+    final screen = await _screenSize();
+    UiNode? skip;
+    for (var attempt = 0; attempt < 4 && skip == null; attempt++) {
+      try {
+        final node = findByDesc(
+          parseUiDump(await adb.uiDump()),
+          'Skip for now',
+        );
+        final bounds = node?.bounds;
+        if (bounds != null && bounds.bottom <= screen.height) skip = node;
+      } on CommandTimeout {
+        // Treat as not found yet.
+      }
+      if (skip == null) {
+        await adb.shell(
+          'input swipe ${screen.width ~/ 2} ${screen.height * 3 ~/ 4} '
+          '${screen.width ~/ 2} ${screen.height ~/ 4} 300',
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 600));
+      }
+    }
+    if (skip == null) {
+      throw StateError('No "Skip for now" on the first-run API key screen');
+    }
+    await adb.tap(skip.bounds!.centerX, skip.bounds!.centerY);
+
+    await waitForNode('Continue without AI?');
+    final confirm = findLastByDesc(
+      parseUiDump(await adb.uiDump()),
+      'Skip for now',
+    );
+    final confirmBounds = confirm?.bounds;
+    if (confirmBounds == null) {
+      throw StateError(
+        'No "Skip for now" button in the "Continue without AI?" dialog',
+      );
+    }
+    await adb.tap(confirmBounds.centerX, confirmBounds.centerY);
+
+    await waitForAny(const ['Books', 'Next page'], timeout: timeout);
+    await forceStop();
+    return true;
+  }
+
   /// Waits for the reader to report its position and then stop moving.
   ///
   /// Readium can report an initial locator before it jumps to the saved one,

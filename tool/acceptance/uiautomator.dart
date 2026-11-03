@@ -87,3 +87,15 @@ UiNode? findByDesc(List<UiNode> nodes, String needle) {
   }
   return null;
 }
+
+/// The last node whose content description contains [needle].
+///
+/// A dialog comes after the page under it in the dump, so the last "Skip for
+/// now" is the dialog's button. The first could be the page's own button
+/// under the modal barrier, and tapping it would only dismiss the dialog.
+UiNode? findLastByDesc(List<UiNode> nodes, String needle) {
+  for (final node in nodes.reversed) {
+    if (node.contentDesc.contains(needle)) return node;
+  }
+  return null;
+}

@@ -361,3 +361,21 @@ class Adb {
     await run(['logcat', '-c'], check: true);
   }
 }
+
+/// The screen size in pixels from `wm size` output.
+///
+/// The output has a `Physical size: 1080x2400` line and, when the size was
+/// changed with `wm size WxH`, an `Override size:` line that is the one the
+/// app actually draws into. Returns null when neither line parses.
+({int width, int height})? parseWmSize(String output) {
+  ({int width, int height})? find(String label) {
+    final match = RegExp('$label size:\\s*(\\d+)x(\\d+)').firstMatch(output);
+    if (match == null) return null;
+    return (
+      width: int.parse(match.group(1)!),
+      height: int.parse(match.group(2)!),
+    );
+  }
+
+  return find('Override') ?? find('Physical');
+}
