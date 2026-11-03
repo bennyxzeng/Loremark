@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../home/empty_state.dart';
+import '../theme/decor.dart';
 import 'add_note_sheet.dart';
 import 'annotation_service.dart';
 import 'highlight_colors.dart';
@@ -112,6 +113,7 @@ class _NoteListState extends State<NoteList> {
         if (service.notes.isEmpty) {
           // This uses the same empty state as the other tabs so the app looks the same everywhere.
           return const EmptyState(
+            image: LoremarkArt.chibiPondering,
             label: 'IN THE MARGINS',
             title: 'Notes & theories',
             icon: Icons.edit_note,

@@ -7,6 +7,10 @@ import '../library/library_screen.dart';
 import '../reader/epub_reader_service.dart';
 import '../reader/reader_position.dart';
 import '../reader/reading_position_store.dart';
+import '../reading/text_position.dart';
+import '../search/passage_search.dart';
+import '../search/search_cutoff.dart';
+import '../search/search_sheet.dart';
 import '../theme/loremark_theme.dart';
 import 'table_of_contents_sheet.dart';
 
@@ -22,6 +26,9 @@ class ReadScreen extends StatefulWidget {
     required this.readerService,
     this.openPositionStore = ReadingPositionStore.open,
     this.onPositionChanged,
+    this.openSearch,
+    this.furthestPosition,
+    this.searchController,
   });
 
   final Book book;
@@ -34,6 +41,23 @@ class ReadScreen extends StatefulWidget {
   /// Called with every position the reader moves to, for reading progress.
   final ValueChanged<ReaderPosition>? onPositionChanged;
 
+  /// Opens the search for [book], or null if the book can't be searched, which
+  /// disables the Search button.
+  ///
+  /// Called lazily the first time the reader searches and cached for the
+  /// book, since building the index can take a while. If it fails, the sheet
+  /// says so and offers to try again; reading is unaffected.
+  final Future<PassageSearch> Function()? openSearch;
+
+  /// The furthest position the reader has reached, which bounds what search
+  /// may show. When null or when it returns null, the current position is
+  /// used.
+  final ReaderPosition? Function()? furthestPosition;
+
+  /// Lets other code open the search sheet, such as a "Search this chapter"
+  /// action.
+  final SearchSheetController? searchController;
+
   @override
   State<ReadScreen> createState() => _ReadScreenState();
 }
@@ -45,23 +69,83 @@ class _ReadScreenState extends State<ReadScreen> {
   /// platform view.
   Widget? _view;
   StreamSubscription<ReaderPosition>? _positionSubscription;
+  StreamSubscription<TextPosition>? _pageTextSubscription;
+  StreamSubscription<TocEntry>? _chapterSubscription;
+
+  /// The chapter the renderer says the reader is in, if it could tell.
+  TocEntry? _chapter;
+
+  /// How long after the last move a jump is taken to have landed.
+  static const _pickSettleDelay = Duration(milliseconds: 700);
+
+  /// The entry the reader chose from Contents. The bar shows it until they
+  /// move off the page the jump landed on: the renderer names a page's
+  /// chapter by its first line, which can still be the end of the one before.
+  TocEntry? _picked;
+
+  /// Where the jump landed once it settled.
+  ReaderPosition? _pickedAt;
+  bool _pickSettled = false;
+
+  /// Whether the jump itself is still being made. A jump into another file
+  /// is two steps and can take a while, so moves during it are the jump.
+  bool _jumping = false;
+  Timer? _pickTimer;
   ReadingPositionStore? _store;
   ReaderPosition? _position;
+
+  /// How far the text of the furthest page reached in this session goes, if
+  /// the reader could measure it.
+  TextPosition? _furthestPageText;
   Object? _error;
+
+  /// The opened search of the current book, kept so the index is built once.
+  Future<PassageSearch>? _searchFuture;
+
+  /// What search may look at. The sheet watches it so open results follow the
+  /// reader.
+  final ValueNotifier<ReaderPosition> _cutoff = ValueNotifier(searchCutoff());
+
+  /// Whether a search highlight is on the page, so it is cleared only when
+  /// there is one.
+  bool _highlightShown = false;
 
   /// Identifies the latest open, so a slow earlier one can tell it was
   /// replaced or the screen was disposed.
   int _generation = 0;
 
+  /// How far from the saved progression still counts as having arrived there:
+  /// about one page in a long chapter. A reopened page can land a fraction of
+  /// a page off (seen on a device as 0.5298 -> 0.5238).
+  static const _arrivalTolerance = 0.02;
+
+  /// The saved position the reader was asked to open at, while it has not
+  /// shown it yet. Null when nothing was saved or the wait is over.
+  ///
+  /// Readium can report a first position that is not the saved one, because
+  /// it opens at the start and only then jumps. Saving that would overwrite
+  /// the good saved position, so saving waits until the reader gets here.
+  ReaderPosition? _restoring;
+
+  /// The section the reader opened in when it was not the saved one, once it
+  /// was sent back to [_restoring]. Null until then, which also means the
+  /// jump back has not been made yet.
+  int? _landedSection;
+
   @override
   void initState() {
     super.initState();
+    widget.searchController?.attach(_openSearchSheet);
     unawaited(_open());
   }
 
   @override
   void didUpdateWidget(ReadScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.searchController != widget.searchController) {
+      oldWidget.searchController?.detach(_openSearchSheet);
+      widget.searchController?.attach(_openSearchSheet);
+    }
     if (oldWidget.book.id != widget.book.id) {
       unawaited(_open());
     }
@@ -70,7 +154,10 @@ class _ReadScreenState extends State<ReadScreen> {
   @override
   void dispose() {
     _generation++;
+    _pickTimer?.cancel();
+    widget.searchController?.detach(_openSearchSheet);
     _releaseSession();
+    _cutoff.dispose();
     super.dispose();
   }
 
@@ -83,7 +170,13 @@ class _ReadScreenState extends State<ReadScreen> {
     _releaseSession();
     _store = null;
     _position = null;
+    _furthestPageText = null;
+    _chapter = null;
+    _clearPick();
+    _stopRestoring();
     _error = null;
+    _searchFuture = null;
+    _cutoff.value = searchCutoff();
 
     final book = widget.book;
     final sessionFuture = _openSession(book);
@@ -110,7 +203,12 @@ class _ReadScreenState extends State<ReadScreen> {
       _session = session;
       _store = store;
       _position = position;
+      _restoring = position;
       _positionSubscription = session.positions.listen(_onPosition);
+      _pageTextSubscription = session.pageTextEnds.listen(_onPageTextEnd);
+      _chapterSubscription = session.chapterChanges.listen(
+        (chapter) => setState(() => _chapter = chapter),
+      );
       _view = session.buildView(initialPosition: position);
     });
   }
@@ -136,11 +234,27 @@ class _ReadScreenState extends State<ReadScreen> {
   void _releaseSession() {
     unawaited(_positionSubscription?.cancel());
     _positionSubscription = null;
+    unawaited(_pageTextSubscription?.cancel());
+    _pageTextSubscription = null;
+    unawaited(_chapterSubscription?.cancel());
+    _chapterSubscription = null;
     final session = _session;
     _session = null;
     _view = null;
     if (session != null) {
+      if (_highlightShown) unawaited(_clearHighlight(session));
       unawaited(_close(session));
+    }
+  }
+
+  /// Takes the search highlight off the page. Best effort: the book is about
+  /// to close anyway.
+  Future<void> _clearHighlight(EpubReaderSession session) async {
+    _highlightShown = false;
+    try {
+      await session.clearPassageHighlight();
+    } on Object catch (error) {
+      debugPrint('Could not clear the search highlight: $error');
     }
   }
 
@@ -153,12 +267,88 @@ class _ReadScreenState extends State<ReadScreen> {
   }
 
   void _onPosition(ReaderPosition position) {
-    setState(() => _position = position);
+    setState(() {
+      _position = position;
+      _trackPick(position);
+    });
+    _updateCutoff();
     final store = _store;
-    if (store != null) {
+    if (store != null && _shouldSave(position)) {
       unawaited(_save(store, position));
     }
     widget.onPositionChanged?.call(position);
+  }
+
+  /// Ends the wait for the saved position, whichever way it ends.
+  void _stopRestoring() {
+    _restoring = null;
+    _landedSection = null;
+  }
+
+  /// Whether [position] may overwrite the saved one.
+  ///
+  /// While restoring, only a position at the saved one may. If the reader
+  /// opened elsewhere it is sent back once. After that, positions in the
+  /// section it opened in or in the saved section are still the opening (or
+  /// Readium honouring the jump only partly), so they are held too. A
+  /// position in any other section means the reader really moved on, so
+  /// restoring is given up and saving is never blocked for good.
+  ///
+  /// This goes by section and not by time on purpose: Readium sends a bare
+  /// locator first and the full locator for the same page can come seconds
+  /// later, which on a one-page section reads as progression 1.0. Only the
+  /// section tells "same page, more detail" from "the reader moved on".
+  ///
+  /// Known limit: if the jump back fails and the reader swipes on inside the
+  /// opened or saved section without the page buttons, those pages are not
+  /// saved until they reach another section or use the controls. That is the
+  /// price of never overwriting a good position with an opening one.
+  bool _shouldSave(ReaderPosition position) {
+    final saved = _restoring;
+    if (saved == null) return true;
+    if (position.sectionIndex == saved.sectionIndex &&
+        (position.progression - saved.progression).abs() <= _arrivalTolerance) {
+      _stopRestoring();
+      return true;
+    }
+    final landed = _landedSection;
+    if (landed == null) {
+      _landedSection = position.sectionIndex;
+      debugPrint(
+        'The reader opened at ${position.sectionIndex}/${position.progression} '
+        'instead of the saved ${saved.sectionIndex}/${saved.progression}; '
+        'jumping back.',
+      );
+      final session = _session;
+      if (session != null) unawaited(_restore(session, saved));
+      return false;
+    }
+    if (position.sectionIndex == saved.sectionIndex ||
+        position.sectionIndex == landed) {
+      return false;
+    }
+    debugPrint(
+      'The reader moved on to section ${position.sectionIndex}; giving up '
+      'restoring the saved position.',
+    );
+    _stopRestoring();
+    return true;
+  }
+
+  /// Sends the reader back to the saved position. Best effort: if it fails,
+  /// the reader just stays where it is.
+  Future<void> _restore(EpubReaderSession session, ReaderPosition saved) async {
+    try {
+      await session.goToPosition(saved);
+    } on Object catch (error) {
+      debugPrint('Could not return to the saved position: $error');
+    }
+  }
+
+  void _onPageTextEnd(TextPosition end) {
+    final furthest = _furthestPageText;
+    if (furthest == null || end > furthest) _furthestPageText = end;
+    _updateCutoff();
   }
 
   Future<void> _save(
@@ -178,19 +368,65 @@ class _ReadScreenState extends State<ReadScreen> {
       if (entry.sectionIndex != null) entry,
   ];
 
-  /// The last chapter that starts at or before the reader's section.
+  /// The chapter the reader is in.
+  ///
+  /// The one they just chose from Contents, until they move on. Then the
+  /// renderer's own answer when it has one, since several chapters can
+  /// share one file. Otherwise, for a book cut into sections by us, the last
+  /// section that starts at or before the reader, and for any other book the
+  /// last chapter that starts in or before the reader's file.
   TocEntry? _currentEntry(List<TocEntry> entries) {
+    final picked = _picked;
+    if (picked != null && entries.any((entry) => identical(entry, picked))) {
+      return picked;
+    }
+    final chapter = _chapter;
+    if (chapter != null && entries.any((entry) => identical(entry, chapter))) {
+      return chapter;
+    }
     final position = _position;
     if (position == null) {
       return null;
     }
     TocEntry? current;
     for (final entry in entries) {
-      if (entry.sectionIndex! <= position.sectionIndex) {
+      final start = entry.position;
+      final started = start == null
+          ? entry.sectionIndex! <= position.sectionIndex
+          : start.sectionIndex < position.sectionIndex ||
+                (start.sectionIndex == position.sectionIndex &&
+                    start.progression <= position.progression);
+      if (started) {
         current = entry;
       }
     }
     return current;
+  }
+
+  void _clearPick() {
+    _picked = null;
+    _pickedAt = null;
+    _pickSettled = false;
+    _jumping = false;
+    _pickTimer?.cancel();
+    _pickTimer = null;
+  }
+
+  /// Starts waiting for the jump to settle, or waits again after a move.
+  void _waitForPick() {
+    _pickTimer?.cancel();
+    _pickTimer = Timer(_pickSettleDelay, () => _pickSettled = true);
+  }
+
+  /// Keeps the chosen entry until the reader moves off the page it landed on.
+  void _trackPick(ReaderPosition position) {
+    if (_picked == null) return;
+    if (!_pickSettled) {
+      _pickedAt = position;
+      if (!_jumping) _waitForPick();
+    } else if (position != _pickedAt) {
+      _clearPick();
+    }
   }
 
   Future<void> _openContents(EpubReaderSession session) async {
@@ -203,7 +439,71 @@ class _ReadScreenState extends State<ReadScreen> {
     if (chosen == null || !mounted || !identical(session, _session)) {
       return;
     }
+    setState(() {
+      // A jump the reader chose beats the saved position.
+      _stopRestoring();
+      _clearPick();
+      _picked = chosen;
+      _jumping = true;
+    });
     await _navigate(() => session.goTo(chosen));
+    if (mounted && identical(chosen, _picked)) {
+      _jumping = false;
+      _waitForPick();
+    }
+  }
+
+  /// Recomputes what search may look at, from the reader's position, the
+  /// furthest one they reached, and the furthest page start in the text.
+  void _updateCutoff() {
+    _cutoff.value = pageCutoff(
+      current: _position,
+      furthest: widget.furthestPosition?.call(),
+      furthestPageText: _furthestPageText,
+    );
+  }
+
+  /// The book's search, opened on first use and then reused. A failure is
+  /// forgotten so "Try again" opens it afresh.
+  Future<PassageSearch> _search() {
+    final future = _searchFuture ??= widget.openSearch!();
+    unawaited(
+      future.then<void>(
+        (_) {},
+        onError: (Object _) {
+          if (identical(_searchFuture, future)) _searchFuture = null;
+        },
+      ),
+    );
+    return future;
+  }
+
+  /// Shows the search sheet and jumps to the hit the reader picks, with the
+  /// passage highlighted.
+  ///
+  /// The highlight stays until the next hit replaces it or the book closes.
+  Future<void> _openSearchSheet(String initialQuery) async {
+    final session = _session;
+    if (session == null || widget.openSearch == null || !mounted) return;
+    _updateCutoff();
+    final hit = await showSearchSheet(
+      context,
+      openSearch: _search,
+      cutoff: _cutoff,
+      entries: _usableEntries(session),
+      initialQuery: initialQuery,
+    );
+    if (hit == null || !mounted || !identical(session, _session)) return;
+    _stopRestoring();
+    _highlightShown = true;
+    await _navigate(() => session.showPassage(hit.target));
+  }
+
+  /// Turns the page. Like any move the reader starts, it ends the wait for
+  /// the saved position.
+  Future<void> _turnPage(Future<void> Function() turn) {
+    _stopRestoring();
+    return _navigate(turn);
   }
 
   Future<void> _navigate(Future<void> Function() go) async {
@@ -246,12 +546,15 @@ class _ReadScreenState extends State<ReadScreen> {
           onOpenContents: entries.isEmpty
               ? null
               : () => unawaited(_openContents(session)),
+          onOpenSearch: widget.openSearch == null
+              ? null
+              : () => unawaited(_openSearchSheet('')),
         ),
         Expanded(child: view),
         _PageControls(
           progress: _position?.totalProgression,
-          onPrevious: () => unawaited(_navigate(session.goBackward)),
-          onNext: () => unawaited(_navigate(session.goForward)),
+          onPrevious: () => unawaited(_turnPage(session.goBackward)),
+          onNext: () => unawaited(_turnPage(session.goForward)),
         ),
       ],
     );
@@ -260,10 +563,15 @@ class _ReadScreenState extends State<ReadScreen> {
 
 /// The chapter being read, with the button that opens the contents.
 class _ChapterBar extends StatelessWidget {
-  const _ChapterBar({required this.title, required this.onOpenContents});
+  const _ChapterBar({
+    required this.title,
+    required this.onOpenContents,
+    required this.onOpenSearch,
+  });
 
   final String title;
   final VoidCallback? onOpenContents;
+  final VoidCallback? onOpenSearch;
 
   @override
   Widget build(BuildContext context) {
@@ -283,6 +591,12 @@ class _ChapterBar extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.search),
+              tooltip: 'Search',
+              color: LoremarkColors.muted,
+              onPressed: onOpenSearch,
             ),
             IconButton(
               icon: const Icon(Icons.toc),
