@@ -3,3 +3,10 @@ tags:
   # Calls a real LLM provider: needs an API key, costs money, and the output is
   # nondeterministic. Excluded from CI; run by hand with `flutter test --tags live`.
   live:
+
+  # Timing benchmarks on a 500,000-word book (text extraction, the search
+  # index, a 20,000-record story model) against the spec's scalability
+  # targets. JIT timings on a busy CI runner are noise, so CI skips them; run
+  # by hand with `flutter test --tags benchmark`. The numbers in
+  # docs/benchmarks.md come from AOT: `dart run tool/benchmark/run.dart`.
+  benchmark:

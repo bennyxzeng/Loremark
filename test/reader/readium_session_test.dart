@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:loremark/reader/epub_reader_service.dart';
 import 'package:loremark/reader/readium_reader_service.dart';
 import 'package:loremark/reader/reader_position.dart';
+import 'package:loremark/reading/text_position.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
 import '../library/test_epub.dart';
@@ -47,6 +48,7 @@ class _FakeReadiumPlatform extends FlutterReadiumPlatform
   Future<Publication> openPublication(String pubUrl) async {
     final name = Uri.parse(pubUrl).pathSegments.last;
     calls.add('open $name');
+    injectedAtOpen[name] = List.of(injected);
     openBook = name;
     return Publication.fromJson({
       'metadata': {'title': 'Test book'},
@@ -58,6 +60,21 @@ class _FakeReadiumPlatform extends FlutterReadiumPlatform
         {'href': '${_hrefs[2]}#s', 'title': 'Two'},
       ],
     })!;
+  }
+
+  /// If set, registering the page script fails with it.
+  Object? injectionError;
+
+  /// The script assets registered so far.
+  final injected = <String>[];
+
+  /// What was registered at the moment each book opened.
+  final injectedAtOpen = <String, List<String>>{};
+
+  @override
+  Future<void> setJavaScriptInjections(List<InjectionAsset> injections) async {
+    if (injectionError case final error?) throw error;
+    injected.addAll(injections.map((e) => e.assetPath));
   }
 
   @override
@@ -78,8 +95,24 @@ class _FakeReadiumPlatform extends FlutterReadiumPlatform
   @override
   void setDefaultPreferences(EPUBPreferences preferences) {}
 
+  /// The decorations last applied per group, as `applyDecorations` got them.
+  final decorations = <String, List<ReaderDecoration>>{};
+
+  /// Every goToLocator argument, in order.
+  final goToLocators = <Locator>[];
+
+  @override
+  Future<void> applyDecorations(
+    String id,
+    List<ReaderDecoration> decorations,
+  ) async {
+    calls.add('decorate $id ${decorations.length}');
+    this.decorations[id] = decorations;
+  }
+
   @override
   Future<bool> goToLocator(Locator locator) async {
+    goToLocators.add(locator);
     calls.add('goTo ${locator.href}');
     return true;
   }
@@ -124,13 +157,17 @@ void main() {
 
   const service = ReadiumReaderService();
 
-  Future<String> writeBook(String name) async {
+  Future<String> writeBook(String name, {String? chapterOne}) async {
     final path = '${temp.path}/$name';
     await File(path).writeAsBytes(
       buildEpub(
         chapters: [
           for (var i = 0; i < _hrefs.length; i++)
-            EpubChapter(id: 'c$i', fileName: 'ch$i.xhtml', body: '<p>$i</p>'),
+            EpubChapter(
+              id: 'c$i',
+              fileName: 'ch$i.xhtml',
+              body: i == 1 && chapterOne != null ? chapterOne : '<p>$i</p>',
+            ),
         ],
       ),
     );
@@ -172,6 +209,126 @@ void main() {
     }
     opened.clear();
     await temp.delete(recursive: true);
+  });
+
+  group('page script', () {
+    test('is registered before the book opens', () async {
+      await open(bookA);
+
+      expect(fake.injectedAtOpen['a.epub'], [pageEndScriptAsset]);
+    });
+
+    test('is not needed for the book to open', () async {
+      fake.injectionError = StateError('no injections');
+
+      final session = await open(bookA);
+
+      expect(session.sectionCount, _hrefs.length);
+      expect(fake.openBook, 'a.epub');
+    });
+  });
+
+  group('pageTextEnds', () {
+    late String book;
+
+    /// The full locator of a page of chapter 1 whose script reported
+    /// [marker] as the first block past the page.
+    Locator page(Object? marker, {double progression = 0.1}) => Locator(
+      href: _hrefs[1],
+      type: _xhtml,
+      locations: Locations(
+        progression: progression,
+        additionalProperties: {
+          'currentPage': 0,
+          'totalPages': 5,
+          'physicalPage': ?marker,
+        },
+      ),
+    );
+
+    setUp(() async {
+      book = await writeBook(
+        'text.epub',
+        chapterOne: '<p>Alpha</p><p>Beta</p><p>Gamma</p>',
+      );
+    });
+
+    /// Everything [session] reports on [EpubReaderSession.pageTextEnds].
+    List<TextPosition> collectEnds(EpubReaderSession session) {
+      final ends = <TextPosition>[];
+      session.pageTextEnds.listen(ends.add);
+      return ends;
+    }
+
+    /// Waits for [count] reports: the chapter is read in the background.
+    Future<void> waitFor(List<TextPosition> ends, int count) async {
+      final stop = DateTime.now().add(const Duration(seconds: 5));
+      while (ends.length < count && DateTime.now().isBefore(stop)) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+    }
+
+    /// Gives a report that should not come time to show up.
+    Future<void> settle() =>
+        Future<void>.delayed(const Duration(milliseconds: 300));
+
+    test('reports how far the text on the page goes', () async {
+      final session = await open(book);
+      final ends = collectEnds(session);
+
+      // The text is "Alpha\n\nBeta\n\nGamma", and Gamma starts at character 13.
+      await send([page('loremark-end:2')]);
+      await waitFor(ends, 1);
+
+      expect(ends, hasLength(1));
+      expect(ends.single.sectionIndex, 1);
+      expect(ends.single.progression, closeTo(13.25 / 18, 1e-9));
+    });
+
+    test('reports a page once however often Readium repeats it', () async {
+      final session = await open(book);
+      final ends = collectEnds(session);
+
+      await send([page('loremark-end:1'), page('loremark-end:1')]);
+      await waitFor(ends, 1);
+      await settle();
+
+      expect(ends, hasLength(1));
+    });
+
+    test('reports each page as the reader turns to it', () async {
+      final session = await open(book);
+      final ends = collectEnds(session);
+
+      await send([page('loremark-end:1', progression: 0.1)]);
+      await waitFor(ends, 1);
+      await send([page('loremark-end:2', progression: 0.5)]);
+      await waitFor(ends, 2);
+
+      expect(ends, hasLength(2));
+      expect(ends[0].progression, lessThan(ends[1].progression));
+    });
+
+    test('reports nothing for a page the script could not measure', () async {
+      final session = await open(book);
+      final ends = collectEnds(session);
+
+      await send([page(null), page('iv'), page('loremark-end:9')]);
+      await settle();
+
+      expect(ends, isEmpty);
+    });
+
+    test('reports nothing once the book is closed', () async {
+      final session = await open(book);
+      final ends = collectEnds(session);
+
+      await session.close();
+      await send([page('loremark-end:2')]);
+      await settle();
+
+      expect(ends, isEmpty);
+    });
   });
 
   group('close', () {
@@ -321,6 +478,87 @@ void main() {
       await session.goBackward();
 
       expect(fake.calls.skip(1), ['goTo ${_hrefs[2]}', 'forward', 'backward']);
+    });
+  });
+
+  group('showPassage', () {
+    const target = PassageTarget(
+      sectionIndex: 2,
+      progression: 0.4,
+      highlight: 'a grey cat',
+      before: 'There was ',
+      after: ' on the wall',
+    );
+
+    test('jumps with the text quote, href and progression', () async {
+      final session = await open(bookA);
+
+      await session.showPassage(target);
+
+      final locator = fake.goToLocators.single;
+      expect(locator.href, _hrefs[2]);
+      expect(locator.locations?.progression, 0.4);
+      expect(locator.text?.highlight, 'a grey cat');
+      expect(locator.text?.before, 'There was ');
+      expect(locator.text?.after, ' on the wall');
+    });
+
+    test(
+      'highlights it in one group, with the same locator and a tint',
+      () async {
+        final session = await open(bookA);
+
+        await session.showPassage(target);
+
+        final decoration = fake.decorations[passageHighlightGroup]!.single;
+        expect(decoration.locator.toJson(), fake.goToLocators.single.toJson());
+        expect(decoration.style.style, DecorationStyle.highlight);
+        // Android drops a decoration without a tint, so the JSON must carry it.
+        expect(decoration.style.toJson(), contains('tint'));
+      },
+    );
+
+    test('a second passage replaces the first in the same group', () async {
+      final session = await open(bookA);
+
+      await session.showPassage(target);
+      await session.showPassage(
+        const PassageTarget(
+          sectionIndex: 1,
+          progression: 0.1,
+          highlight: 'the harbor',
+        ),
+      );
+
+      expect(fake.decorations.keys, [passageHighlightGroup]);
+      expect(fake.decorations[passageHighlightGroup], hasLength(1));
+      expect(
+        fake.decorations[passageHighlightGroup]!.single.locator.text?.highlight,
+        'the harbor',
+      );
+    });
+
+    test('a section outside the reading order does nothing', () async {
+      final session = await open(bookA);
+
+      await session.showPassage(
+        const PassageTarget(
+          sectionIndex: 9,
+          progression: 0.5,
+          highlight: 'a footnote',
+        ),
+      );
+
+      expect(fake.calls, ['open a.epub']);
+    });
+
+    test('clearing applies an empty list to the group', () async {
+      final session = await open(bookA);
+      await session.showPassage(target);
+
+      await session.clearPassageHighlight();
+
+      expect(fake.decorations[passageHighlightGroup], isEmpty);
     });
   });
 

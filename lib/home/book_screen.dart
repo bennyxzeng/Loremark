@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../library/book.dart';
 import '../reader/readium_reader_service.dart';
+import '../search/search_index_store.dart';
 import '../story_map/story_map_screen.dart';
 import '../story_model/story_model.dart';
 import '../story_model/story_model_loader.dart';
@@ -51,6 +52,10 @@ class _BookScreenState extends State<BookScreen> {
                   ReadScreen(
                     book: widget.book,
                     readerService: const ReadiumReaderService(),
+                    openSearch: () => openPassageSearch(
+                      bookId: widget.book.id,
+                      epubPath: widget.book.epubPath,
+                    ),
                   ),
                   const AskScreen(),
                   const NotesScreen(),

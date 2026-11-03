@@ -1,9 +1,13 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_readium/flutter_readium.dart';
 
+import '../reading/text_position.dart';
 import '../theme/loremark_theme.dart';
 import 'epub_reader_service.dart';
 import 'epub_sections.dart';
@@ -52,6 +56,15 @@ class ReadiumReaderService implements EpubReaderService {
     return _serially(() async {
       await _current?._release();
       final readium = FlutterReadium();
+      // Added to every chapter the book loads, so registered first. Without
+      // it search still works, one finished chapter file at a time.
+      try {
+        await readium.setJavaScriptInjections(const [
+          InjectionAsset(assetPath: pageEndScriptAsset),
+        ]);
+      } on Object catch (error) {
+        debugPrint('Could not add the page script: $error');
+      }
       final Publication publication;
       try {
         // The plugin wants a URL, not a path.
@@ -65,11 +78,49 @@ class ReadiumReaderService implements EpubReaderService {
       // Read by the reader view when it is built, so set it first.
       readium.setDefaultPreferences(_readerPreferences);
 
-      final session = _ReadiumSession(readium, publication, spine);
+      final session = _ReadiumSession(readium, publication, spine, epubPath);
       _current = session;
       return session;
     });
   }
+}
+
+/// The script that reports where each page ends: assets/reader/page_end.js.
+const pageEndScriptAsset = 'assets/reader/page_end.js';
+
+/// Makes the web view serve [pageEndScriptAsset].
+///
+/// The plugin only serves its own assets and the fonts an app declares, so
+/// without this the page asks for the script and gets an error page. The
+/// declaration is a workaround: the "font" is never used by any text, and only
+/// its asset path matters. Drop it if the plugin ever serves app assets.
+final _servedScript = [
+  ReaderFontFamily(
+    name: 'loremark-page-script',
+    faces: const [ReaderFontFace(asset: pageEndScriptAsset)],
+  ),
+];
+
+/// The prefix of the `physicalPage` marker the script sets on a page.
+const _pageEndMarker = 'loremark-end:';
+
+/// Where the page [locator] is ends, as reported by the page script: the
+/// number of the first text block that doesn't fit on it, and how many of
+/// that block's characters, not counting whitespace, do. Null if the script
+/// reported none.
+///
+/// The plugin passes `physicalPage` through to the locator's other locations.
+@visibleForTesting
+({int block, int characters})? pageEnd(Locator locator) {
+  final value = locator.locations?.additionalProperties['physicalPage'];
+  if (value is! String || !value.startsWith(_pageEndMarker)) return null;
+  final parts = value.substring(_pageEndMarker.length).split(':');
+  if (parts.isEmpty || parts.length > 2) return null;
+  final block = int.tryParse(parts[0]);
+  final characters = parts.length == 2 ? int.tryParse(parts[1]) : 0;
+  if (block == null || characters == null) return null;
+  if (block < 0 || characters < 0) return null;
+  return (block: block, characters: characters);
 }
 
 /// Paginated pages in the app's paper and ink colors.
@@ -80,7 +131,7 @@ const _readerPreferences = EPUBPreferences(
 );
 
 class _ReadiumSession implements EpubReaderSession {
-  _ReadiumSession(this._readium, this._publication, this._spine)
+  _ReadiumSession(this._readium, this._publication, this._spine, this._epubPath)
     : _normalizer = PositionNormalizer(_spine),
       tableOfContents = tocEntriesFromLinks(
         _publication.tableOfContents,
@@ -96,6 +147,7 @@ class _ReadiumSession implements EpubReaderSession {
   final FlutterReadium _readium;
   final Publication _publication;
   final List<SpineItem> _spine;
+  final String _epubPath;
   final PositionNormalizer _normalizer;
   late final StreamSubscription<Locator> _locatorSubscription;
   late final StreamSubscription<ReadiumReaderStatus> _statusSubscription;
@@ -104,6 +156,7 @@ class _ReadiumSession implements EpubReaderSession {
   // Single-subscription: it holds the early positions until the Read tab
   // listens, which it does once. A broadcast stream would drop them.
   final _positions = StreamController<ReaderPosition>();
+  final _pageTextEnds = StreamController<TextPosition>();
 
   @override
   final List<TocEntry> tableOfContents;
@@ -113,6 +166,9 @@ class _ReadiumSession implements EpubReaderSession {
 
   @override
   Stream<ReaderPosition> get positions => _positions.stream;
+
+  @override
+  Stream<TextPosition> get pageTextEnds => _pageTextEnds.stream;
 
   int? _indexOf(String href) => spineIndexOf(_spine, href);
 
@@ -124,6 +180,13 @@ class _ReadiumSession implements EpubReaderSession {
     final previousHadPageInfo = _lastHadPageInfo;
     _lastHadPageInfo = _hasPageInfo(locator.locations);
     final raw = positionFromLocator(locator, _indexOf);
+    // Before the duplicate check: the page script's marker comes with the
+    // second, full locator of a page, which has the same position as the bare
+    // one.
+    final end = pageEnd(locator);
+    if (raw != null && end != null) {
+      unawaited(_onPageEnd(raw.sectionIndex, end.block, end.characters));
+    }
     // Readium reports every page twice, a bare locator and then a full one
     // with the same position.
     if (raw == null || raw == _lastRaw) return;
@@ -139,6 +202,39 @@ class _ReadiumSession implements EpubReaderSession {
     if (status == ReadiumReaderStatus.reachedEndOfPublication) {
       _emit(_normalizer.finish());
     }
+  }
+
+  (int, int, int)? _lastPageEnd;
+  int? _markupSection;
+  Future<String?>? _markup;
+
+  /// Finds where the page ends in [section]'s text, inside the text block
+  /// [block] after [characters] of it, and reports it on [pageTextEnds].
+  Future<void> _onPageEnd(int section, int block, int characters) async {
+    if (_lastPageEnd == (section, block, characters)) return;
+    _lastPageEnd = (section, block, characters);
+    // One section's markup is kept, since most page turns stay in it.
+    if (_markupSection != section) {
+      _markupSection = section;
+      _markup = readSectionMarkup(_epubPath, _spine[section].path);
+    }
+    final xhtml = await _markup;
+    if (xhtml == null) return;
+    final progression = await Isolate.run(
+      () => textProgressionOfBlock(xhtml, block, characters: characters),
+    );
+    // Debug and profile builds only; for checking cutoffs on a device.
+    if (kDebugMode || kProfileMode) {
+      final fields = {
+        'section': section,
+        'block': block,
+        'characters': characters,
+        'textProgression': progression,
+      };
+      debugPrintSynchronously('LOREMARK_PAGE_TEXT ${jsonEncode(fields)}');
+    }
+    if (progression == null || _closed) return;
+    _pageTextEnds.add(TextPosition(section, progression));
   }
 
   void _emit(List<ReaderPosition> positions) {
@@ -157,6 +253,7 @@ class _ReadiumSession implements EpubReaderSession {
     // are passed. Positions come from the streams instead.
     return ReadiumReaderWidget(
       publication: _publication,
+      fontFamilyDeclarations: _servedScript,
       initialLocator: initialPosition == null
           ? null
           : _locatorFor(initialPosition),
@@ -184,6 +281,30 @@ class _ReadiumSession implements EpubReaderSession {
   }
 
   @override
+  Future<void> showPassage(PassageTarget target) async {
+    final locator = locatorForPassage(
+      target,
+      _publication.readingOrder,
+      _indexOf,
+    );
+    if (locator == null) return;
+    // Readium draws a decoration only where the text quote is found, and finds
+    // it again whichever page loads, so the order of the two calls is free.
+    await _readium.applyDecorations(passageHighlightGroup, [
+      ReaderDecoration(
+        id: 'hit',
+        locator: locator,
+        style: passageHighlightStyle,
+      ),
+    ]);
+    await _readium.goToLocator(locator);
+  }
+
+  @override
+  Future<void> clearPassageHighlight() =>
+      _readium.applyDecorations(passageHighlightGroup, const []);
+
+  @override
   Future<void> goForward() => _readium.goForward();
 
   @override
@@ -207,6 +328,7 @@ class _ReadiumSession implements EpubReaderSession {
     // Not awaited: the future of a controller nobody listened to never
     // completes.
     unawaited(_positions.close());
+    unawaited(_pageTextEnds.close());
     if (!identical(ReadiumReaderService._current, this)) return;
     ReadiumReaderService._current = null;
     await _readium.closePublication();
@@ -295,4 +417,42 @@ Locator? locatorFromPosition(
     );
   }
   return null;
+}
+
+/// The decoration group of the search highlight. Applying a new list under the
+/// same id replaces the old decorations, and an empty list clears them.
+const passageHighlightGroup = 'loremark-search';
+
+/// A translucent amber with the stronger "current result" look.
+///
+/// The tint must always be set: flutter_readium 0.8.0 leaves it out of the JSON
+/// when null, and Android then drops the whole decoration without a trace.
+const passageHighlightStyle = ReaderDecorationStyle(
+  style: DecorationStyle.highlight,
+  tint: Color(0x66FFC107),
+  isActive: true,
+);
+
+/// The locator that jumps to and highlights [target], or null if its section
+/// isn't in [readingOrder], as for a non-linear spine item.
+///
+/// Readium looks the text quote up first and only falls back to the
+/// progression when the quote isn't found, so both are set.
+Locator? locatorForPassage(
+  PassageTarget target,
+  List<Link> readingOrder,
+  int? Function(String href) indexOf,
+) {
+  final base = locatorFromPosition(
+    ReaderPosition(target.sectionIndex, target.progression),
+    readingOrder,
+    indexOf,
+  );
+  return base?.copyWith(
+    text: LocatorText(
+      before: target.before,
+      highlight: target.highlight,
+      after: target.after,
+    ),
+  );
 }
