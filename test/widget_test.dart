@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loremark/home/book_screen.dart';
 import 'package:loremark/library/book.dart';
+import 'package:loremark/settings/ai_settings.dart';
+import 'package:loremark/settings/connection_status.dart';
 import 'package:loremark/theme/loremark_theme.dart';
 
 // Smoke tests for an open book's tabs. They only check navigation, not the
@@ -17,12 +19,41 @@ void main() {
     importedAt: DateTime(2026),
   );
 
-  Future<void> pumpBook(WidgetTester tester) => tester.pumpWidget(
-    MaterialApp(
-      theme: buildLoremarkTheme(),
-      home: BookScreen(book: book),
-    ),
-  );
+  Future<void> pumpBook(
+    WidgetTester tester, {
+    bool hasKey = true,
+    ConnectionStatus? connection,
+  }) async {
+    final settings = AiSettings(
+      MemorySecretStore({
+        'ai_onboarding_seen': 'true',
+        if (hasKey) ...{'ai_provider': 'openai', 'ai_api_key': 'sk-test'},
+      }),
+    );
+    await settings.load();
+    await tester.pumpWidget(
+      AiSettingsScope(
+        settings: settings,
+        child: ConnectionScope(
+          status: connection ?? ConnectionStatus(),
+          child: MaterialApp(
+            theme: buildLoremarkTheme(),
+            home: BookScreen(book: book),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> openTab(WidgetTester tester, String label) async {
+    await tester.tap(
+      find.descendant(
+        of: find.byType(NavigationBar),
+        matching: find.text(label),
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
 
   int selectedTab(WidgetTester tester) =>
       tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex;
@@ -62,5 +93,100 @@ void main() {
 
       expect(selectedTab(tester), index, reason: label);
     }
+  });
+
+  testWidgets('without an API key, Ask and Story Map are locked', (
+    tester,
+  ) async {
+    await pumpBook(tester, hasKey: false);
+
+    for (final label in ['Ask', 'Story Map']) {
+      await tester.tap(
+        find.descendant(
+          of: find.byType(NavigationBar),
+          matching: find.text(label),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('$label needs an API key'), findsOne, reason: label);
+    }
+  });
+
+  testWidgets('with an API key, nothing is locked', (tester) async {
+    await pumpBook(tester);
+
+    expect(find.textContaining('needs an API key'), findsNothing);
+  });
+
+  group('offline', () {
+    testWidgets('locks Ask but not Story Map', (tester) async {
+      await pumpBook(tester, connection: ConnectionStatus(online: false));
+
+      await openTab(tester, 'Ask');
+      expect(find.text('Ask needs a connection'), findsOne);
+
+      await openTab(tester, 'Story Map');
+      expect(find.textContaining('needs a connection'), findsNothing);
+    });
+
+    testWidgets('a missing key is shown before the connection', (tester) async {
+      await pumpBook(
+        tester,
+        hasKey: false,
+        connection: ConnectionStatus(online: false),
+      );
+
+      await openTab(tester, 'Ask');
+      expect(find.text('Ask needs an API key'), findsOne);
+      expect(find.textContaining('needs a connection'), findsNothing);
+    });
+
+    testWidgets('Ask unlocks when the connection comes back', (tester) async {
+      final connection = ConnectionStatus(online: false);
+      await pumpBook(tester, connection: connection);
+      await openTab(tester, 'Ask');
+
+      connection.isOnline = true;
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('needs a connection'), findsNothing);
+    });
+
+    testWidgets('the banner can be dismissed; the header chip stays', (
+      tester,
+    ) async {
+      final connection = ConnectionStatus(online: false);
+      await pumpBook(tester, connection: connection);
+
+      expect(connection.showOfflineBanner, isTrue);
+      expect(find.text('OFFLINE'), findsOne);
+
+      await tester.tap(find.byTooltip('Dismiss'));
+      await tester.pumpAndSettle();
+
+      expect(connection.showOfflineBanner, isFalse);
+      expect(find.text('OFFLINE'), findsOne);
+    });
+
+    testWidgets('going offline again brings the banner back', (tester) async {
+      final connection = ConnectionStatus(online: false)
+        ..dismissOfflineBanner();
+      await pumpBook(tester, connection: connection);
+
+      connection
+        ..isOnline = true
+        ..isOnline = false;
+      await tester.pumpAndSettle();
+
+      expect(connection.showOfflineBanner, isTrue);
+    });
+
+    testWidgets('online shows no banner or chip', (tester) async {
+      final connection = ConnectionStatus();
+      await pumpBook(tester, connection: connection);
+
+      expect(connection.showOfflineBanner, isFalse);
+      expect(find.text('OFFLINE'), findsNothing);
+    });
   });
 }

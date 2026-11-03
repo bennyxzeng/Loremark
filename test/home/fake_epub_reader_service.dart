@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import 'package:loremark/reader/epub_reader_service.dart';
 import 'package:loremark/reader/reader_position.dart';
 import 'package:loremark/reader/reading_position_store.dart';
+import 'package:loremark/reading/text_position.dart';
 
 /// A reader service that opens [FakeEpubReaderSession]s, so widget tests
 /// never touch native code.
@@ -73,12 +74,34 @@ class FakeEpubReaderSession implements EpubReaderSession {
   /// The `initialPosition` of every [buildView] call.
   final List<ReaderPosition?> builtViews = [];
   final List<TocEntry> goToCalls = [];
+
+  /// Every position [goToPosition] was asked to go to.
+  final List<ReaderPosition> goToPositionCalls = [];
+
+  /// If set, [goToPosition] fails with it.
+  Object? goToPositionError;
+  final List<PassageTarget> shownPassages = [];
+
+  /// How often the passage highlight was cleared.
+  int clearHighlightCalls = 0;
   int forwardCalls = 0;
   int backwardCalls = 0;
   int closeCalls = 0;
 
   /// Whether the screen is still listening to [positions].
   bool get hasListener => _positions.hasListener;
+
+  final StreamController<TocEntry> _chapters =
+      StreamController<TocEntry>.broadcast();
+
+  /// Reports the chapter the renderer says the reader is in.
+  void emitChapter(TocEntry chapter) => _chapters.add(chapter);
+
+  final StreamController<TextPosition> _pageTextEnds =
+      StreamController<TextPosition>.broadcast();
+
+  /// Reports how far the text on the page the reader is on goes.
+  void emitPageTextEnd(TextPosition end) => _pageTextEnds.add(end);
 
   /// Pretends the reader moved to [position].
   void emit(ReaderPosition position) => _positions.add(position);
@@ -93,16 +116,40 @@ class FakeEpubReaderSession implements EpubReaderSession {
   Stream<ReaderPosition> get positions => _positions.stream;
 
   @override
+  Stream<TextPosition> get pageTextEnds => _pageTextEnds.stream;
+
+  @override
+  Stream<TocEntry> get chapterChanges => _chapters.stream;
+
+  @override
   Widget buildView({ReaderPosition? initialPosition}) {
     builtViews.add(initialPosition);
     return const Text('Fake reader view');
   }
 
-  @override
-  Future<void> goTo(TocEntry entry) async => goToCalls.add(entry);
+  /// If set, [goTo] waits for it before it returns.
+  Completer<void>? goToGate;
 
   @override
-  Future<void> goToPosition(ReaderPosition position) async {}
+  Future<void> goTo(TocEntry entry) async {
+    goToCalls.add(entry);
+    await goToGate?.future;
+  }
+
+  @override
+  Future<void> goToPosition(ReaderPosition position) async {
+    goToPositionCalls.add(position);
+    if (goToPositionError case final error?) {
+      throw error;
+    }
+  }
+
+  @override
+  Future<void> showPassage(PassageTarget target) async =>
+      shownPassages.add(target);
+
+  @override
+  Future<void> clearPassageHighlight() async => clearHighlightCalls++;
 
   @override
   Future<void> goForward() async => forwardCalls++;
@@ -114,6 +161,8 @@ class FakeEpubReaderSession implements EpubReaderSession {
   Future<void> close() async {
     closeCalls++;
     await _positions.close();
+    await _pageTextEnds.close();
+    await _chapters.close();
   }
 }
 

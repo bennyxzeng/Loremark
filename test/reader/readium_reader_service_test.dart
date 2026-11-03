@@ -105,37 +105,138 @@ void main() {
 
       expect(positionFromLocator(locator, _indexOf)?.progression, 1.0);
     });
+  });
+
+  group('the last page of a section', () {
+    Locations pages(int current, int total, double? progression) => Locations(
+      progression: progression,
+      additionalProperties: {'currentPage': current, 'totalPages': total},
+    );
+
+    // Values from the Android emulator, a book read right to left: Readium
+    // numbers the pages of a file backwards, 113 of 114 first, then 112.
+    test('a right-to-left file is not finished on its first page', () {
+      expect(isLastPage(pages(113, 114, 0.0)), isFalse);
+      expect(isLastPage(pages(112, 114, 0.00876395003167696)), isFalse);
+      expect(isLastPage(pages(111, 114, 0.01755226693091183)), isFalse);
+      expect(pageIndexOf(pages(113, 114, 0.0)), 0);
+      expect(pageIndexOf(pages(112, 114, 0.00876395003167696)), 1);
+    });
+
+    test('a right-to-left file is finished on its last page, which is 0', () {
+      expect(isLastPage(pages(0, 114, 113 / 114)), isTrue);
+      expect(isLastPage(pages(1, 114, 112 / 114)), isFalse);
+    });
+
+    test('a right-to-left position keeps the page start until the end', () {
+      Locator rtl(int current, double progression) => Locator(
+        href: 'OEBPS/ch1.xhtml',
+        type: _xhtml,
+        locations: pages(current, 114, progression),
+      );
+
+      expect(
+        positionFromLocator(rtl(113, 0.0), _indexOf),
+        const ReaderPosition(1, 0.0),
+      );
+      expect(
+        positionFromLocator(rtl(50, 63 / 114), _indexOf),
+        ReaderPosition(1, 63 / 114),
+      );
+      expect(
+        positionFromLocator(rtl(0, 113 / 114), _indexOf),
+        const ReaderPosition(1, 1.0),
+      );
+    });
+
+    // Values from the same device for a book read left to right.
+    test('a left-to-right file is as before', () {
+      expect(isLastPage(pages(0, 5, 0.0)), isFalse);
+      expect(isLastPage(pages(1, 5, 0.19970359392367543)), isFalse);
+      expect(isLastPage(pages(3, 5, 0.6000370507595406)), isFalse);
+      expect(isLastPage(pages(4, 5, 0.8)), isTrue);
+      expect(pageIndexOf(pages(1, 5, 0.19970359392367543)), 1);
+    });
+
+    test('a one-page file is finished on its only page either way', () {
+      expect(isLastPage(pages(0, 1, 0.0)), isTrue);
+      expect(isLastPage(pages(0, 1, null)), isTrue);
+    });
+
+    test('without a progression the page number is taken as it is', () {
+      expect(isLastPage(pages(4, 5, null)), isTrue);
+      expect(isLastPage(pages(3, 5, null)), isFalse);
+      expect(pageIndexOf(pages(2, 5, null)), 2);
+    });
+
+    test('is not known without page numbers', () {
+      expect(isLastPage(const Locations(progression: 0.9)), isFalse);
+      expect(isLastPage(null), isFalse);
+      expect(pageIndexOf(const Locations(progression: 0.9)), isNull);
+      expect(pageIndexOf(pages(0, 0, 0.5)), isNull);
+      expect(isLastPage(pages(0, 0, 0.5)), isFalse);
+    });
+
+    test('is right for every page of files of 1 to 200 pages, both ways', () {
+      for (var total = 1; total <= 200; total++) {
+        for (var page = 0; page < total; page++) {
+          // The progression is a little off the exact page start, as seen.
+          for (final noise in [-0.3, 0.0, 0.3]) {
+            final progression = ((page + noise) / total).clamp(0.0, 1.0);
+            final ltr = pages(page, total, progression);
+            final rtl = pages(total - 1 - page, total, progression);
+            final last = page == total - 1;
+            final why = 'page $page of $total, noise $noise';
+            expect(isLastPage(ltr), last, reason: 'left to right, $why');
+            expect(isLastPage(rtl), last, reason: 'right to left, $why');
+          }
+        }
+      }
+    });
 
     group('on iOS', () {
-      // iOS reports a one-based currentPage: 1, 2 and 3 for a 3-page section.
+      // iOS numbers the pages of a file from 1: 1 to 5 for a 5-page file.
       setUp(() => debugDefaultTargetPlatformOverride = TargetPlatform.iOS);
       tearDown(() => debugDefaultTargetPlatformOverride = null);
 
-      test('the second to last page is not reported as finished', () {
-        expect(
-          positionFromLocator(paged(2, 0.3329215565163681), _indexOf),
-          const ReaderPosition(1, 0.3329215565163681),
-        );
-      });
-
-      test('reports the last page of a section as exactly 1.0', () {
-        expect(
-          positionFromLocator(paged(3, 0.6664607782581841), _indexOf),
-          const ReaderPosition(1, 1.0),
-        );
-      });
-
-      test('a one-page section is finished on its only page', () {
+      test('the second to last page is not finished', () {
         final locator = Locator(
-          href: 'OEBPS/cover.xhtml',
+          href: 'OEBPS/ch1.xhtml',
           type: _xhtml,
-          locations: Locations(
-            progression: 0,
-            additionalProperties: {'currentPage': 1, 'totalPages': 1},
-          ),
+          locations: pages(4, 5, 0.6),
         );
 
-        expect(positionFromLocator(locator, _indexOf)?.progression, 1.0);
+        expect(isLastPage(pages(4, 5, 0.6)), isFalse);
+        expect(
+          positionFromLocator(locator, _indexOf),
+          const ReaderPosition(1, 0.6),
+        );
+      });
+
+      test('the last page is finished', () {
+        expect(isLastPage(pages(5, 5, 0.8)), isTrue);
+        expect(isLastPage(pages(1, 1, 0.0)), isTrue);
+      });
+
+      test('page numbers are counted from 0, as on Android', () {
+        expect(pageIndexOf(pages(1, 5, 0.0)), 0);
+        expect(pageIndexOf(pages(2, 5, 0.2)), 1);
+        expect(pageIndexOf(pages(3, 5, null)), 2);
+      });
+
+      test('is right for every page of files of 1 to 200 pages', () {
+        for (var total = 1; total <= 200; total++) {
+          for (var page = 0; page < total; page++) {
+            for (final noise in [-0.3, 0.0, 0.3]) {
+              final progression = ((page + noise) / total).clamp(0.0, 1.0);
+              expect(
+                isLastPage(pages(page + 1, total, progression)),
+                page == total - 1,
+                reason: 'page $page of $total, noise $noise',
+              );
+            }
+          }
+        }
       });
     });
   });
@@ -249,6 +350,57 @@ void main() {
       final decoded = Locator.fromJson(locator!.toJson());
 
       expect(positionFromLocator(decoded!, _indexOf), position);
+    });
+  });
+
+  group('locatorForPassage', () {
+    final readingOrder = [
+      for (final href in _hrefs) Link(href: href, type: _xhtml),
+    ];
+    const target = PassageTarget(
+      sectionIndex: 2,
+      progression: 0.25,
+      highlight: 'a grey cat',
+      before: 'There was ',
+      after: ' on the wall',
+    );
+
+    test('carries the href, progression and text quote', () {
+      final locator = locatorForPassage(target, readingOrder, _indexOf);
+
+      expect(locator?.href, 'OEBPS/Chap%20ter%203%20%C3%A9.xhtml');
+      expect(locator?.type, _xhtml);
+      expect(locator?.locations?.progression, 0.25);
+      expect(locator?.text?.highlight, 'a grey cat');
+      expect(locator?.text?.before, 'There was ');
+      expect(locator?.text?.after, ' on the wall');
+    });
+
+    test('keeps the quote through the JSON sent to the native view', () {
+      final locator = locatorForPassage(target, readingOrder, _indexOf);
+
+      final decoded = Locator.fromJson(locator!.toJson());
+
+      expect(decoded?.text?.highlight, 'a grey cat');
+      expect(decoded?.text?.before, 'There was ');
+      expect(decoded?.locations?.progression, 0.25);
+    });
+
+    test('is null for a section missing from the reading order', () {
+      final locator = locatorForPassage(
+        const PassageTarget(sectionIndex: 5, progression: 0.5, highlight: 'x'),
+        readingOrder,
+        _indexOf,
+      );
+
+      expect(locator, isNull);
+    });
+  });
+
+  group('passageHighlightStyle', () {
+    test('always has a tint, which Android needs to draw anything', () {
+      expect(passageHighlightStyle.tint, isNotNull);
+      expect(passageHighlightStyle.toJson()['tint'], isA<String>());
     });
   });
 

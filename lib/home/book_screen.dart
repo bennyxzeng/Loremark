@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 
 import '../library/book.dart';
 import '../reader/readium_reader_service.dart';
+import '../settings/ai_lock.dart';
+import '../search/search_index_store.dart';
 import '../story_map/story_map_screen.dart';
 import '../story_model/story_model.dart';
 import '../story_model/story_model_loader.dart';
 import '../theme/loremark_theme.dart';
 import 'ask_screen.dart';
 import 'notes_screen.dart';
+import 'offline_banner.dart';
 import 'read_screen.dart';
 import 'reader_header.dart';
 
@@ -45,16 +48,35 @@ class _BookScreenState extends State<BookScreen> {
               onOpenLibrary: () => Navigator.of(context).maybePop(),
             ),
             Expanded(
-              child: IndexedStack(
-                index: _selectedTab,
+              child: Stack(
                 children: [
-                  ReadScreen(
-                    book: widget.book,
-                    readerService: const ReadiumReaderService(),
+                  IndexedStack(
+                    index: _selectedTab,
+                    children: [
+                      ReadScreen(
+                        book: widget.book,
+                        readerService: const ReadiumReaderService(),
+                        openSearch: () => openPassageSearch(
+                          bookId: widget.book.id,
+                          epubPath: widget.book.epubPath,
+                        ),
+                      ),
+                      const AiLock(
+                        feature: 'Ask',
+                        needsConnection: true,
+                        child: AskScreen(),
+                      ),
+                      const NotesScreen(),
+                      // A built map is stored data, so it stays readable offline.
+                      AiLock(feature: 'Story Map', child: _buildStoryMapTab()),
+                    ],
                   ),
-                  const AskScreen(),
-                  const NotesScreen(),
-                  _buildStoryMapTab(),
+                  const Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    child: OfflineBanner(),
+                  ),
                 ],
               ),
             ),

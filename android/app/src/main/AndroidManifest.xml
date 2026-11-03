@@ -1,4 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Ask and Story Map call the reader's AI provider. -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <application
         android:label="loremark"
         android:name="${applicationName}"
