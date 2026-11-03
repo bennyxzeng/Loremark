@@ -71,15 +71,15 @@ Each ID links to its GitHub issue (#17 to #52). Commit hashes link to `https://g
 | [INS-07](https://github.com/bennyxzeng/Loremark/issues/41) | 2026-11-01 | P2 | bug | The reading log could grow past its size limit, and pace mixed languages | Fixed, PR #13 | `235d40b` |
 | [INS-08](https://github.com/bennyxzeng/Loremark/issues/42) | 2026-11-01 | P2 | usability | A book opened for the first time showed numbers that looked like its own data | Fixed, PR #13 | `4ffa8e5` |
 | [INS-09](https://github.com/bennyxzeng/Loremark/issues/43) | 2026-11-01 | P2 | bug | The story model loading text lost its "…" | Fixed, PR #13 | `1a2ec6d` |
-| [CI-01](https://github.com/bennyxzeng/Loremark/issues/44) | 2026-11-01 | P0 | test harness | The privacy capture check passed while looking at zero packets | Fixed | `3a112fc` (PR #11) |
-| [CI-02](https://github.com/bennyxzeng/Loremark/issues/45) | 2026-11-01 | P1 | test harness | The emulator workflow could not build the app (wrong Java version) | Fixed | `0fbc21c` (PR #11) |
-| [CI-03](https://github.com/bennyxzeng/Loremark/issues/46) | 2026-11-01 | P1 | test harness | The harness waited forever for the network after airplane mode | Fixed | `361033a` (PR #11) |
-| [CI-04](https://github.com/bennyxzeng/Loremark/issues/47) | 2026-11-01 | P1 | test harness | One force-quit trial failed on a rounding difference, not a real wrong page | Fixed | `27f5fae` (PR #11) |
-| [CI-05](https://github.com/bennyxzeng/Loremark/issues/48) | 2026-11-01 | P2 | test harness | CI failed whenever the capture could not be checked, even with every real check passing | Worked around | `e0d5fc8` (PR #11) |
-| [OPEN-01](https://github.com/bennyxzeng/Loremark/issues/49) | 2026-11-02 | P2 | test harness | One iOS-fix test fails on Windows only | Open | |
+| [CI-01](https://github.com/bennyxzeng/Loremark/issues/44) | 2026-11-01 | P0 | test-harness | The privacy capture check passed while looking at zero packets | Fixed | `3a112fc` (PR #11) |
+| [CI-02](https://github.com/bennyxzeng/Loremark/issues/45) | 2026-11-01 | P1 | test-harness | The emulator workflow could not build the app (wrong Java version) | Fixed | `0fbc21c` (PR #11) |
+| [CI-03](https://github.com/bennyxzeng/Loremark/issues/46) | 2026-11-01 | P1 | test-harness | The harness waited forever for the network after airplane mode | Fixed | `361033a` (PR #11) |
+| [CI-04](https://github.com/bennyxzeng/Loremark/issues/47) | 2026-11-01 | P1 | test-harness | One force-quit trial failed on a rounding difference, not a real wrong page | Fixed | `27f5fae` (PR #11) |
+| [CI-05](https://github.com/bennyxzeng/Loremark/issues/48) | 2026-11-01 | P2 | test-harness | CI failed whenever the capture could not be checked, even with every real check passing | Worked around | `e0d5fc8` (PR #11) |
+| [OPEN-01](https://github.com/bennyxzeng/Loremark/issues/49) | 2026-11-02 | P2 | test-harness | One iOS-fix test fails on Windows only | Open | |
 | [OPEN-02](https://github.com/bennyxzeng/Loremark/issues/50) | 2026-11-02 | P1 | AI-quality | Story-model quotes from the LLM differ from the book's text and fail validation | Open | |
 | [OPEN-03](https://github.com/bennyxzeng/Loremark/issues/51) | 2026-11-02 | P1 | bug | Building after pulling `main` looped for 15 minutes on Vitalii's machine | Open, cause unknown | |
-| [OPEN-04](https://github.com/bennyxzeng/Loremark/issues/52) | 2026-11-01 | P2 | test harness | The emulator capture never contains the harness's DNS check lookups | Open, cause unknown | |
+| [OPEN-04](https://github.com/bennyxzeng/Loremark/issues/52) | 2026-11-01 | P2 | test-harness | The emulator capture never contains the harness's DNS check lookups | Open, cause unknown | |
 
 ## Details
 

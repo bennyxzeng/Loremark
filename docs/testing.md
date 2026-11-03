@@ -6,9 +6,9 @@ describes something we have not built or run, this page says so.
 
 ## At a glance
 
-- **Tests in CI:** CI runs `flutter test --exclude-tags "live || benchmark"` on every push and
-  pull request. The same command run in full on Windows on 2026-11-02 found 726 tests:
-  724 passed, 1 skipped, 1 failed. The skip is the 50-book corpus test, which needs the books
+- **Tests in CI:** CI runs `flutter test --coverage --exclude-tags "live || benchmark"` on every
+  push and pull request. The same command run in full on Windows on 2026-11-02 found 741 tests:
+  739 passed, 1 skipped, 1 failed. The skip is the 50-book corpus test, which needs the books
   (`LOREMARK_CORPUS`). The failure is one test of how file locations are passed to Android
   (`readium_session_test.dart`, "Android receives an encoded file URI"). It fails only on
   Windows, because Windows paths use `\` (issue #49), and it passes on the Linux CI runner.
@@ -20,7 +20,9 @@ describes something we have not built or run, this page says so.
   50-book corpus ([corpus-testing.md](corpus-testing.md)). Neither runs in CI.
 - **Bug tracking:** 36 bugs are in GitHub Issues (32 closed, 4 open), listed in
   [bug-log.md](bug-log.md).
-- **Code coverage:** <!-- CODE COVERAGE NUMBER -->
+- **Code coverage:** 94.6% of the lines in `lib/` run during the CI tests (3,231 of 3,415
+  lines), and every file in `lib/` is loaded by at least one test. See
+  [Code coverage](#code-coverage) for what this number does and does not show.
 
 Not tested yet: everything that needs the AI client (which does not exist in `lib/` yet), notes
 and theories on `ui`, the end-to-end flow as an `integration_test`, the weekly spoiler review and
@@ -220,7 +222,53 @@ branch.
 
 ## Code coverage
 
-<!-- CODE COVERAGE SECTION -->
+Coverage counts which lines of `lib/` ran while the tests ran. It says nothing about whether the
+tests check the right things: a line can run without anything being asserted about it. The
+spoiler-safety tests in the [status table](#test-plan-status) are the stronger evidence; coverage
+shows where no test reaches at all.
+
+To see it locally, from the repository root:
+
+```bash
+flutter test --coverage --exclude-tags "live || benchmark"
+dart run tool/coverage/report.dart
+```
+
+This prints the overall line percentage and a table per folder under `lib/`. The raw data is
+`coverage/lcov.info`, which git ignores. The report is `tool/coverage/report.dart`; its parsing is
+unit tested in `test/coverage/lcov_test.dart`.
+
+In CI, open the run and read the job summary, which shows the same report. The raw `lcov.info`
+is attached to the run as the `coverage` artifact for 14 days. The report and the upload also run
+when a test fails, so a red build still shows the numbers.
+
+Result on 2026-11-02 (branch `docs/testing-evidence`, same as `ui` for `lib/`):
+
+| Folder | Lines covered | % |
+| :--- | ---: | ---: |
+| `lib/reading` | 75 of 75 | 100.0% |
+| `lib/theme` | 31 of 31 | 100.0% |
+| `lib/story_model` | 295 of 297 | 99.3% |
+| `lib/search` | 1,181 of 1,218 | 97.0% |
+| `lib/home` | 316 of 327 | 96.6% |
+| `lib/reader` | 515 of 537 | 95.9% |
+| `lib/story_map` | 569 of 636 | 89.5% |
+| `lib/library` | 244 of 283 | 86.2% |
+| `lib` (`main.dart`) | 5 of 11 | 45.5% |
+| **All of `lib/`** | **3,231 of 3,415** | **94.6%** |
+
+The number cannot see everything:
+
+- Flutter only records files that some test loads, so a file no test imports would be left out
+  and make the percentage look better than it is. The report scans `lib/` and lists those files
+  separately under "Not loaded by any test"; they are not counted. Today the list is empty.
+- It cannot see native Android and iOS code or the Readium plugin. The reader tests use a fake
+  reader, so the real renderer is only exercised on the emulator.
+- It cannot see the checks that need a device, which run in the emulator workflow.
+
+There is no minimum threshold yet. The report never fails a build while the team adds tests for
+the features still being merged (notes, the story model, the AI client). We can set a minimum
+once the number is stable.
 
 ## Bug tracking
 
@@ -268,10 +316,11 @@ issues: 32 closed and 4 open. Ten are P0 (nine in the app, one in the test harne
 - Latest passing emulator acceptance run (20 of 20 force-quits, offline reading, open from the
   library, 0 bytes of app traffic):
   [run 41586486304](https://github.com/bennyxzeng/Loremark/actions/runs/41586486304).
-- Full local test run, 2026-11-02, Windows, `flutter test --exclude-tags "live || benchmark"`:
-  726 tests, 724 passed, 1 skipped, 1 failed. Passed per folder: `test/reader` 245,
-  `test/search` 184, `test/acceptance` 119, `test/home` 69, `test/corpus` 33 (plus the skipped
-  corpus test), `test/reading` 30, `test/library` 20, `test/story_model` 14, `test/story_map` 6,
+- Full local test run, 2026-11-02, Windows,
+  `flutter test --coverage --exclude-tags "live || benchmark"`: 741 tests, 739 passed, 1 skipped,
+  1 failed. Passed per folder: `test/reader` 245, `test/search` 184, `test/acceptance` 119,
+  `test/home` 69, `test/corpus` 33 (plus the skipped corpus test), `test/reading` 30,
+  `test/library` 20, `test/coverage` 15, `test/story_model` 14, `test/story_map` 6,
   `test/widget_test.dart` 3, `test/support` 1. The failing test is "native file location
   Android receives an encoded file URI" (issue #49, Windows only).
 - Bug issues #17 to #52, listed in [bug-log.md](bug-log.md).
