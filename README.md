@@ -149,7 +149,7 @@ cd Loremark
 flutter pub get
 dart format .
 flutter analyze
-flutter test --exclude-tags live
+flutter test --exclude-tags "live || benchmark"
 ```
 
 See [docs/testing.md](docs/testing.md) for how to add a test and how CI works.
