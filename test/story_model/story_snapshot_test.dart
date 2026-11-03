@@ -100,6 +100,59 @@ void main() {
       expect(chapter2.firstSeenSection('c001').id, 's1');
     });
 
+    group('reveals', () {
+      StorySnapshot chapter2Of(void Function(Map<String, dynamic>) change) {
+        final json = storyModelFixtureJson();
+        change(json['records'] as Map<String, dynamic>);
+        final model = StoryModel.fromJson(json);
+        return StorySnapshot(model, model.sections[1]);
+      }
+
+      Map<String, dynamic> payloadOf(List<dynamic> records, String id) =>
+          (records.cast<Map<String, dynamic>>().singleWhere(
+                (record) => record['id'] == id,
+              ))['payload']
+              as Map<String, dynamic>;
+
+      test('an explicit identity link reveals who both sides are', () {
+        expect(chapter2.isRevealedEntity('c002'), isTrue);
+        expect(chapter2.isRevealedEntity('c004'), isTrue);
+      });
+
+      test('an inferred identity link reveals nothing', () {
+        final snapshot = chapter2Of((records) {
+          payloadOf(records['identity_links'] as List, 'f018')['assertion'] =
+              'inferred';
+        });
+
+        expect(snapshot.isRevealedEntity('c002'), isFalse);
+      });
+
+      test('a name spelled out in full reveals nothing', () {
+        expect(chapter2.displayName('c001'), 'Mara Quinn');
+        expect(chapter2.isRevealedEntity('c001'), isFalse);
+      });
+
+      test('an unrelated new name is a reveal', () {
+        final snapshot = chapter2Of((records) {
+          payloadOf(records['names'] as List, 'f006')['text'] = 'Captain Rowe';
+        });
+
+        expect(snapshot.isRevealedEntity('c001'), isTrue);
+      });
+
+      test('an entity nothing happened to is not revealed', () {
+        expect(chapter2.isRevealedEntity('c003'), isFalse);
+      });
+
+      test('nothing is revealed before the chapter that reveals it', () {
+        final snapshot = chapter1;
+
+        expect(snapshot.isRevealedEntity('c002'), isFalse);
+        expect(snapshot.isRevealedEntity('c001'), isFalse);
+      });
+    });
+
     test('describes relationships with current names', () {
       final [relationship] = chapter2.relationshipsOf('c003');
       expect(

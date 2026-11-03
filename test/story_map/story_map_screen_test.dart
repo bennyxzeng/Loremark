@@ -154,7 +154,8 @@ void main() {
       // The sheet covers the filter chips of the same names, which stay built.
       expect(find.text('organization'), findsNWidgets(2));
       expect(find.text('location'), findsNWidgets(2));
-      expect(find.text('New in Chapter 2'), findsNWidgets(2));
+      expect(find.text('New or revealed in Chapter 2'), findsOne);
+      expect(find.text('New in Chapter 2'), findsOne);
       expect(find.byType(GraphLegendSample), findsNWidgets(10));
       expect(
         find.byWidgetPredicate(
@@ -172,7 +173,8 @@ void main() {
       await tester.tap(guideButton);
       await tester.pumpAndSettle();
 
-      expect(find.text('New in Chapter 1'), findsNWidgets(2));
+      expect(find.text('New or revealed in Chapter 1'), findsOne);
+      expect(find.text('New in Chapter 1'), findsOne);
     });
 
     testWidgets('closing it keeps the filters as they were', (tester) async {

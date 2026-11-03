@@ -63,8 +63,10 @@ class GraphGuideView extends StatelessWidget {
         ),
         _LegendRow(
           sample: GraphLegendSample.node(EntityKind.character, isNew: true),
-          title: 'New in $sectionLabel',
-          detail: 'Bold outline and name.',
+          title: 'New or revealed in $sectionLabel',
+          detail:
+              'Bold outline and name. Revealed means you learn who they '
+              'really are.',
         ),
         const FactHeading('Lines'),
         const _LegendRow(
