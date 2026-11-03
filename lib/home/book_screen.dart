@@ -66,7 +66,12 @@ class _BookScreenState extends State<BookScreen> {
                         needsConnection: true,
                         child: AskScreen(),
                       ),
-                      const NotesScreen(),
+                      // Tapping a note goes back to the Read tab. Jumping to the
+                      // exact passage comes with the Readium notes hookup.
+                      NotesScreen(
+                        book: widget.book,
+                        onOpenNote: (_) => _selectTab(0),
+                      ),
                       // A built map is stored data, so it stays readable offline.
                       AiLock(feature: 'Story Map', child: _buildStoryMapTab()),
                     ],
