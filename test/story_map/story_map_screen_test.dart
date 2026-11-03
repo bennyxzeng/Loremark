@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:loremark/story_map/chapter_digest_view.dart';
 import 'package:loremark/story_map/character_graph_view.dart';
+import 'package:loremark/story_map/story_facts.dart';
 import 'package:loremark/story_map/story_map_screen.dart';
+import 'package:loremark/story_model/story_model.dart';
 
 import '../story_model/story_model_fixture.dart';
 
@@ -64,7 +67,7 @@ void main() {
     await tester.tap(find.text('Mara Quinn'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Character · First seen in Chapter 1'), findsOne);
+    expect(find.text('character · First seen in Chapter 1'), findsOne);
     expect(find.text('Also known as the harbor girl'), findsOne);
     expect(find.text('role: dock clerk'), findsOne);
     expect(find.text('age: sixteen'), findsNothing);
@@ -77,6 +80,50 @@ void main() {
     expect(find.text('What’s new in Chapter 2: The Letter'), findsOne);
     expect(find.text('Mara → Mara Quinn'), findsOne);
     expect(find.widgetWithText(ActionChip, 'Elian'), findsOne);
+  });
+
+  testWidgets('events show the temporal context as the model words it', (
+    tester,
+  ) async {
+    await pumpStoryMap(tester);
+    await showTab(tester, 'Chapter');
+
+    await tester.scrollUntilVisible(
+      find.text('1. Elian left home years ago.  past'),
+      200,
+      scrollable: find.descendant(
+        of: find.byType(ChapterDigestView),
+        matching: find.byType(Scrollable),
+      ),
+    );
+
+    expect(find.text('1. Elian left home years ago.  past'), findsOne);
+    expect(find.textContaining('flashback'), findsNothing);
+  });
+
+  testWidgets('entity kinds show as the model words them', (tester) async {
+    await pumpStoryMap(tester);
+
+    expect(find.widgetWithText(FilterChip, 'organization'), findsOne);
+    expect(find.widgetWithText(FilterChip, 'location'), findsOne);
+
+    await showTab(tester, 'Chapter');
+    await slideToFirstChapter(tester);
+
+    expect(find.text('New locations and organizations'), findsOne);
+
+    await tester.tap(find.widgetWithText(ActionChip, 'Harbor Guild'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('organization · First seen in Chapter 1'), findsOne);
+  });
+
+  test('every temporal context but current is tagged with its own name', () {
+    expect(temporalTags(TemporalContext.current), isEmpty);
+    expect(temporalTags(TemporalContext.past), ['past']);
+    expect(temporalTags(TemporalContext.future), ['future']);
+    expect(temporalTags(TemporalContext.hypothetical), ['hypothetical']);
+    expect(temporalTags(TemporalContext.unknown), ['unknown']);
   });
 
   test('graph layout is the same every time', () {

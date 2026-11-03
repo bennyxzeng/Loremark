@@ -62,7 +62,7 @@ class ChapterDigestView extends StatelessWidget {
           _chips(newCharacters),
         ],
         if (newPlacesAndGroups.isNotEmpty) ...[
-          const FactHeading('New places and groups'),
+          const FactHeading('New locations and organizations'),
           _chips(newPlacesAndGroups),
         ],
         if (relationships.isNotEmpty) ...[
@@ -73,8 +73,7 @@ class ChapterDigestView extends StatelessWidget {
               text: snapshot.describe(record.payload),
               detail: record.payload.description,
               tags: [
-                if (record.payload.temporalContext == TemporalContext.past)
-                  'past',
+                ...temporalTags(record.payload.temporalContext),
                 ...assertionTags(record.payload.assertion),
               ],
             ),
@@ -89,8 +88,7 @@ class ChapterDigestView extends StatelessWidget {
                   '${record.payload.description}',
               detail: _participants(record.payload),
               tags: [
-                if (record.payload.temporalContext == TemporalContext.past)
-                  'flashback',
+                ...temporalTags(record.payload.temporalContext),
                 ...assertionTags(record.payload.assertion),
               ],
             ),

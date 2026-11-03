@@ -95,16 +95,14 @@ List<String> assertionTags(Assertion assertion) => switch (assertion) {
   Assertion.inferred => const ['inferred'],
 };
 
+/// The model's `temporal_context`, word for word. `current` is the default and
+/// gets no tag.
+List<String> temporalTags(TemporalContext context) =>
+    context == TemporalContext.current ? const [] : [context.name];
+
 /// The answer to [question], or null while it is still open.
 String? answerText(StoryQuestion question) => switch (question.resolution) {
   final resolution? =>
     'Answered: ${resolution.resolution ?? resolution.reason}',
   null => null,
-};
-
-/// A label for the kind of an entity, such as "Character".
-String entityKindLabel(EntityKind kind) => switch (kind) {
-  EntityKind.character => 'Character',
-  EntityKind.location => 'Place',
-  EntityKind.organization => 'Group',
 };

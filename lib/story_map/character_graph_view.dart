@@ -279,12 +279,12 @@ class _CharacterGraphViewState extends State<CharacterGraphView> {
             spacing: 8,
             children: [
               FilterChip(
-                label: const Text('Groups'),
+                label: Text(EntityKind.organization.name),
                 selected: _showGroups,
                 onSelected: (value) => setState(() => _showGroups = value),
               ),
               FilterChip(
-                label: const Text('Places'),
+                label: Text(EntityKind.location.name),
                 selected: _showPlaces,
                 onSelected: (value) => setState(() => _showPlaces = value),
               ),
