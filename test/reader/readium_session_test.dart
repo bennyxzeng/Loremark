@@ -378,7 +378,9 @@ void main() {
 
       final uri = Uri.parse(fake.openedLocation!);
       expect(uri.scheme, 'file');
-      expect(uri.toFilePath(), File(path).absolute.path);
+      // Windows accepts mixed separators, but URI decoding normalizes them.
+      // Compare file URIs so equivalent paths don't fail a string comparison.
+      expect(uri, File(path).absolute.uri);
       expect(await File.fromUri(uri).exists(), isTrue);
     });
   });
