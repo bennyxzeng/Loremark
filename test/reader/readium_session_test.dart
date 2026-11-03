@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_readium/flutter_readium.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loremark/reader/epub_reader_service.dart';
@@ -35,6 +36,8 @@ class _FakeReadiumPlatform extends FlutterReadiumPlatform
   /// The file name of the book that is open now, or null.
   String? openBook;
 
+  String? openedLocation;
+
   /// If set, a close waits for it before it finishes.
   Completer<void>? closeGate;
 
@@ -45,6 +48,7 @@ class _FakeReadiumPlatform extends FlutterReadiumPlatform
 
   @override
   Future<Publication> openPublication(String pubUrl) async {
+    openedLocation = pubUrl;
     final name = Uri.parse(pubUrl).pathSegments.last;
     calls.add('open $name');
     openBook = name;
@@ -165,6 +169,7 @@ void main() {
   });
 
   tearDown(() async {
+    debugDefaultTargetPlatformOverride = null;
     // The service keeps the open session in a static, so none may outlive
     // its test.
     for (final session in opened) {
@@ -172,6 +177,30 @@ void main() {
     }
     opened.clear();
     await temp.delete(recursive: true);
+  });
+
+  group('native file location', () {
+    test('iOS receives an unescaped absolute path', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      final path = await writeBook('86 第 1 卷.epub');
+
+      await open(path);
+
+      expect(fake.openedLocation, File(path).absolute.path);
+      expect(await File(fake.openedLocation!).exists(), isTrue);
+    });
+
+    test('Android receives an encoded file URI', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      final path = await writeBook('86 第 1 卷.epub');
+
+      await open(path);
+
+      final uri = Uri.parse(fake.openedLocation!);
+      expect(uri.scheme, 'file');
+      expect(uri.toFilePath(), File(path).absolute.path);
+      expect(await File.fromUri(uri).exists(), isTrue);
+    });
   });
 
   group('close', () {
