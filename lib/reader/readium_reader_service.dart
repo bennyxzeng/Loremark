@@ -502,7 +502,7 @@ ReaderPosition? positionFromLocator(
 }
 
 /// Whether [locations] is on the last page of its section, from the
-/// zero-based `currentPage` and `totalPages` the plugin adds to full locators.
+/// `currentPage` and `totalPages` the plugin adds to full locators.
 ///
 /// A book read right to left numbers its pages the other way: the first page
 /// of a file is `totalPages - 1` and the last is 0. Taken at face value that
@@ -527,14 +527,22 @@ bool isLastPage(Locations? locations) {
 /// `progression * totalPages` is about the page. Whichever of `currentPage` and
 /// its mirror is closer to that is the page. Without a progression,
 /// `currentPage` is taken as it is.
+///
+/// flutter_readium 0.8.0 counts pages differently per platform: Android passes
+/// the Kotlin navigator's zero-based page index, while iOS reads a one-based
+/// page number from its JavaScript helper, so iOS numbers are moved down by
+/// one first.
 @visibleForTesting
 int? pageIndexOf(Locations? locations) {
   final properties = locations?.additionalProperties;
-  final currentPage = properties?['currentPage'];
+  final pageNumber = properties?['currentPage'];
   final totalPages = properties?['totalPages'];
-  if (currentPage is! int || totalPages is! int || totalPages <= 0) {
+  if (pageNumber is! int || totalPages is! int || totalPages <= 0) {
     return null;
   }
+  final currentPage = defaultTargetPlatform == TargetPlatform.iOS
+      ? pageNumber - 1
+      : pageNumber;
   final progression = locations?.progression;
   if (progression == null) return currentPage;
   final expected = progression * totalPages;

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_readium/flutter_readium.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loremark/reader/epub_reader_service.dart';
@@ -191,6 +192,52 @@ void main() {
           }
         }
       }
+    });
+
+    group('on iOS', () {
+      // iOS numbers the pages of a file from 1: 1 to 5 for a 5-page file.
+      setUp(() => debugDefaultTargetPlatformOverride = TargetPlatform.iOS);
+      tearDown(() => debugDefaultTargetPlatformOverride = null);
+
+      test('the second to last page is not finished', () {
+        final locator = Locator(
+          href: 'OEBPS/ch1.xhtml',
+          type: _xhtml,
+          locations: pages(4, 5, 0.6),
+        );
+
+        expect(isLastPage(pages(4, 5, 0.6)), isFalse);
+        expect(
+          positionFromLocator(locator, _indexOf),
+          const ReaderPosition(1, 0.6),
+        );
+      });
+
+      test('the last page is finished', () {
+        expect(isLastPage(pages(5, 5, 0.8)), isTrue);
+        expect(isLastPage(pages(1, 1, 0.0)), isTrue);
+      });
+
+      test('page numbers are counted from 0, as on Android', () {
+        expect(pageIndexOf(pages(1, 5, 0.0)), 0);
+        expect(pageIndexOf(pages(2, 5, 0.2)), 1);
+        expect(pageIndexOf(pages(3, 5, null)), 2);
+      });
+
+      test('is right for every page of files of 1 to 200 pages', () {
+        for (var total = 1; total <= 200; total++) {
+          for (var page = 0; page < total; page++) {
+            for (final noise in [-0.3, 0.0, 0.3]) {
+              final progression = ((page + noise) / total).clamp(0.0, 1.0);
+              expect(
+                isLastPage(pages(page + 1, total, progression)),
+                page == total - 1,
+                reason: 'page $page of $total, noise $noise',
+              );
+            }
+          }
+        }
+      });
     });
   });
 
