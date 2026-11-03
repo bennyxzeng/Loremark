@@ -9,6 +9,7 @@ import '../story_model/story_model_loader.dart';
 import '../theme/loremark_theme.dart';
 import 'ask_screen.dart';
 import 'notes_screen.dart';
+import 'offline_banner.dart';
 import 'read_screen.dart';
 import 'reader_header.dart';
 
@@ -46,16 +47,31 @@ class _BookScreenState extends State<BookScreen> {
               onOpenLibrary: () => Navigator.of(context).maybePop(),
             ),
             Expanded(
-              child: IndexedStack(
-                index: _selectedTab,
+              child: Stack(
                 children: [
-                  ReadScreen(
-                    book: widget.book,
-                    readerService: const ReadiumReaderService(),
+                  IndexedStack(
+                    index: _selectedTab,
+                    children: [
+                      ReadScreen(
+                        book: widget.book,
+                        readerService: const ReadiumReaderService(),
+                      ),
+                      const AiLock(
+                        feature: 'Ask',
+                        needsConnection: true,
+                        child: AskScreen(),
+                      ),
+                      const NotesScreen(),
+                      // A built map is stored data, so it stays readable offline.
+                      AiLock(feature: 'Story Map', child: _buildStoryMapTab()),
+                    ],
                   ),
-                  const AiLock(feature: 'Ask', child: AskScreen()),
-                  const NotesScreen(),
-                  AiLock(feature: 'Story Map', child: _buildStoryMapTab()),
+                  const Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    child: OfflineBanner(),
+                  ),
                 ],
               ),
             ),

@@ -5,6 +5,7 @@ import 'package:loremark/home/book_screen.dart';
 import 'package:loremark/library/book_repository.dart';
 import 'package:loremark/main.dart';
 import 'package:loremark/settings/ai_settings.dart';
+import 'package:loremark/settings/connection_status.dart';
 
 import 'test_epub.dart';
 
@@ -54,6 +55,7 @@ void main() {
           await settings.load();
           return settings;
         }),
+        connection: ConnectionStatus(),
         pickEpub: () async => picked,
       ),
     );

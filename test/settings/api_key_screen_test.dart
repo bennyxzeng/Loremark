@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:loremark/library/book_repository.dart';
 import 'package:loremark/main.dart';
 import 'package:loremark/settings/ai_settings.dart';
+import 'package:loremark/settings/connection_status.dart';
 import 'package:loremark/settings/settings_screen.dart';
 
 void main() {
@@ -39,6 +40,7 @@ void main() {
       LoremarkApp(
         repository: Future.value(repository),
         settings: Future.value(settings),
+        connection: ConnectionStatus(),
         pickEpub: () async => null,
       ),
     );
