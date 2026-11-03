@@ -45,6 +45,16 @@ class TableOfContentsSheet extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(22, 0, 22, 8),
           child: Text('CONTENTS', style: kicker()),
         ),
+        if (entries.isNotEmpty && entries.first.isSynthetic)
+          const Padding(
+            key: ValueKey('contents-note'),
+            padding: EdgeInsets.fromLTRB(22, 0, 22, 8),
+            child: Text(
+              'This book has no table of contents, so it is split into '
+              'sections of about 5,000 words.',
+              style: TextStyle(fontSize: 12, color: LoremarkColors.muted),
+            ),
+          ),
         Flexible(
           child: ListView.builder(
             shrinkWrap: true,

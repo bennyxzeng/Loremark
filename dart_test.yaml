@@ -10,3 +10,8 @@ tags:
   # by hand with `flutter test --tags benchmark`. The numbers in
   # docs/benchmarks.md come from AOT: `dart run tool/benchmark/run.dart`.
   benchmark:
+
+  # Runs the app's EPUB, table-of-contents and search code over a folder of
+  # real books (set LOREMARK_CORPUS, see test/corpus/corpus_test.dart and
+  # docs/testing.md). Needs the books, so it is skipped everywhere else.
+  corpus:

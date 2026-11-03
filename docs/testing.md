@@ -37,6 +37,8 @@ run with `flutter test`. It covers both kinds of automated test our plan needs f
 | Reliability, offline reading and privacy | Host-side adb harness with 20 force-quits, UID network counters and emulator packet capture ([acceptance.md](acceptance.md)) | Separate emulator workflow: manual, weekly, or PRs labeled `device-tests` |
 | Scalability (500,000-word book) | Tagged `benchmark`, plus standalone AOT runner ([benchmarks.md](benchmarks.md)) | Manual: timing a shared CI runner is noisy |
 | Story-model spoiler invariants | Exhaustive cutoff audits on the bundled model and seeded synthetic models | Yes, normal deterministic tests |
+| Edge cases in EPUB text, page-end positions, paragraph pieces and search (odd markup, entities, ruby, nesting, huge paragraphs, strange queries) | `flutter test` (`test/corpus/edge_cases_test.dart`) | Yes, every push and PR |
+| Real-book corpus: 50 public-domain EPUBs in 18 languages plus 24 variants (no table of contents, broken, one file, damaged) | Tagged `corpus`; `flutter test --tags corpus test/corpus` with `LOREMARK_CORPUS` set, then `tool/corpus/device_run.py` on an emulator | No: needs about 300 MB of books and an emulator. See [corpus-testing.md](corpus-testing.md) |
 | Usability sessions | External readers | No |
 
 ## How to add a new test
