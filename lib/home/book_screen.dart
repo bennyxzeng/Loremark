@@ -74,22 +74,30 @@ class _BookScreenState extends State<BookScreen> {
         child: NavigationBar(
           selectedIndex: _selectedTab,
           onDestinationSelected: _selectTab,
+          // The labels are always showing, so tooltips would only repeat them.
           destinations: const [
             NavigationDestination(
               icon: Icon(Icons.menu_book_outlined),
               selectedIcon: Icon(Icons.menu_book),
               label: 'Read',
+              tooltip: '',
             ),
             NavigationDestination(
               icon: Icon(Icons.chat_bubble_outline),
               selectedIcon: Icon(Icons.chat_bubble),
               label: 'Ask',
+              tooltip: '',
             ),
-            NavigationDestination(icon: Icon(Icons.edit_note), label: 'Notes'),
+            NavigationDestination(
+              icon: Icon(Icons.edit_note),
+              label: 'Notes',
+              tooltip: '',
+            ),
             NavigationDestination(
               icon: Icon(Icons.hub_outlined),
               selectedIcon: Icon(Icons.hub),
               label: 'Story Map',
+              tooltip: '',
             ),
           ],
         ),
