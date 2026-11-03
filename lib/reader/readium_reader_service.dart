@@ -73,9 +73,12 @@ class ReadiumReaderService implements EpubReaderService {
       }
       final Publication publication;
       try {
-        // The plugin wants a URL, not a path.
+        // flutter_readium 0.8.0's iOS bridge uses URL(fileURLWithPath:),
+        // so it needs a raw path. Android's AbsoluteUrl needs a file URI.
         publication = await readium.openPublication(
-          Uri.file(epubPath).toString(),
+          defaultTargetPlatform == TargetPlatform.iOS
+              ? File(epubPath).absolute.path
+              : Uri.file(File(epubPath).absolute.path).toString(),
         );
       } on Object catch (error) {
         throw EpubOpenException(EpubOpenFailure.unreadable, error);
