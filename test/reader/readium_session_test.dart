@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_readium/flutter_readium.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loremark/reader/epub_reader_service.dart';
@@ -36,6 +37,8 @@ class _FakeReadiumPlatform extends FlutterReadiumPlatform
   /// The file name of the book that is open now, or null.
   String? openBook;
 
+  String? openedLocation;
+
   /// If set, a close waits for it before it finishes.
   Completer<void>? closeGate;
 
@@ -46,6 +49,7 @@ class _FakeReadiumPlatform extends FlutterReadiumPlatform
 
   @override
   Future<Publication> openPublication(String pubUrl) async {
+    openedLocation = pubUrl;
     final name = Uri.parse(pubUrl).pathSegments.last;
     calls.add('open $name');
     injectedAtOpen[name] = List.of(injected);
@@ -55,12 +59,19 @@ class _FakeReadiumPlatform extends FlutterReadiumPlatform
       'readingOrder': [
         for (final href in _hrefs) {'href': href, 'type': _xhtml},
       ],
-      'toc': [
-        {'href': _hrefs[1], 'title': 'One'},
-        {'href': '${_hrefs[2]}#s', 'title': 'Two'},
-      ],
+      'toc': tocLinks,
     })!;
   }
+
+  /// The contents list the plugin reports, as `{href, title}` links.
+  List<Map<String, String>> tocLinks = [
+    {'href': _hrefs[1], 'title': 'One'},
+    {'href': '${_hrefs[2]}#s', 'title': 'Two'},
+  ];
+
+  /// Whether showing a file is reported to the app when a jump to it is
+  /// asked for, as Readium does.
+  bool arrivesOnGoTo = true;
 
   /// If set, registering the page script fails with it.
   Object? injectionError;
@@ -114,6 +125,15 @@ class _FakeReadiumPlatform extends FlutterReadiumPlatform
   Future<bool> goToLocator(Locator locator) async {
     goToLocators.add(locator);
     calls.add('goTo ${locator.href}');
+    if (arrivesOnGoTo) {
+      locators.add(
+        Locator(
+          href: locator.href,
+          type: _xhtml,
+          locations: const Locations(progression: 0),
+        ),
+      );
+    }
     return true;
   }
 
@@ -157,17 +177,24 @@ void main() {
 
   const service = ReadiumReaderService();
 
-  Future<String> writeBook(String name, {String? chapterOne}) async {
+  /// A book of [words] words in every chapter, or tiny chapters.
+  Future<String> writeBook(
+    String name, {
+    String? chapterOne,
+    int words = 0,
+  }) async {
     final path = '${temp.path}/$name';
+    String body(int i) {
+      if (i == 1 && chapterOne != null) return chapterOne;
+      if (words == 0) return '<p>$i</p>';
+      return '<p>${List.filled(words, 'word').join(' ')}</p>';
+    }
+
     await File(path).writeAsBytes(
       buildEpub(
         chapters: [
           for (var i = 0; i < _hrefs.length; i++)
-            EpubChapter(
-              id: 'c$i',
-              fileName: 'ch$i.xhtml',
-              body: i == 1 && chapterOne != null ? chapterOne : '<p>$i</p>',
-            ),
+            EpubChapter(id: 'c$i', fileName: 'ch$i.xhtml', body: body(i)),
         ],
       ),
     );
@@ -202,6 +229,7 @@ void main() {
   });
 
   tearDown(() async {
+    debugDefaultTargetPlatformOverride = null;
     // The service keeps the open session in a static, so none may outlive
     // its test.
     for (final session in opened) {
@@ -328,6 +356,30 @@ void main() {
       await settle();
 
       expect(ends, isEmpty);
+    });
+  });
+
+  group('native file location', () {
+    test('iOS receives an unescaped absolute path', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      final path = await writeBook('86 第 1 卷.epub');
+
+      await open(path);
+
+      expect(fake.openedLocation, File(path).absolute.path);
+      expect(await File(fake.openedLocation!).exists(), isTrue);
+    });
+
+    test('Android receives an encoded file URI', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      final path = await writeBook('86 第 1 卷.epub');
+
+      await open(path);
+
+      final uri = Uri.parse(fake.openedLocation!);
+      expect(uri.scheme, 'file');
+      expect(uri.toFilePath(), File(path).absolute.path);
+      expect(await File.fromUri(uri).exists(), isTrue);
     });
   });
 
@@ -477,7 +529,224 @@ void main() {
       await session.goForward();
       await session.goBackward();
 
-      expect(fake.calls.skip(1), ['goTo ${_hrefs[2]}', 'forward', 'backward']);
+      // The first jump to another file is asked for again once it shows.
+      expect(fake.calls.skip(1), [
+        'goTo ${_hrefs[2]}',
+        'goTo ${_hrefs[2]}',
+        'forward',
+        'backward',
+      ]);
+    });
+
+    test('a jump inside the file the reader is in is asked for once', () async {
+      final session = await open(bookA);
+      await send([_bare(2, 0.1)]);
+
+      await session.goTo(session.tableOfContents.last);
+
+      expect(fake.goToLocators.map((l) => l.href), [_hrefs[2]]);
+    });
+
+    test('a jump to another file is asked for again once it shows', () async {
+      final session = await open(bookA);
+      await send([_bare(1, 0.5)]);
+
+      await session.goTo(session.tableOfContents.last);
+
+      expect(fake.goToLocators.map((l) => l.href), [_hrefs[2], _hrefs[2]]);
+    });
+
+    test('waits for the file to show before asking again', () async {
+      final session = await open(bookA);
+      await send([_bare(1, 0.5)]);
+      fake.arrivesOnGoTo = false;
+
+      final done = session.goTo(session.tableOfContents.last);
+      await pumpEventQueue();
+      expect(fake.goToLocators, hasLength(1));
+
+      await send([_bare(2, 0)]);
+      await done;
+
+      expect(fake.goToLocators, hasLength(2));
+    });
+
+    test('asks again anyway when the file never shows', () async {
+      final session = await open(bookA);
+      await send([_bare(1, 0.5)]);
+      fake.arrivesOnGoTo = false;
+      final saved = ReadiumReaderService.arrivalTimeout;
+      ReadiumReaderService.arrivalTimeout = const Duration(milliseconds: 50);
+      addTearDown(() => ReadiumReaderService.arrivalTimeout = saved);
+
+      await session.goTo(session.tableOfContents.last);
+
+      expect(fake.goToLocators, hasLength(2));
+    });
+
+    test('a search jump to another file is also asked for again', () async {
+      final session = await open(bookA);
+      await send([_bare(1, 0.5)]);
+
+      await session.showPassage(
+        const PassageTarget(
+          sectionIndex: 2,
+          progression: 0.4,
+          highlight: 'a grey cat',
+        ),
+      );
+
+      expect(fake.goToLocators, hasLength(2));
+      expect(fake.goToLocators.last.text?.highlight, 'a grey cat');
+    });
+  });
+
+  group('a book without a usable table of contents', () {
+    List<(String, int?, bool)> summary(EpubReaderSession session) => [
+      for (final e in session.tableOfContents)
+        (e.title, e.sectionIndex, e.isSynthetic),
+    ];
+
+    test('is cut into sections of about 5,000 words', () async {
+      fake.tocLinks = const [];
+      // Four chapters of 3,000 words: 12,000 words, two sections.
+      final session = await open(await writeBook('long.epub', words: 3000));
+
+      expect(summary(session), [
+        ('Section 1', 0, true),
+        ('Section 2', 2, true),
+      ]);
+    });
+
+    test('keeps its own entries when it is too short to cut', () async {
+      fake.tocLinks = const [];
+      final session = await open(bookA);
+
+      expect(session.tableOfContents, isEmpty);
+    });
+
+    test('is cut when its contents list is one entry', () async {
+      fake.tocLinks = [
+        {'href': _hrefs[1], 'title': 'Start'},
+      ];
+      final session = await open(await writeBook('one.epub', words: 3000));
+
+      expect(session.tableOfContents.every((e) => e.isSynthetic), isTrue);
+      expect(session.tableOfContents, hasLength(2));
+    });
+
+    test('is cut when its contents list points nowhere', () async {
+      fake.tocLinks = [
+        {'href': 'OEBPS/gone.xhtml', 'title': 'Gone'},
+        {'href': 'OEBPS/missing.xhtml#x', 'title': 'Missing'},
+        {'href': 'https://example.com/', 'title': 'Web'},
+      ];
+      final session = await open(await writeBook('nowhere.epub', words: 3000));
+
+      expect(session.tableOfContents.every((e) => e.isSynthetic), isTrue);
+    });
+
+    test('keeps a contents list that has two usable entries', () async {
+      final session = await open(await writeBook('toc.epub', words: 3000));
+
+      expect(summary(session), [('One', 1, false), ('Two', 2, false)]);
+    });
+
+    test('jumps to a section start', () async {
+      fake.tocLinks = const [];
+      final session = await open(await writeBook('jump.epub', words: 3000));
+
+      await session.goTo(session.tableOfContents.last);
+
+      expect(fake.goToLocators.first.href, _hrefs[2]);
+    });
+  });
+
+  group('chapterChanges', () {
+    Locator inChapter(String tocHref) => Locator(
+      href: _hrefs[1],
+      type: _xhtml,
+      locations: Locations(
+        progression: 0.2,
+        additionalProperties: {'tocHref': tocHref},
+      ),
+    );
+
+    test('reports the entry the plugin names', () async {
+      final session = await open(bookA);
+      final chapters = <TocEntry>[];
+      session.chapterChanges.listen(chapters.add);
+
+      await send([inChapter(_hrefs[1]), inChapter('${_hrefs[2]}#s')]);
+
+      expect(chapters.map((c) => c.title), ['One', 'Two']);
+      expect(identical(chapters.first, session.tableOfContents.first), isTrue);
+    });
+
+    test('reports a chapter once however often it is repeated', () async {
+      final session = await open(bookA);
+      final chapters = <TocEntry>[];
+      session.chapterChanges.listen(chapters.add);
+
+      await send([inChapter(_hrefs[1]), inChapter(_hrefs[1])]);
+
+      expect(chapters, hasLength(1));
+    });
+
+    test('ignores a chapter it does not have', () async {
+      final session = await open(bookA);
+      final chapters = <TocEntry>[];
+      session.chapterChanges.listen(chapters.add);
+
+      await send([inChapter('OEBPS/other.xhtml#x'), inChapter(_hrefs[1])]);
+
+      expect(chapters.map((c) => c.title), ['One']);
+    });
+  });
+
+  group('chapterForTocHref', () {
+    int? indexOf(String href) {
+      final path = Uri.decodeFull(
+        href.split('#').first.replaceFirst(RegExp('^/+'), ''),
+      );
+      final index = _hrefs.indexOf(path);
+      return index == -1 ? null : index;
+    }
+
+    final entries = [
+      TocEntry(title: 'A', href: _hrefs[1], sectionIndex: 1),
+      TocEntry(title: 'B', href: '${_hrefs[1]}#ch2', sectionIndex: 1),
+      TocEntry(title: 'C', href: '${_hrefs[2]}#x%20y', sectionIndex: 2),
+      const TocEntry(
+        title: 'S',
+        href: '',
+        sectionIndex: 1,
+        position: ReaderPosition(1, 0.5),
+      ),
+    ];
+
+    test('matches by spine item and fragment', () {
+      expect(chapterForTocHref(entries, _hrefs[1], indexOf)?.title, 'A');
+      expect(
+        chapterForTocHref(entries, '${_hrefs[1]}#ch2', indexOf)?.title,
+        'B',
+      );
+    });
+
+    test('ignores how the path is written', () {
+      expect(
+        chapterForTocHref(entries, '/${_hrefs[1]}#ch2', indexOf)?.title,
+        'B',
+      );
+      expect(
+        chapterForTocHref(entries, '${_hrefs[2]}#x%20y', indexOf)?.title,
+        'C',
+      );
+    });
+
+    test('is null for another file, another fragment or a section', () {
+      expect(chapterForTocHref(entries, 'OEBPS/zzz.xhtml', indexOf), isNull);
+      expect(chapterForTocHref(entries, '${_hrefs[1]}#nope', indexOf), isNull);
     });
   });
 
@@ -495,7 +764,7 @@ void main() {
 
       await session.showPassage(target);
 
-      final locator = fake.goToLocators.single;
+      final locator = fake.goToLocators.first;
       expect(locator.href, _hrefs[2]);
       expect(locator.locations?.progression, 0.4);
       expect(locator.text?.highlight, 'a grey cat');
@@ -511,7 +780,7 @@ void main() {
         await session.showPassage(target);
 
         final decoration = fake.decorations[passageHighlightGroup]!.single;
-        expect(decoration.locator.toJson(), fake.goToLocators.single.toJson());
+        expect(decoration.locator.toJson(), fake.goToLocators.first.toJson());
         expect(decoration.style.style, DecorationStyle.highlight);
         // Android drops a decoration without a tint, so the JSON must carry it.
         expect(decoration.style.toJson(), contains('tint'));

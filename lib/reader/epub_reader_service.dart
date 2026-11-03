@@ -24,6 +24,11 @@ abstract interface class EpubReaderSession {
   /// [ReaderPosition.sectionIndex].
   int get sectionCount;
 
+  /// The chapter the reader is in each time it changes, as one of the
+  /// entries of [tableOfContents]. Pages the renderer can't place in a
+  /// chapter report nothing.
+  Stream<TocEntry> get chapterChanges;
+
   /// Every position the reader moves to: page turns, chapter jumps, and the
   /// initial position once the view has opened. When the reader turns from
   /// the end of a section into the next one, the old section is reported at
@@ -71,6 +76,7 @@ class TocEntry {
     required this.href,
     required this.sectionIndex,
     this.depth = 0,
+    this.position,
   });
 
   final String title;
@@ -85,6 +91,15 @@ class TocEntry {
 
   /// Nesting level: 0 for a top-level chapter.
   final int depth;
+
+  /// Where the entry is when the book has no table of contents of its own and
+  /// the entry is one of the sections Loremark cut it into (see
+  /// `sectionsWithoutToc`), otherwise null. The share is of the item's words,
+  /// not its pages.
+  final ReaderPosition? position;
+
+  /// Whether this is a section Loremark made, not a chapter from the book.
+  bool get isSynthetic => position != null;
 
   @override
   String toString() => 'TocEntry($title, $href, $sectionIndex, depth: $depth)';

@@ -97,13 +97,19 @@ const leafBlockTags = {
 /// fraction sits a quarter of a character past the point, so rounding can
 /// never push the passage just before it across the line.
 ///
+/// [tail], if given, is the last characters, up to [tailLength], not counting
+/// whitespace, that the page script saw before the end of the page. It must
+/// be the same characters as those just before the point in the plain text,
+/// which catches a miscount between the page and our copy of the chapter.
+///
 /// Null if the markup is not well-formed XML, [blockNumber] is out of range,
-/// the block has fewer than [characters] + 1 characters, or the section has
-/// no text.
+/// the block has fewer than [characters] + 1 characters, [tail] does not
+/// match, or the section has no text.
 double? textProgressionOfBlock(
   String xhtml,
   int blockNumber, {
   int characters = 0,
+  String? tail,
 }) {
   final XmlDocument document;
   try {
@@ -130,7 +136,26 @@ double? textProgressionOfBlock(
     seen++;
   }
   if (at >= targetEnd) return null;
+  if (tail != null &&
+      tail.isNotEmpty &&
+      tail != _tailBefore(text, at, tail.length)) {
+    return null;
+  }
   return (at + 0.25) / text.length;
+}
+
+/// How many characters of the end of the page the page script sends back.
+const tailLength = 12;
+
+/// The last [count] characters of [text] before index [end], not counting
+/// whitespace; fewer if the text starts sooner.
+String _tailBefore(String text, int end, int count) {
+  final units = <int>[];
+  for (var i = end - 1; i >= 0 && units.length < count; i--) {
+    final unit = text.codeUnitAt(i);
+    if (!_isWhitespace(unit)) units.add(unit);
+  }
+  return String.fromCharCodes(units.reversed);
 }
 
 /// Whether [unit] is whitespace the way JavaScript's `\s` sees it, which is
