@@ -1,0 +1,62 @@
+# Bug report form. The fields follow the living doc's Test Plan & Bugs section:
+# steps to replicate, expected and actual result, the book and chapter, and the
+# build or commit. Set the assignee in the issue's sidebar.
+name: Bug report
+description: Something in the app, the tests or CI is wrong
+labels: [bug]
+body:
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: P0 bugs are fixed before any new feature work.
+      options:
+        - "P0: spoiler leak, crash or lost data"
+        - "P1: wrong results or hard to use"
+        - "P2: small or cosmetic"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Device or runner, and how you ran the app.
+      placeholder: Android emulator (API 36), debug build / iOS simulator / CI runner / Windows
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open The Great Gatsby.
+        2. Read into chapter 1.
+        3. Search for "Gatsby".
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual
+      description: What happened instead. Paste error messages and logs here.
+    validations:
+      required: true
+  - type: input
+    id: book
+    attributes:
+      label: Book / chapter
+      description: Which book and chapter, or "None" if no book is involved.
+  - type: input
+    id: build
+    attributes:
+      label: Build / commit
+      description: Branch and commit hash, or the CI run link.
+      placeholder: ui @ 2ca124c
+    validations:
+      required: true
