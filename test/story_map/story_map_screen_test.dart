@@ -34,6 +34,24 @@ void main() {
       tag.label,
   ];
 
+  Future<void> showPage(WidgetTester tester, String label) async {
+    await tester.tap(
+      find.descendant(
+        of: find.byType(ChoiceChip),
+        matching: find.textContaining(label),
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  // The last because the page bar above the list scrolls too.
+  final factList = find
+      .descendant(
+        of: find.byType(ChapterDigestView),
+        matching: find.byType(Scrollable),
+      )
+      .last;
+
   Future<void> slideToFirstChapter(WidgetTester tester) async {
     await tester.drag(find.byType(Slider), const Offset(-1000, 0));
     await tester.pumpAndSettle();
@@ -92,6 +110,9 @@ void main() {
 
     expect(find.text('What’s new in Chapter 2: The Letter'), findsOne);
     expect(find.text('Mara → Mara Quinn'), findsOne);
+
+    await showPage(tester, 'Entities');
+
     expect(find.widgetWithText(ActionChip, 'Elian'), findsOne);
   });
 
@@ -100,15 +121,7 @@ void main() {
   ) async {
     await pumpStoryMap(tester);
     await showTab(tester, 'Chapter');
-
-    await tester.scrollUntilVisible(
-      find.text('1. Elian left home years ago.'),
-      200,
-      scrollable: find.descendant(
-        of: find.byType(ChapterDigestView),
-        matching: find.byType(Scrollable),
-      ),
-    );
+    await showPage(tester, 'Events');
 
     expect(tagsOf(tester, '1. Elian left home years ago.'), [
       'past',
@@ -137,25 +150,148 @@ void main() {
   testWidgets('facts show their default labels too', (tester) async {
     await pumpStoryMap(tester);
     await showTab(tester, 'Chapter');
+    await showPage(tester, 'Relationships');
 
     expect(tagsOf(tester, 'Elian sibling of Mara Quinn'), [
       'current',
       'explicit',
     ]);
 
-    await tester.scrollUntilVisible(
-      find.text('2. Elian hands Mara a letter.'),
-      200,
-      scrollable: find.descendant(
-        of: find.byType(ChapterDigestView),
-        matching: find.byType(Scrollable),
-      ),
-    );
+    await showPage(tester, 'Events');
 
     expect(tagsOf(tester, '2. Elian hands Mara a letter.'), [
       'current',
       'explicit',
     ]);
+  });
+
+  group('chapter pages', () {
+    testWidgets('list each kind of fact with its count', (tester) async {
+      await pumpStoryMap(tester);
+      await showTab(tester, 'Chapter');
+
+      for (final label in [
+        'Changes 3',
+        'Entities 1',
+        'Relationships 1',
+        'Events 2',
+        'Questions 1',
+      ]) {
+        expect(find.widgetWithText(ChoiceChip, label), findsOne, reason: label);
+      }
+    });
+
+    testWidgets('leave out kinds the chapter has none of', (tester) async {
+      await pumpStoryMap(tester);
+      await showTab(tester, 'Chapter');
+      await slideToFirstChapter(tester);
+
+      expect(find.textContaining('Changes'), findsNothing);
+      expect(find.widgetWithText(ChoiceChip, 'Entities 3'), findsOne);
+    });
+
+    testWidgets('show one kind of fact at a time', (tester) async {
+      await pumpStoryMap(tester);
+      await showTab(tester, 'Chapter');
+
+      expect(find.text('Mara → Mara Quinn'), findsOne);
+      expect(find.text('2. Elian hands Mara a letter.'), findsNothing);
+
+      await showPage(tester, 'Events');
+
+      expect(find.text('Mara → Mara Quinn'), findsNothing);
+      expect(find.text('2. Elian hands Mara a letter.'), findsOne);
+    });
+
+    testWidgets('mark the current one', (tester) async {
+      await pumpStoryMap(tester);
+      await showTab(tester, 'Chapter');
+      bool isSelected(String label) => tester
+          .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, label))
+          .selected;
+
+      expect(isSelected('Changes 3'), isTrue);
+      expect(isSelected('Events 2'), isFalse);
+
+      await showPage(tester, 'Events');
+
+      expect(isSelected('Changes 3'), isFalse);
+      expect(isSelected('Events 2'), isTrue);
+    });
+
+    testWidgets('stay on the same kind across chapters', (tester) async {
+      await pumpStoryMap(tester);
+      await showTab(tester, 'Chapter');
+      await showPage(tester, 'Events');
+
+      await slideToFirstChapter(tester);
+
+      expect(find.text('1. Mara arrives at the harbor.'), findsOne);
+    });
+
+    testWidgets('come back to a kind a chapter was missing', (tester) async {
+      // Chapter 1 has no events here, and Events is not the first page.
+      final json = storyModelFixtureJson();
+      ((json['records'] as Map)['events'] as List).removeWhere(
+        (record) => (record as Map)['learned_in_section_id'] == 's1',
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StoryMapScreen(model: StoryModel.fromJson(json)),
+          ),
+        ),
+      );
+      await showTab(tester, 'Chapter');
+      await showPage(tester, 'Events');
+      expect(find.text('2. Elian hands Mara a letter.'), findsOne);
+
+      await slideToFirstChapter(tester);
+      expect(find.textContaining('Events'), findsNothing);
+      expect(find.widgetWithText(ActionChip, 'Mara'), findsOne);
+
+      await tester.drag(find.byType(Slider), const Offset(1000, 0));
+      await tester.pumpAndSettle();
+      expect(find.text('2. Elian hands Mara a letter.'), findsOne);
+    });
+
+    testWidgets('start from the top', (tester) async {
+      tester.view.physicalSize = const Size(800, 420);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await pumpStoryMap(tester);
+      await showTab(tester, 'Chapter');
+      double scrolled() =>
+          tester.state<ScrollableState>(factList).position.pixels;
+
+      await tester.drag(factList, const Offset(0, -100));
+      await tester.pumpAndSettle();
+      expect(scrolled(), greaterThan(0));
+
+      await showPage(tester, 'Events');
+      expect(scrolled(), 0);
+    });
+
+    testWidgets('say so when a chapter has nothing new', (tester) async {
+      final json = storyModelFixtureJson();
+      (json['processed_sections'] as List).add(<String, dynamic>{
+        'section_id': 's3',
+        'section_order': 3,
+        'chapter_number': 3,
+        'title': 'Chapter 3: Silence',
+      });
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StoryMapScreen(model: StoryModel.fromJson(json)),
+          ),
+        ),
+      );
+      await showTab(tester, 'Chapter');
+
+      expect(find.text('Nothing new in this chapter.'), findsOne);
+      expect(find.byType(ChoiceChip), findsNothing);
+    });
   });
 
   test('only the usual labels count as defaults', () {
@@ -202,13 +338,7 @@ void main() {
       await pumpStoryMap(tester);
       await showTab(tester, 'Chapter');
 
-      await tester.drag(
-        find.descendant(
-          of: find.byType(ChapterDigestView),
-          matching: find.byType(Scrollable),
-        ),
-        const Offset(0, -300),
-      );
+      await tester.drag(factList, const Offset(0, -300));
       await tester.pumpAndSettle();
       await tester.tap(guideButton);
       await tester.pumpAndSettle();
