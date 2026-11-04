@@ -148,7 +148,7 @@ real-device parts of the reader, which only the emulator tests reach.
 ## Bug tracking
 
 Bugs are tracked in [GitHub Issues](https://github.com/bennyxzeng/Loremark/issues). The full list
-with causes and fixes is in [bug-log.md](bug-log.md): 45 bugs so far: 38 fixed, 1 worked around and 6 open.
+with causes and fixes is in [bug-log.md](bug-log.md): 46 bugs so far: 38 fixed, 1 worked around, 1 fix in review and 6 open.
 
 - **File an issue** with the "Bug report" form (`.github/ISSUE_TEMPLATE/bug_report.yml`). It asks
   for steps to reproduce, expected and actual result, and the build.

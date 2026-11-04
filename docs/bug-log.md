@@ -6,7 +6,7 @@ Every bug and failed check we know of, from the start of the project to 2026-11-
 the fix commit's message says what went wrong, why, and how it was fixed, and CI and the coding
 session notes kept the failures. That record stayed on each developer's branches instead of in a
 shared tracker. On 2026-11-02 we gathered it into this log and into GitHub Issues (#17 to #52),
-where the team tracks bugs from now on. Bugs found after that (BUG-20 to BUG-23, OPEN-06, OPEN-07)
+where the team tracks bugs from now on. Bugs found after that (BUG-20 to BUG-23, CI-07, OPEN-06, OPEN-07)
 were filed as they were found. The sources were:
 
 - **Git history:** every commit whose message starts with `fix`, plus commits that fixed problems
@@ -32,7 +32,7 @@ Priorities and labels follow the living doc's Test Plan & Bugs section:
 | :--- | :--- |
 | App bugs fixed and merged into `main` | 23 (7 of them P0) |
 | App bugs fixed in reading insights (PR #13, merges after the beta) | 9 (2 of them P0) |
-| Test-harness and CI failures | 7 (6 fixed, 1 worked around) |
+| Test-harness and CI failures | 8 (6 fixed, 1 worked around, 1 fix in review) |
 | Still open | 6 |
 
 Nearly every fix came with a regression test. The exceptions are the build fixes (they change
@@ -40,7 +40,7 @@ build settings, not app code) and one cosmetic text fix; each row says which.
 
 ## All bugs
 
-Each ID links to its GitHub issue (#17 to #71). Commit hashes link to
+Each ID links to its GitHub issue (#17 to #75). Commit hashes link to
 `https://github.com/bennyxzeng/Loremark/commit/<hash>`. CI runs link to
 `https://github.com/bennyxzeng/Loremark/actions/runs/<id>`.
 
@@ -84,6 +84,7 @@ Each ID links to its GitHub issue (#17 to #71). Commit hashes link to
 | [CI-04](https://github.com/bennyxzeng/Loremark/issues/47) | 2026-11-01 | P1 | test-harness | One force-quit trial failed on a rounding difference, not a real wrong page | Fixed | `27f5fae` (PR #11) |
 | [CI-05](https://github.com/bennyxzeng/Loremark/issues/48) | 2026-11-01 | P2 | test-harness | CI failed whenever the capture could not be checked, even with every real check passing | Worked around (issue closed; the cause is OPEN-04) | `e0d5fc8` (PR #11) |
 | [CI-06](https://github.com/bennyxzeng/Loremark/issues/60) | 2026-11-03 | P1 | test-harness | The harness stopped at the first-run API key screen added in PR #58 | Fixed | `d4fff53` (PR #61) |
+| [CI-07](https://github.com/bennyxzeng/Loremark/issues/75) | 2026-11-04 | P2 | test-harness | A synthetic-book test failed on CI because the zip timestamp changed between two builds | Fix in review | PR #74 |
 | [OPEN-01](https://github.com/bennyxzeng/Loremark/issues/49) | 2026-11-02 | P2 | test-harness | One iOS-fix test fails on Windows only | Fixed | `e02a8b6` (PR #57) |
 | [OPEN-02](https://github.com/bennyxzeng/Loremark/issues/50) | 2026-11-02 | P1 | AI-quality | Story-model quotes from the LLM differ from the book's text and fail validation | Open | |
 | [OPEN-03](https://github.com/bennyxzeng/Loremark/issues/51) | 2026-11-02 | P1 | bug | Building after pulling `main` looped for 15 minutes on Vitalii's machine | Open, cause unknown | |
@@ -296,6 +297,14 @@ emulator with #58 and a cleared app: the skip, trial 0, 4 of 4 force-quits and t
 passed. Has tests for the dump and screen-size parsing.
 
 ### Still open
+
+**CI-07: A test failed on CI because of a zip timestamp.** The first CI run of PR #74 failed on
+`test/support/synthetic_book_test.dart`, "builds the same readable book for the same seed". The test
+builds an EPUB twice and compares the bytes. A zip stores the time each file was added, so the two
+builds differed whenever the clock ticked over a second between them. Rare on a fast machine, so it
+passed locally. `buildEpub` in `test/library/test_epub.dart` now gives every file the same fixed
+timestamp. A temporary test that builds the book twice, three seconds apart, failed before the fix
+and passed after it.
 
 **OPEN-01: A test fails on Windows only.** The iOS fix's test "native file location Android
 receives an encoded file URI" failed on Windows because Windows paths use `\`. The app itself was

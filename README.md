@@ -124,7 +124,7 @@ flowchart LR
 - **Acceptance checks.** 20 force-quit trials for restoring your place, an offline trial and a privacy audit run on an Android emulator. See [docs/acceptance.md](docs/acceptance.md).
 - **Spoiler safety.** Tests check that search and the story model never show text or facts from later chapters (`test/search/spoiler_property_test.dart`, `test/acceptance/story_model_spoiler_test.dart`).
 - **Scale and real books.** See [docs/benchmarks.md](docs/benchmarks.md) and [docs/corpus-testing.md](docs/corpus-testing.md).
-- **Bug tracking.** Bugs are GitHub issues with a P0, P1 or P2 label. There are 45 so far, listed with causes and fixes in [docs/bug-log.md](docs/bug-log.md).
+- **Bug tracking.** Bugs are GitHub issues with a P0, P1 or P2 label. There are 46 so far, listed with causes and fixes in [docs/bug-log.md](docs/bug-log.md).
 
 ## Getting started
 

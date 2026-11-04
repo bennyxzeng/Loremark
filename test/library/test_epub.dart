@@ -106,12 +106,22 @@ Uint8List buildEpub({
   };
   final archive = Archive();
   for (final MapEntry(:key, :value) in files.entries) {
-    archive.addFile(ArchiveFile.bytes(key, utf8.encode(value)));
+    archive.addFile(_fixedTime(ArchiveFile.bytes(key, utf8.encode(value))));
   }
   if (cover != CoverStyle.none) {
     archive.addFile(
-      ArchiveFile.bytes('OEBPS/images/cover art.jpg', coverBytes),
+      _fixedTime(ArchiveFile.bytes('OEBPS/images/cover art.jpg', coverBytes)),
     );
   }
   return ZipEncoder().encodeBytes(archive);
+}
+
+/// Gives [file] the same timestamp every time. A zip stores the time each
+/// file was added, so without this two builds of the same book differ by a
+/// byte whenever the clock ticks between them.
+ArchiveFile _fixedTime(ArchiveFile file) {
+  const seconds = 1700000000;
+  return file
+    ..creationTime = seconds
+    ..lastModTime = seconds;
 }
