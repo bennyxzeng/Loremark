@@ -47,7 +47,7 @@ Future<void> showCharacterCard(
     context: context,
     barrierDismissible: true,
     barrierLabel: 'Close',
-    barrierColor: Colors.black.withValues(alpha: 0.6),
+    barrierColor: Colors.black.withValues(alpha: 0.78),
     transitionDuration: reduceMotion
         ? Duration.zero
         : const Duration(milliseconds: 180),
@@ -121,8 +121,9 @@ class CharacterCardScreen extends StatefulWidget {
 
 class _CharacterCardScreenState extends State<CharacterCardScreen>
     with TickerProviderStateMixin {
-  /// Room above the open page for the buttons, which stay on the dimmed screen.
-  static const _buttonsHeight = 48.0;
+  /// The size of the buttons, which stay above the open page on the dimmed
+  /// screen.
+  static const _buttonSize = 48.0;
 
   /// The widest the open page gets, as for a bottom sheet.
   static const _pageMaxWidth = 640.0;
@@ -133,6 +134,15 @@ class _CharacterCardScreenState extends State<CharacterCardScreen>
 
   /// How far into opening the hint is gone by.
   static const _hintFadesBy = 0.15;
+
+  /// How far the finger would have to pull the page to shrink it to the card.
+  static const _pullReach = 400.0;
+
+  /// How far the finger pulls before the page goes back to the card by itself.
+  static const _pullCommits = 120.0;
+
+  /// A flick down this fast, in points per second, is enough to send it back.
+  static const _pullFling = 700.0;
 
   late final _timeline = _RevealTimeline(
     widget.snapshot.starsOf(widget.entityId),
@@ -151,12 +161,23 @@ class _CharacterCardScreenState extends State<CharacterCardScreen>
     duration: const Duration(milliseconds: 900),
   );
   late final _flip = _opening.drive(
-    CurveTween(curve: const Interval(0, 0.55, curve: Curves.easeInOut)),
+    CurveTween(curve: const Interval(0, 0.5, curve: Curves.easeInOut)),
   );
   late final _grow = _opening.drive(
     CurveTween(curve: const Interval(0.5, 1, curve: Curves.easeInOutCubic)),
   );
   var _showsDetails = false;
+
+  /// How far the reader has pulled the open page back towards the card, from
+  /// 0 to 1. This follows the finger directly, which [_opening] can't: its
+  /// curve barely moves near the open end.
+  late final _pull = AnimationController(vsync: this);
+  var _pullCommitted = false;
+
+  late final _opennessChanges = Listenable.merge([_opening, _pull]);
+
+  /// How much of the way from the card to the open page it is, from 0 to 1.
+  double get _openness => _grow.value * (1 - _pull.value);
 
   CardSounds get _sounds => widget.session.sounds;
   double get _ms => _controller.value * _timeline.end;
@@ -206,9 +227,55 @@ class _CharacterCardScreenState extends State<CharacterCardScreen>
     }
   }
 
+  void _dragPull(DragUpdateDetails details) {
+    if (_pullCommitted || !_showsDetails) return;
+    final distance = _pull.value * _pullReach + details.primaryDelta!;
+    _pull.value = (distance / _pullReach).clamp(0, 1);
+    if (distance >= _pullCommits) _commitPull();
+  }
+
+  void _endPull([double velocity = 0]) {
+    if (_pull.value == 0 || _pullCommitted) return;
+    if (velocity > _pullFling) {
+      _commitPull();
+    } else {
+      _pull.animateTo(
+        0,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
+  /// Finishes shrinking to the card, then turns it over to the front.
+  void _commitPull() {
+    _pullCommitted = true;
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _turnBackAfterPull();
+      return;
+    }
+    _pull
+        .animateTo(
+          1,
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOut,
+        )
+        .whenComplete(_turnBackAfterPull);
+  }
+
+  void _turnBackAfterPull() {
+    if (!mounted) return;
+    // Here both are at the size of the card, so swapping them doesn't show.
+    _opening.value = 0.5;
+    _pull.value = 0;
+    _pullCommitted = false;
+    _setShowsDetails(false);
+  }
+
   @override
   void dispose() {
     if (_revealing) _sounds.stop();
+    _pull.dispose();
     _opening.dispose();
     _controller.dispose();
     super.dispose();
@@ -220,9 +287,9 @@ class _CharacterCardScreenState extends State<CharacterCardScreen>
   /// scaled down on the card, so that the text doesn't reflow as it grows.
   Widget _details(Color tier, Size pageSize) {
     return AnimatedBuilder(
-      animation: _grow,
+      animation: _opennessChanges,
       builder: (context, child) {
-        final grow = _grow.value;
+        final grow = _openness;
         return Material(
           color: Theme.of(context).bottomSheetTheme.backgroundColor,
           clipBehavior: Clip.antiAlias,
@@ -244,11 +311,27 @@ class _CharacterCardScreenState extends State<CharacterCardScreen>
         clipBehavior: Clip.hardEdge,
         child: SizedBox.fromSize(
           size: pageSize,
-          child: CharacterCardView(
-            snapshot: widget.snapshot,
-            entityId: widget.entityId,
-            onEntityTap: (id) =>
-                showCharacterCard(context, widget.snapshot, id, widget.session),
+          child: Column(
+            children: [
+              CardPageHandle(
+                onDragUpdate: _dragPull,
+                onDragEnd: (details) => _endPull(details.primaryVelocity ?? 0),
+                onDragCancel: _endPull,
+                onDismiss: () => _setShowsDetails(false),
+              ),
+              Expanded(
+                child: CharacterCardView(
+                  snapshot: widget.snapshot,
+                  entityId: widget.entityId,
+                  onEntityTap: (id) => showCharacterCard(
+                    context,
+                    widget.snapshot,
+                    id,
+                    widget.session,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -319,28 +402,24 @@ class _CharacterCardScreenState extends State<CharacterCardScreen>
     );
   }
 
-  Widget _controls() {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        ListenableBuilder(
-          listenable: _sounds,
-          builder: (context, _) => IconButton(
-            color: Colors.white,
-            icon: Icon(_sounds.enabled ? Icons.volume_up : Icons.volume_off),
-            tooltip: _sounds.enabled
-                ? 'Mute card sounds'
-                : 'Unmute card sounds',
-            onPressed: () => _sounds.enabled = !_sounds.enabled,
-          ),
-        ),
-        IconButton(
-          color: Colors.white,
-          icon: const Icon(Icons.close),
-          tooltip: 'Close',
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-      ],
+  Widget _muteButton() {
+    return ListenableBuilder(
+      listenable: _sounds,
+      builder: (context, _) => IconButton(
+        color: Colors.white,
+        icon: Icon(_sounds.enabled ? Icons.volume_up : Icons.volume_off),
+        tooltip: _sounds.enabled ? 'Mute card sounds' : 'Unmute card sounds',
+        onPressed: () => _sounds.enabled = !_sounds.enabled,
+      ),
+    );
+  }
+
+  Widget _backButton() {
+    return IconButton(
+      color: Colors.white,
+      icon: const Icon(Icons.arrow_back),
+      tooltip: 'Back',
+      onPressed: () => Navigator.of(context).pop(),
     );
   }
 
@@ -383,30 +462,34 @@ class _CharacterCardScreenState extends State<CharacterCardScreen>
               final pageWidth = math.min(screen.width, _pageMaxWidth);
               final page = Rect.fromLTRB(
                 (screen.width - pageWidth) / 2,
-                safe.top + _buttonsHeight,
+                safe.top + _buttonSize,
                 (screen.width + pageWidth) / 2,
                 screen.height,
               );
               return AnimatedBuilder(
-                animation: _opening,
+                animation: _opennessChanges,
                 child: _revealing
                     ? _revealingCard(tier)
                     : _restingCard(tier, page.size),
                 builder: (context, card) => Stack(
                   children: [
                     // The map behind recedes, so that the buttons stand clear.
-                    if (_grow.value > 0)
+                    if (_openness > 0)
                       Positioned.fill(
                         child: IgnorePointer(
                           child: ColoredBox(
                             color: Colors.black.withValues(
-                              alpha: 0.55 * _grow.value,
+                              alpha: 0.55 * _openness,
                             ),
                           ),
                         ),
                       ),
                     Positioned.fromRect(
-                      rect: Rect.lerp(rest, page, _grow.value)!,
+                      // While pulled, it also comes down with the finger.
+                      rect: Rect.lerp(rest, page, _openness)!.translate(
+                        0,
+                        _pull.value * (1 - _pull.value) * 0.25 * page.height,
+                      ),
                       child: card!,
                     ),
                     if (_opening.value < _hintFadesBy)
@@ -425,26 +508,18 @@ class _CharacterCardScreenState extends State<CharacterCardScreen>
                           ),
                         ),
                       ),
-                    if (_grow.value > 0)
+                    if (!_revealing) ...[
                       Positioned(
                         top: safe.top,
                         left: safe.left,
-                        child: Opacity(
-                          opacity: _grow.value,
-                          child: IconButton(
-                            color: Colors.white,
-                            icon: const Icon(Icons.arrow_back),
-                            tooltip: 'Back to card',
-                            onPressed: () => _setShowsDetails(false),
-                          ),
-                        ),
+                        child: _backButton(),
                       ),
-                    if (!_revealing)
                       Positioned(
                         top: safe.top,
                         right: screen.width - safe.right,
-                        child: _controls(),
+                        child: _muteButton(),
                       ),
+                    ],
                   ],
                 ),
               );
@@ -475,6 +550,55 @@ class _CharacterCardScreenState extends State<CharacterCardScreen>
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// The strip across the top of the open page, with a small bar to show that it
+/// can be pulled down, whatever the list below has scrolled to.
+class CardPageHandle extends StatelessWidget {
+  const CardPageHandle({
+    super.key,
+    required this.onDragUpdate,
+    required this.onDragEnd,
+    required this.onDragCancel,
+    required this.onDismiss,
+  });
+
+  final GestureDragUpdateCallback onDragUpdate;
+  final GestureDragEndCallback onDragEnd;
+  final VoidCallback onDragCancel;
+
+  /// For screen readers, which can't pull it.
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: 'Back to card',
+      onTap: onDismiss,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onVerticalDragUpdate: onDragUpdate,
+        onVerticalDragEnd: onDragEnd,
+        onVerticalDragCancel: onDragCancel,
+        child: SizedBox(
+          height: 44,
+          width: double.infinity,
+          child: Center(
+            child: Container(
+              width: 32,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.onSurfaceVariant
+                    .withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

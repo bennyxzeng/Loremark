@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:loremark/story_map/card_reveal.dart';
 import 'package:loremark/story_map/card_sounds.dart';
 import 'package:loremark/story_map/character_card_view.dart';
 import 'package:loremark/story_map/collectible_card.dart';
@@ -54,7 +55,7 @@ void main() {
   }
 
   Future<void> close(WidgetTester tester) async {
-    await tester.tap(find.byTooltip('Close'));
+    await tester.tap(find.byTooltip('Back'));
     await tester.pumpAndSettle();
   }
 
@@ -304,16 +305,28 @@ void main() {
       expect(tester.widget<CardStars>(find.byType(CardStars)).stars, 2);
     });
 
-    testWidgets('turns over to a page of details, and back', (tester) async {
+    const details = 'character · First seen in Chapter 1';
+    final phones = TargetPlatformVariant({
+      TargetPlatform.iOS,
+      TargetPlatform.android,
+    });
+    const page = Rect.fromLTRB(80, 48, 720, 1400);
+
+    /// Opens Mara's card, turned over to the page of details. Returns where the
+    /// card rests.
+    Future<Rect> openPage(WidgetTester tester) async {
       await pumpStoryMap(tester);
       await open(tester, 'Mara Quinn');
       await tester.pumpAndSettle();
       final card = tester.getRect(find.byType(CardFlip));
-
       await tester.tap(find.byType(CardFront));
       await tester.pumpAndSettle();
+      return card;
+    }
 
-      const details = 'character · First seen in Chapter 1';
+    testWidgets('turns over to a page of details', (tester) async {
+      await openPage(tester);
+
       expect(find.byType(CardFront), findsNothing);
       expect(find.text(details), findsOne);
       expect(find.text('Tap to flip · Drag to tilt'), findsNothing);
@@ -323,28 +336,208 @@ void main() {
       await tester.tap(find.text(details));
       await tester.pumpAndSettle();
       expect(find.text(details), findsOne);
+    });
 
-      await tester.tap(find.byTooltip('Back to card'));
+    testWidgets('pulling the handle turns it back to the front', (
+      tester,
+    ) async {
+      final card = await openPage(tester);
+
+      await tester.drag(find.byType(CardPageHandle), const Offset(0, 300));
       await tester.pumpAndSettle();
 
       expect(find.byType(CardFront), findsOne);
-      expect(find.byTooltip('Back to card'), findsNothing);
+      expect(find.byType(CharacterCardView), findsNothing);
       expect(find.text('Tap to flip · Drag to tilt'), findsOne);
       expect(tester.getRect(find.byType(CardFlip)), card);
       expect(sounds.played, [CardSound.flip, CardSound.flip]);
+
+      // And it opens again just the same.
+      await tester.tap(find.byType(CardFront));
+      await tester.pumpAndSettle();
+      expect(tester.getRect(find.byType(CardFlip)), page);
+    }, variant: phones);
+
+    testWidgets('shrinks with the finger, and turns back without waiting', (
+      tester,
+    ) async {
+      await openPage(tester);
+
+      final drag = await tester.startGesture(
+        tester.getCenter(find.byType(CardPageHandle)),
+      );
+      await tester.pump();
+      await drag.moveBy(const Offset(0, 40));
+      await tester.pump();
+      await drag.moveBy(const Offset(0, 40));
+      await tester.pump();
+      final pulled = tester.getSize(find.byType(CardFlip));
+      expect(pulled.width, lessThan(page.width));
+      expect(find.byType(CharacterCardView), findsOne);
+
+      await drag.moveBy(const Offset(0, 40));
+      await tester.pump();
+      await drag.moveBy(const Offset(0, 40));
+      await tester.pump();
+      final further = tester.getSize(find.byType(CardFlip));
+      expect(further.width, lessThan(pulled.width));
+
+      // The finger is still down.
+      await tester.pumpAndSettle();
+      expect(find.byType(CardFront), findsOne);
+
+      await drag.up();
+      await tester.pumpAndSettle();
+      expect(find.byType(CardFront), findsOne);
+      expect(sounds.played, [CardSound.flip, CardSound.flip]);
     });
 
-    testWidgets('closes when tapping above the open page', (tester) async {
+    testWidgets('springs back when let go early', (tester) async {
+      await openPage(tester);
+
+      final drag = await tester.startGesture(
+        tester.getCenter(find.byType(CardPageHandle)),
+      );
+      await tester.pump();
+      await drag.moveBy(const Offset(0, 30));
+      await tester.pump();
+      await drag.moveBy(const Offset(0, 30));
+      await tester.pump();
+      expect(tester.getSize(find.byType(CardFlip)).width, lessThan(page.width));
+
+      await tester.pump(const Duration(seconds: 1));
+      await drag.up();
+      await tester.pumpAndSettle();
+
+      expect(tester.getRect(find.byType(CardFlip)), page);
+      expect(find.text(details), findsOne);
+      expect(sounds.played, [CardSound.flip]);
+    });
+
+    testWidgets('dragging back up undoes the pull', (tester) async {
+      await openPage(tester);
+
+      final drag = await tester.startGesture(
+        tester.getCenter(find.byType(CardPageHandle)),
+      );
+      await tester.pump();
+      await drag.moveBy(const Offset(0, 30));
+      await tester.pump();
+      await drag.moveBy(const Offset(0, 40));
+      await tester.pump();
+      expect(tester.getSize(find.byType(CardFlip)).width, lessThan(page.width));
+
+      await drag.moveBy(const Offset(0, -100));
+      await tester.pump();
+      expect(tester.getRect(find.byType(CardFlip)), page);
+
+      await drag.up();
+      await tester.pumpAndSettle();
+      expect(find.text(details), findsOne);
+    });
+
+    testWidgets('a quick flick down is enough', (tester) async {
+      await openPage(tester);
+
+      await tester.fling(
+        find.byType(CardPageHandle),
+        const Offset(0, 80),
+        1500,
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CardFront), findsOne);
+    });
+
+    testWidgets('can be pulled however far the list has scrolled', (
+      tester,
+    ) async {
+      await openPage(tester);
+      tester.view.physicalSize = const Size(800, 400);
+      await tester.pumpAndSettle();
+      final scrollable = find.descendant(
+        of: find.byType(CharacterCardView),
+        matching: find.byType(Scrollable),
+      );
+
+      await tester.drag(scrollable, const Offset(0, -200));
+      await tester.pumpAndSettle();
+      expect(
+        tester.state<ScrollableState>(scrollable).position.pixels,
+        greaterThan(150),
+      );
+
+      await tester.drag(find.byType(CardPageHandle), const Offset(0, 300));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CardFront), findsOne);
+    });
+
+    testWidgets('dragging the list only ever scrolls it', (tester) async {
+      await openPage(tester);
+
+      await tester.drag(find.text(details), const Offset(0, 300));
+      await tester.pumpAndSettle();
+
+      expect(tester.getRect(find.byType(CardFlip)), page);
+      expect(find.text(details), findsOne);
+      expect(sounds.played, [CardSound.flip]);
+    }, variant: phones);
+
+    testWidgets('screen readers can turn it back from the handle', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      await openPage(tester);
+
+      tester.semantics.tap(find.semantics.byLabel('Back to card'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CardFront), findsOne);
+      semantics.dispose();
+    });
+
+    testWidgets('keeps the same buttons on the card and the page', (
+      tester,
+    ) async {
       await pumpStoryMap(tester);
       await open(tester, 'Mara Quinn');
       await tester.pumpAndSettle();
+      final back = tester.getCenter(find.byTooltip('Back'));
+      final mute = tester.getCenter(find.byTooltip('Mute card sounds'));
+      expect(find.byTooltip('Close'), findsNothing);
+
       await tester.tap(find.byType(CardFront));
       await tester.pumpAndSettle();
 
-      await tester.tapAt(const Offset(400, 20));
+      expect(tester.getCenter(find.byTooltip('Back')), back);
+      expect(tester.getCenter(find.byTooltip('Mute card sounds')), mute);
+      expect(find.byTooltip('Close'), findsNothing);
+    });
+
+    testWidgets('the back arrow leaves the card altogether', (tester) async {
+      await pumpStoryMap(tester);
+      await open(tester, 'Mara Quinn');
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CardFront), findsNothing);
+      expect(find.text('Mara Quinn'), findsOne);
+    });
+
+    testWidgets('the back arrow leaves the open page altogether', (
+      tester,
+    ) async {
+      await openPage(tester);
+
+      await tester.tap(find.byTooltip('Back'));
       await tester.pumpAndSettle();
 
       expect(find.byType(CharacterCardView), findsNothing);
+      expect(find.byType(CardFront), findsNothing);
+      expect(find.text('Mara Quinn'), findsOne);
     });
 
     testWidgets('finishes turning over before it opens up', (tester) async {
@@ -365,16 +558,16 @@ void main() {
       final laidOut = tester.getSize(find.byType(CharacterCardView));
 
       await tester.pumpAndSettle();
-      final page = tester.getRect(find.byType(CardFlip));
-      expect(page.width, greaterThan(growing.width));
+      final opened = tester.getRect(find.byType(CardFlip));
+      expect(opened.width, greaterThan(growing.width));
       // Below the buttons, as wide as a sheet, down to the bottom of the screen.
-      expect(page, const Rect.fromLTRB(80, 48, 720, 1400));
+      expect(opened, page);
       // The text never reflowed on the way.
       expect(tester.getSize(find.byType(CharacterCardView)), laidOut);
-      expect(laidOut, page.size);
+      expect(laidOut.width, opened.width);
     });
 
-    testWidgets('opens the page at once when animations are turned off', (
+    testWidgets('opens and turns back at once when animations are turned off', (
       tester,
     ) async {
       tester.platformDispatcher.accessibilityFeaturesTestValue =
@@ -388,12 +581,25 @@ void main() {
 
       await tester.tap(find.byType(CardFront));
       await tester.pump();
+      expect(tester.getRect(find.byType(CardFlip)), page);
 
-      expect(
-        tester.getRect(find.byType(CardFlip)),
-        const Rect.fromLTRB(80, 48, 720, 1400),
-      );
+      await tester.drag(find.byType(CardPageHandle), const Offset(0, 300));
+      await tester.pump();
+      expect(find.byType(CardFront), findsOne);
       expect(sounds.played, isEmpty);
+    });
+
+    testWidgets('closes when tapping above the open page', (tester) async {
+      await pumpStoryMap(tester);
+      await open(tester, 'Mara Quinn');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(CardFront));
+      await tester.pumpAndSettle();
+
+      await tester.tapAt(const Offset(400, 20));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CharacterCardView), findsNothing);
     });
 
     testWidgets('tilts when dragged, without turning over', (tester) async {

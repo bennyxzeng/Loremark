@@ -34,7 +34,7 @@ class CharacterCardView extends StatelessWidget {
     return ListView(
       padding: EdgeInsets.fromLTRB(
         24,
-        24,
+        0,
         24,
         32 + MediaQuery.paddingOf(context).bottom,
       ),
