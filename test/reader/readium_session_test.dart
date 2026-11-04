@@ -861,6 +861,104 @@ void main() {
     });
   });
 
+  group('highlights on another file', () {
+    const note = NoteHighlight(
+      id: 'note-1',
+      target: PassageTarget(
+        sectionIndex: 1,
+        progression: 0.4,
+        highlight: 'a grey cat',
+      ),
+      color: Color(0x7354D27A),
+    );
+
+    /// The decoration calls made from now on.
+    List<String> decorateCalls() =>
+        fake.calls.where((call) => call.startsWith('decorate')).toList();
+
+    test('are drawn again when the reader turns into another file', () async {
+      final session = await open(bookA);
+      await send([_bare(1, 0.9), _full(1, 0.9, page: 3, pages: 4)]);
+      await session.showNoteHighlights(const [note]);
+      fake.calls.clear();
+
+      // Into chapter 2 and back, as a reader turning a page each way.
+      await send([_bare(2, 0), _full(2, 0, page: 0, pages: 3)]);
+      await send([_bare(1, 0.9), _full(1, 0.9, page: 3, pages: 4)]);
+
+      expect(decorateCalls(), [
+        'decorate $noteHighlightGroup 1',
+        'decorate $noteHighlightGroup 1',
+      ]);
+      expect(fake.decorations[noteHighlightGroup]?.single.id, 'note-1');
+    });
+
+    test('are not drawn again on a page turn inside the file', () async {
+      final session = await open(bookA);
+      await send([_bare(1, 0.2), _full(1, 0.2, page: 0, pages: 4)]);
+      await session.showNoteHighlights(const [note]);
+      fake.calls.clear();
+
+      await send([_bare(1, 0.4), _full(1, 0.4, page: 1, pages: 4)]);
+
+      expect(decorateCalls(), isEmpty);
+    });
+
+    test('drawn before the reader showed appear on its first page', () async {
+      final session = await open(bookA);
+      await session.showNoteHighlights(const [note]);
+      fake.calls.clear();
+
+      await send([_bare(1, 0.4), _full(1, 0.4, page: 1, pages: 4)]);
+
+      expect(decorateCalls(), ['decorate $noteHighlightGroup 1']);
+    });
+
+    test('include the search highlight, each in its own group', () async {
+      final session = await open(bookA);
+      await send([_bare(1, 0.4)]);
+      await session.showNoteHighlights(const [note]);
+      await session.showPassage(
+        const PassageTarget(sectionIndex: 1, progression: 0.5, highlight: 'x'),
+      );
+      fake.calls.clear();
+
+      await send([_bare(2, 0)]);
+
+      expect(
+        decorateCalls(),
+        unorderedEquals([
+          'decorate $noteHighlightGroup 1',
+          'decorate $passageHighlightGroup 1',
+        ]),
+      );
+    });
+
+    test('leave a cleared group cleared', () async {
+      final session = await open(bookA);
+      await send([_bare(1, 0.4)]);
+      await session.showNoteHighlights(const [note]);
+      await session.showNoteHighlights(const []);
+      fake.calls.clear();
+
+      await send([_bare(2, 0)]);
+
+      expect(decorateCalls(), isEmpty);
+    });
+
+    test('are not drawn once the book is closed', () async {
+      final session = await open(bookA);
+      await send([_bare(1, 0.4)]);
+      await session.showNoteHighlights(const [note]);
+      await session.close();
+      fake.calls.clear();
+
+      await send([_bare(2, 0)]);
+
+      expect(decorateCalls(), isEmpty);
+    });
+  });
+
   group('opening another book', () {
     test('closes the previous book first', () async {
       await open(bookA);

@@ -519,6 +519,35 @@ void main() {
       expect(decorations.single.style.tint, const Color(0x6654D27A));
     });
 
+    // The session applies the same list again whenever the reader moves to
+    // another file, and Readium redraws only decorations that differ.
+    test('builds the same decorations every time for the same notes', () {
+      const highlights = [
+        NoteHighlight(
+          id: 'note-1',
+          target: PassageTarget(
+            sectionIndex: 1,
+            progression: 0.4,
+            highlight: 'a grey cat',
+            before: 'There was ',
+            after: ' on the wall',
+          ),
+          color: Color(0x7354D27A),
+        ),
+      ];
+
+      List<Object?> json() => [
+        for (final decoration in noteDecorations(
+          highlights,
+          readingOrder,
+          _indexOf,
+        ))
+          decoration.toJson(),
+      ];
+
+      expect(json(), json());
+    });
+
     test('skips a highlight whose section is not in the reading order', () {
       final decorations = noteDecorations(
         const [
