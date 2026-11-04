@@ -281,13 +281,17 @@ class CardFlip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final showsSecond = math.cos(angle) < 0;
+    // Flat once it has turned all the way, so that it is plain to read.
+    final turned = angle == math.pi;
     return Transform(
       alignment: Alignment.center,
-      transform: _perspective()..rotateY(angle),
+      transform: turned ? Matrix4.identity() : (_perspective()..rotateY(angle)),
       child: showsSecond
           ? Transform(
               alignment: Alignment.center,
-              transform: Matrix4.rotationY(math.pi),
+              transform: turned
+                  ? Matrix4.identity()
+                  : Matrix4.rotationY(math.pi),
               child: second,
             )
           : first,
@@ -301,22 +305,32 @@ Matrix4 _perspective() => Matrix4.identity()..setEntry(3, 2, 0.001);
 class CollectibleCard extends StatefulWidget {
   const CollectibleCard({
     super.key,
+    required this.flip,
+    required this.showsBack,
+    required this.onTurnOver,
     required this.front,
     required this.back,
-    this.onFlip,
   });
+
+  /// How far the card has turned over, from 0 to 1.
+  final Animation<double> flip;
+
+  /// Whether the card is showing [back], or on its way there. Only the front
+  /// can be picked up, so that the back is free to scroll.
+  final bool showsBack;
+
+  /// Called when the reader taps the front.
+  final VoidCallback onTurnOver;
 
   /// Built from the light on the card, if any. See [CardFront.sheen].
   final Widget Function(CardSheen? sheen) front;
   final Widget back;
-  final VoidCallback? onFlip;
 
   @override
   State<CollectibleCard> createState() => _CollectibleCardState();
 }
 
-class _CollectibleCardState extends State<CollectibleCard>
-    with SingleTickerProviderStateMixin {
+class _CollectibleCardState extends State<CollectibleCard> {
   /// How closely the card follows the finger.
   static const _follow = Duration(milliseconds: 60);
 
@@ -326,28 +340,8 @@ class _CollectibleCardState extends State<CollectibleCard>
   /// How long the card takes to level out and lose the light once let go.
   static const _settle = Duration(milliseconds: 600);
 
-  late final _flip = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 500),
-  );
-
   /// Where the reader is pressing, from (0, 0) to (1, 1).
   Offset? _press;
-  bool _showsBack = false;
-
-  void _toggle() {
-    setState(() => _showsBack = !_showsBack);
-    if (MediaQuery.disableAnimationsOf(context)) {
-      _flip.value = _showsBack ? 1 : 0;
-      return;
-    }
-    widget.onFlip?.call();
-    if (_showsBack) {
-      _flip.forward();
-    } else {
-      _flip.reverse();
-    }
-  }
 
   void _aim(Offset position) {
     if (MediaQuery.disableAnimationsOf(context)) return;
@@ -363,25 +357,19 @@ class _CollectibleCardState extends State<CollectibleCard>
   void _release() => setState(() => _press = null);
 
   @override
-  void dispose() {
-    _flip.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     final press = _press;
+    final showsBack = widget.showsBack;
     return Semantics(
-      button: true,
-      label: _showsBack ? 'Turn back to the front' : 'Turn over for details',
+      button: !showsBack,
+      label: showsBack ? null : 'Turn over for details',
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: _toggle,
-        // Only the front tilts, so that the details can scroll.
-        onPanStart: _showsBack ? null : (d) => _aim(d.localPosition),
-        onPanUpdate: _showsBack ? null : (d) => _aim(d.localPosition),
-        onPanEnd: _showsBack ? null : (_) => _release(),
-        onPanCancel: _showsBack ? null : _release,
+        onTap: showsBack ? null : widget.onTurnOver,
+        onPanStart: showsBack ? null : (d) => _aim(d.localPosition),
+        onPanUpdate: showsBack ? null : (d) => _aim(d.localPosition),
+        onPanEnd: showsBack ? null : (_) => _release(),
+        onPanCancel: showsBack ? null : _release,
         child: TweenAnimationBuilder<double>(
           tween: Tween(end: press == null ? 0 : 1),
           duration: press == null ? _settle : _catch,
@@ -397,13 +385,15 @@ class _CollectibleCardState extends State<CollectibleCard>
             builder: (context, tilt, _) => Transform(
               alignment: Alignment.center,
               // The side being pressed dips away from the reader.
-              transform: _perspective()
-                ..rotateX(tilt.dy * 0.24)
-                ..rotateY(-tilt.dx * 0.3),
+              transform: tilt == Offset.zero
+                  ? Matrix4.identity()
+                  : (_perspective()
+                      ..rotateX(tilt.dy * 0.24)
+                      ..rotateY(-tilt.dx * 0.3)),
               child: AnimatedBuilder(
-                animation: _flip,
+                animation: widget.flip,
                 builder: (context, _) => CardFlip(
-                  angle: Curves.easeInOut.transform(_flip.value) * math.pi,
+                  angle: widget.flip.value * math.pi,
                   // The light moves with the card, so the two settle as one.
                   first: widget.front(
                     light == 0

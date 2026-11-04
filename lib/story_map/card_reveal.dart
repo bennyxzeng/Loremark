@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/material.dart';
 
@@ -119,7 +120,20 @@ class CharacterCardScreen extends StatefulWidget {
 }
 
 class _CharacterCardScreenState extends State<CharacterCardScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
+  /// Room above the open page for the buttons, which stay on the dimmed screen.
+  static const _buttonsHeight = 48.0;
+
+  /// The widest the open page gets, as for a bottom sheet.
+  static const _pageMaxWidth = 640.0;
+
+  /// The space below the resting card for the hint.
+  static const _hintGap = 14.0;
+  static const _hintHeight = 18.0;
+
+  /// How far into opening the hint is gone by.
+  static const _hintFadesBy = 0.15;
+
   late final _timeline = _RevealTimeline(
     widget.snapshot.starsOf(widget.entityId),
   );
@@ -129,6 +143,20 @@ class _CharacterCardScreenState extends State<CharacterCardScreen>
   );
   late bool _revealing = widget.reveal;
   var _nextCue = 0;
+
+  /// The card turning over and then opening up into a page of details, in one
+  /// motion that can play either way.
+  late final _opening = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  );
+  late final _flip = _opening.drive(
+    CurveTween(curve: const Interval(0, 0.55, curve: Curves.easeInOut)),
+  );
+  late final _grow = _opening.drive(
+    CurveTween(curve: const Interval(0.5, 1, curve: Curves.easeInOutCubic)),
+  );
+  var _showsDetails = false;
 
   CardSounds get _sounds => widget.session.sounds;
   double get _ms => _controller.value * _timeline.end;
@@ -163,47 +191,81 @@ class _CharacterCardScreenState extends State<CharacterCardScreen>
     if (mounted && _revealing) setState(() => _revealing = false);
   }
 
+  void _setShowsDetails(bool shows) {
+    if (shows == _showsDetails) return;
+    setState(() => _showsDetails = shows);
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _opening.value = shows ? 1 : 0;
+      return;
+    }
+    _sounds.play(CardSound.flip);
+    if (shows) {
+      _opening.forward();
+    } else {
+      _opening.reverse();
+    }
+  }
+
   @override
   void dispose() {
     if (_revealing) _sounds.stop();
+    _opening.dispose();
     _controller.dispose();
     super.dispose();
   }
 
-  Size _cardSize(BoxConstraints constraints) {
-    final width = math.min(constraints.maxWidth - 48, 340.0);
-    return Size(width, math.min(width * 1.5, constraints.maxHeight - 120));
-  }
-
-  Widget _details(Color tier) {
-    return Material(
-      color: Theme.of(context).colorScheme.surface,
-      clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(cardRadius),
-        side: BorderSide(color: tier, width: 3),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.only(top: 18),
-        child: CharacterCardView(
-          snapshot: widget.snapshot,
-          entityId: widget.entityId,
-          onEntityTap: (id) =>
-              showCharacterCard(context, widget.snapshot, id, widget.session),
+  /// The back of the card, which opens up into a page.
+  ///
+  /// The details are laid out at the size of the page from the start and only
+  /// scaled down on the card, so that the text doesn't reflow as it grows.
+  Widget _details(Color tier, Size pageSize) {
+    return AnimatedBuilder(
+      animation: _grow,
+      builder: (context, child) {
+        final grow = _grow.value;
+        return Material(
+          color: Theme.of(context).bottomSheetTheme.backgroundColor,
+          clipBehavior: Clip.antiAlias,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(lerpDouble(cardRadius, 28, grow)!),
+              bottom: Radius.circular(lerpDouble(cardRadius, 0, grow)!),
+            ),
+            side: grow == 1
+                ? BorderSide.none
+                : BorderSide(color: tier, width: 3 * (1 - grow)),
+          ),
+          child: child,
+        );
+      },
+      child: FittedBox(
+        fit: BoxFit.fitWidth,
+        alignment: Alignment.topCenter,
+        clipBehavior: Clip.hardEdge,
+        child: SizedBox.fromSize(
+          size: pageSize,
+          child: CharacterCardView(
+            snapshot: widget.snapshot,
+            entityId: widget.entityId,
+            onEntityTap: (id) =>
+                showCharacterCard(context, widget.snapshot, id, widget.session),
+          ),
         ),
       ),
     );
   }
 
-  Widget _restingCard(Color tier) {
+  Widget _restingCard(Color tier, Size pageSize) {
     return CollectibleCard(
-      onFlip: () => _sounds.play(CardSound.flip),
+      flip: _flip,
+      showsBack: _showsDetails,
+      onTurnOver: () => _setShowsDetails(true),
       front: (sheen) => CardFront(
         snapshot: widget.snapshot,
         entityId: widget.entityId,
         sheen: sheen,
       ),
-      back: _details(tier),
+      back: _details(tier, pageSize),
     );
   }
 
@@ -307,38 +369,86 @@ class _CharacterCardScreenState extends State<CharacterCardScreen>
                 ),
               ),
             ),
-          SafeArea(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final size = _cardSize(constraints);
-                return Stack(
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final screen = constraints.biggest;
+              final safe = MediaQuery.paddingOf(context)
+                  .deflateRect(Offset.zero & screen);
+              final cardWidth = math.min(safe.width - 48, 340.0);
+              final rest = Rect.fromCenter(
+                center: safe.center.translate(0, -(_hintGap + _hintHeight) / 2),
+                width: cardWidth,
+                height: math.min(cardWidth * 1.5, safe.height - 120),
+              );
+              final pageWidth = math.min(screen.width, _pageMaxWidth);
+              final page = Rect.fromLTRB(
+                (screen.width - pageWidth) / 2,
+                safe.top + _buttonsHeight,
+                (screen.width + pageWidth) / 2,
+                screen.height,
+              );
+              return AnimatedBuilder(
+                animation: _opening,
+                child: _revealing
+                    ? _revealingCard(tier)
+                    : _restingCard(tier, page.size),
+                builder: (context, card) => Stack(
                   children: [
-                    Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          SizedBox.fromSize(
-                            size: size,
-                            child: _revealing
-                                ? _revealingCard(tier)
-                                : _restingCard(tier),
+                    // The map behind recedes, so that the buttons stand clear.
+                    if (_grow.value > 0)
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: ColoredBox(
+                            color: Colors.black.withValues(
+                              alpha: 0.55 * _grow.value,
+                            ),
                           ),
-                          const SizedBox(height: 14),
-                          Text(
+                        ),
+                      ),
+                    Positioned.fromRect(
+                      rect: Rect.lerp(rest, page, _grow.value)!,
+                      child: card!,
+                    ),
+                    if (_opening.value < _hintFadesBy)
+                      Positioned(
+                        top: rest.bottom + _hintGap,
+                        left: 0,
+                        right: 0,
+                        child: Opacity(
+                          opacity: 1 - _opening.value / _hintFadesBy,
+                          child: Text(
                             _revealing
                                 ? 'Tap to skip'
                                 : 'Tap to flip · Drag to tilt',
+                            textAlign: TextAlign.center,
                             style: hint,
                           ),
-                        ],
+                        ),
                       ),
-                    ),
+                    if (_grow.value > 0)
+                      Positioned(
+                        top: safe.top,
+                        left: safe.left,
+                        child: Opacity(
+                          opacity: _grow.value,
+                          child: IconButton(
+                            color: Colors.white,
+                            icon: const Icon(Icons.arrow_back),
+                            tooltip: 'Back to card',
+                            onPressed: () => _setShowsDetails(false),
+                          ),
+                        ),
+                      ),
                     if (!_revealing)
-                      Align(alignment: Alignment.topRight, child: _controls()),
+                      Positioned(
+                        top: safe.top,
+                        right: screen.width - safe.right,
+                        child: _controls(),
+                      ),
                   ],
-                );
-              },
-            ),
+                ),
+              );
+            },
           ),
           if (_revealing) ...[
             Positioned.fill(

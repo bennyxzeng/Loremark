@@ -304,22 +304,96 @@ void main() {
       expect(tester.widget<CardStars>(find.byType(CardStars)).stars, 2);
     });
 
-    testWidgets('turns over to the details and back', (tester) async {
+    testWidgets('turns over to a page of details, and back', (tester) async {
+      await pumpStoryMap(tester);
+      await open(tester, 'Mara Quinn');
+      await tester.pumpAndSettle();
+      final card = tester.getRect(find.byType(CardFlip));
+
+      await tester.tap(find.byType(CardFront));
+      await tester.pumpAndSettle();
+
+      const details = 'character · First seen in Chapter 1';
+      expect(find.byType(CardFront), findsNothing);
+      expect(find.text(details), findsOne);
+      expect(find.text('Tap to flip · Drag to tilt'), findsNothing);
+      expect(sounds.played, [CardSound.flip]);
+
+      // A page for reading: a stray tap doesn't turn it back.
+      await tester.tap(find.text(details));
+      await tester.pumpAndSettle();
+      expect(find.text(details), findsOne);
+
+      await tester.tap(find.byTooltip('Back to card'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CardFront), findsOne);
+      expect(find.byTooltip('Back to card'), findsNothing);
+      expect(find.text('Tap to flip · Drag to tilt'), findsOne);
+      expect(tester.getRect(find.byType(CardFlip)), card);
+      expect(sounds.played, [CardSound.flip, CardSound.flip]);
+    });
+
+    testWidgets('closes when tapping above the open page', (tester) async {
+      await pumpStoryMap(tester);
+      await open(tester, 'Mara Quinn');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(CardFront));
+      await tester.pumpAndSettle();
+
+      await tester.tapAt(const Offset(400, 20));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CharacterCardView), findsNothing);
+    });
+
+    testWidgets('finishes turning over before it opens up', (tester) async {
+      await pumpStoryMap(tester);
+      await open(tester, 'Mara Quinn');
+      await tester.pumpAndSettle();
+      final card = tester.getSize(find.byType(CardFlip));
+
+      await tester.tap(find.byType(CardFront));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(tester.getSize(find.byType(CardFlip)), card);
+
+      await tester.pump(const Duration(milliseconds: 350));
+      final growing = tester.getSize(find.byType(CardFlip));
+      expect(growing.width, greaterThan(card.width));
+      expect(find.byType(CardFront), findsNothing);
+      final laidOut = tester.getSize(find.byType(CharacterCardView));
+
+      await tester.pumpAndSettle();
+      final page = tester.getRect(find.byType(CardFlip));
+      expect(page.width, greaterThan(growing.width));
+      // Below the buttons, as wide as a sheet, down to the bottom of the screen.
+      expect(page, const Rect.fromLTRB(80, 48, 720, 1400));
+      // The text never reflowed on the way.
+      expect(tester.getSize(find.byType(CharacterCardView)), laidOut);
+      expect(laidOut, page.size);
+    });
+
+    testWidgets('opens the page at once when animations are turned off', (
+      tester,
+    ) async {
+      tester.platformDispatcher.accessibilityFeaturesTestValue =
+          const FakeAccessibilityFeatures(disableAnimations: true);
+      addTearDown(
+        tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+      );
       await pumpStoryMap(tester);
       await open(tester, 'Mara Quinn');
       await tester.pumpAndSettle();
 
       await tester.tap(find.byType(CardFront));
-      await tester.pumpAndSettle();
+      await tester.pump();
 
-      expect(find.byType(CardFront), findsNothing);
-      expect(find.text('character · First seen in Chapter 1'), findsOne);
-      expect(sounds.played, [CardSound.flip]);
-
-      await tester.tap(find.text('character · First seen in Chapter 1'));
-      await tester.pumpAndSettle();
-
-      expect(find.byType(CardFront), findsOne);
+      expect(
+        tester.getRect(find.byType(CardFlip)),
+        const Rect.fromLTRB(80, 48, 720, 1400),
+      );
+      expect(sounds.played, isEmpty);
     });
 
     testWidgets('tilts when dragged, without turning over', (tester) async {

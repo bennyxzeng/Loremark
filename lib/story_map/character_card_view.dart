@@ -32,7 +32,12 @@ class CharacterCardView extends StatelessWidget {
     final questions = snapshot.questionsOf(entityId);
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(18, 0, 18, 24),
+      padding: EdgeInsets.fromLTRB(
+        24,
+        24,
+        24,
+        32 + MediaQuery.paddingOf(context).bottom,
+      ),
       children: [
         Text(
           snapshot.displayName(entityId),
