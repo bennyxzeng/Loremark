@@ -257,7 +257,9 @@ class _ReadiumSession implements EpubReaderSession {
       final line = positionLogLine(locator, raw?.sectionIndex);
       if (line != null) debugPrintSynchronously(line);
     }
-    if (raw != null) _redrawOnNewFile(raw.sectionIndex);
+    if (raw != null) {
+      _redrawOnNewPage((raw.sectionIndex, locator.locations?.progression));
+    }
     // Before the duplicate check: the page script's marker comes with the
     // second, full locator of a page, which has the same position as the bare
     // one.
@@ -430,16 +432,18 @@ class _ReadiumSession implements EpubReaderSession {
   /// The decorations last applied, by group, kept to draw them again.
   final _decorations = <String, List<ReaderDecoration>>{};
 
-  /// The section the decorations were last drawn again for.
-  int? _decoratedSection;
+  /// The page, as section and progression, the decorations were last drawn
+  /// again for.
+  (int, double?)? _decoratedPage;
 
   Future<void> _decorate(String group, List<ReaderDecoration> decorations) {
     _decorations[group] = decorations;
     return _readium.applyDecorations(group, decorations);
   }
 
-  /// Applies every decoration group again each time the reader shows a
-  /// different file, starting with the first one it shows.
+  /// Applies every decoration group again each time the reader shows another
+  /// page, starting with the first one it shows. Readium reports each page
+  /// twice with the same progression, so that counts as one page.
   ///
   /// flutter_readium 0.8.0's Android navigator clears all decorations when the
   /// page it shows moves to another file (`EpubNavigator.onPageChanged`), but
@@ -449,11 +453,12 @@ class _ReadiumSession implements EpubReaderSession {
   /// gone. Decorations applied before the reader view exists are also dropped,
   /// since the plugin has no view to send them to.
   ///
-  /// Readium compares the list with the one it has, so this draws nothing new
-  /// when the plugin cleared nothing.
-  void _redrawOnNewFile(int section) {
-    if (section == _decoratedSection || _closed) return;
-    _decoratedSection = section;
+  /// Every page, not only a new file, because highlights were also seen to
+  /// vanish after turning one page and back. Readium compares the list with
+  /// the one it has, so this draws nothing new when nothing was cleared.
+  void _redrawOnNewPage((int, double?) page) {
+    if (page == _decoratedPage || _closed) return;
+    _decoratedPage = page;
     for (final MapEntry(key: group, value: decorations)
         in _decorations.entries) {
       // An empty group is already what the plugin left.

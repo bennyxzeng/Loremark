@@ -861,7 +861,7 @@ void main() {
     });
   });
 
-  group('highlights on another file', () {
+  group('highlights after the reader moves', () {
     const note = NoteHighlight(
       id: 'note-1',
       target: PassageTarget(
@@ -893,15 +893,16 @@ void main() {
       expect(fake.decorations[noteHighlightGroup]?.single.id, 'note-1');
     });
 
-    test('are not drawn again on a page turn inside the file', () async {
+    test('are drawn again once per page turn inside the file', () async {
       final session = await open(bookA);
       await send([_bare(1, 0.2), _full(1, 0.2, page: 0, pages: 4)]);
       await session.showNoteHighlights(const [note]);
       fake.calls.clear();
 
       await send([_bare(1, 0.4), _full(1, 0.4, page: 1, pages: 4)]);
+      await send([_bare(1, 0.4), _full(1, 0.4, page: 1, pages: 4)]);
 
-      expect(decorateCalls(), isEmpty);
+      expect(decorateCalls(), ['decorate $noteHighlightGroup 1']);
     });
 
     test('drawn before the reader showed appear on its first page', () async {
