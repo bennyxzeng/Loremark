@@ -1,0 +1,87 @@
+import 'package:flutter/material.dart';
+
+import '../story_model/story_model.dart';
+import 'story_facts.dart';
+
+/// Opens the guide to the labels on a fact as a bottom sheet.
+Future<void> showLabelGuide(BuildContext context) {
+  return showFactSheet(
+    context,
+    builder: (context, scrollController) =>
+        LabelGuideView(scrollController: scrollController),
+  );
+}
+
+/// What each `temporal_context` and `assertion` label means, in the terms of
+/// the lab's `STORY_MODEL_FORMAT.md`.
+class LabelGuideView extends StatelessWidget {
+  const LabelGuideView({super.key, this.scrollController});
+
+  final ScrollController? scrollController;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return ListView(
+      controller: scrollController,
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
+      children: [
+        Text('Label guide', style: theme.textTheme.headlineSmall),
+        const SizedBox(height: 4),
+        Text(
+          'The labels on a fact say when it holds and how we know it.',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const FactHeading('When does it hold?'),
+        for (final time in TemporalContext.values)
+          _LabelRow(time.name, switch (time) {
+            TemporalContext.current => 'Part of the present story.',
+            TemporalContext.past =>
+              'Earlier than the present story: a memory, flashback or '
+                  'backstory.',
+            TemporalContext.future =>
+              'Planned or predicted. It may not happen.',
+            TemporalContext.hypothetical =>
+              'Imagined: what would happen “if…”.',
+            TemporalContext.unknown => 'The text doesn’t say when.',
+          }),
+        const FactHeading('How do we know?'),
+        for (final assertion in Assertion.values)
+          _LabelRow(assertion.name, switch (assertion) {
+            Assertion.explicit => 'The narration says it directly.',
+            Assertion.reported =>
+              'A character or in-world source says it. It may be false.',
+            Assertion.inferred =>
+              'Not said outright, but it follows from the text.',
+          }),
+      ],
+    );
+  }
+}
+
+class _LabelRow extends StatelessWidget {
+  const _LabelRow(this.label, this.meaning);
+
+  final String label;
+  final String meaning;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 104,
+            child: Align(alignment: Alignment.topLeft, child: FactTag(label)),
+          ),
+          Expanded(child: Text(meaning, style: theme.textTheme.bodyMedium)),
+        ],
+      ),
+    );
+  }
+}

@@ -10,10 +10,12 @@ class ChapterDigestView extends StatelessWidget {
     super.key,
     required this.snapshot,
     required this.onEntityTap,
+    required this.onGuideTap,
   });
 
   final StorySnapshot snapshot;
   final ValueChanged<String> onEntityTap;
+  final VoidCallback onGuideTap;
 
   @override
   Widget build(BuildContext context) {
@@ -40,13 +42,9 @@ class ChapterDigestView extends StatelessWidget {
       (question) => snapshot.isNewRecord(question.record),
     );
 
-    return ListView(
+    final facts = ListView(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
       children: [
-        Text(
-          'What’s new in ${section.title}',
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
         if (changes.isNotEmpty) ...[
           const FactHeading('Changes'),
           for (final change in changes)
@@ -73,8 +71,8 @@ class ChapterDigestView extends StatelessWidget {
               text: snapshot.describe(record.payload),
               detail: record.payload.description,
               tags: [
-                ...temporalTags(record.payload.temporalContext),
-                ...assertionTags(record.payload.assertion),
+                record.payload.temporalContext.name,
+                record.payload.assertion.name,
               ],
             ),
         ],
@@ -88,8 +86,8 @@ class ChapterDigestView extends StatelessWidget {
                   '${record.payload.description}',
               detail: _participants(record.payload),
               tags: [
-                ...temporalTags(record.payload.temporalContext),
-                ...assertionTags(record.payload.assertion),
+                record.payload.temporalContext.name,
+                record.payload.assertion.name,
               ],
             ),
         ],
@@ -102,6 +100,31 @@ class ChapterDigestView extends StatelessWidget {
               detail: answerText(question),
             ),
         ],
+      ],
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 16, right: 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'What’s new in ${section.title}',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.help_outline),
+                tooltip: 'Label guide',
+                onPressed: onGuideTap,
+              ),
+            ],
+          ),
+        ),
+        Expanded(child: facts),
       ],
     );
   }

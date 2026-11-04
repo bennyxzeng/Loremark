@@ -13,19 +13,12 @@ Future<void> showCharacterCard(
   StorySnapshot snapshot,
   String entityId,
 ) {
-  return showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    showDragHandle: true,
-    builder: (context) => DraggableScrollableSheet(
-      expand: false,
-      initialChildSize: 0.6,
-      maxChildSize: 0.95,
-      builder: (context, scrollController) => CharacterCardView(
-        snapshot: snapshot,
-        entityId: entityId,
-        scrollController: scrollController,
-      ),
+  return showFactSheet(
+    context,
+    builder: (context, scrollController) => CharacterCardView(
+      snapshot: snapshot,
+      entityId: entityId,
+      scrollController: scrollController,
     ),
   );
 }
@@ -92,7 +85,7 @@ class CharacterCardView extends StatelessWidget {
             FactTile(
               model: model,
               text: snapshot.describe(record.payload),
-              tags: assertionTags(record.payload.assertion),
+              tags: [record.payload.assertion.name],
               evidence: record.evidence,
             ),
         ],
@@ -104,8 +97,8 @@ class CharacterCardView extends StatelessWidget {
               text: snapshot.describe(record.payload),
               detail: record.payload.description,
               tags: [
-                ...temporalTags(record.payload.temporalContext),
-                ...assertionTags(record.payload.assertion),
+                record.payload.temporalContext.name,
+                record.payload.assertion.name,
               ],
               onTap: () => showCharacterCard(
                 context,
@@ -122,8 +115,8 @@ class CharacterCardView extends StatelessWidget {
               text: record.payload.description,
               detail: model.sectionById(record.learnedInSectionId)?.label,
               tags: [
-                ...temporalTags(record.payload.temporalContext),
-                ...assertionTags(record.payload.assertion),
+                record.payload.temporalContext.name,
+                record.payload.assertion.name,
               ],
             ),
         ],

@@ -12,18 +12,11 @@ Future<void> showGraphGuide(
   BuildContext context, {
   required String sectionLabel,
 }) {
-  return showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    showDragHandle: true,
-    builder: (context) => DraggableScrollableSheet(
-      expand: false,
-      initialChildSize: 0.6,
-      maxChildSize: 0.95,
-      builder: (context, scrollController) => GraphGuideView(
-        sectionLabel: sectionLabel,
-        scrollController: scrollController,
-      ),
+  return showFactSheet(
+    context,
+    builder: (context, scrollController) => GraphGuideView(
+      sectionLabel: sectionLabel,
+      scrollController: scrollController,
     ),
   );
 }

@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:loremark/story_map/chapter_digest_view.dart';
 import 'package:loremark/story_map/character_graph_view.dart';
 import 'package:loremark/story_map/graph_guide_sheet.dart';
+import 'package:loremark/story_map/label_guide_sheet.dart';
 import 'package:loremark/story_map/story_facts.dart';
 import 'package:loremark/story_map/story_map_screen.dart';
 import 'package:loremark/story_model/story_model.dart';
@@ -22,6 +23,16 @@ void main() {
     await tester.tap(find.text(label));
     await tester.pumpAndSettle();
   }
+
+  List<String> tagsOf(WidgetTester tester, String fact) => [
+    for (final tag in tester.widgetList<FactTag>(
+      find.descendant(
+        of: find.widgetWithText(FactTile, fact),
+        matching: find.byType(FactTag),
+      ),
+    ))
+      tag.label,
+  ];
 
   Future<void> slideToFirstChapter(WidgetTester tester) async {
     await tester.drag(find.byType(Slider), const Offset(-1000, 0));
@@ -71,6 +82,7 @@ void main() {
     expect(find.text('character · First seen in Chapter 1'), findsOne);
     expect(find.text('Also known as the harbor girl'), findsOne);
     expect(find.text('role: dock clerk'), findsOne);
+    expect(tagsOf(tester, 'role: dock clerk'), ['explicit']);
     expect(find.text('age: sixteen'), findsNothing);
   });
 
@@ -90,7 +102,7 @@ void main() {
     await showTab(tester, 'Chapter');
 
     await tester.scrollUntilVisible(
-      find.text('1. Elian left home years ago.  past'),
+      find.text('1. Elian left home years ago.'),
       200,
       scrollable: find.descendant(
         of: find.byType(ChapterDigestView),
@@ -98,7 +110,10 @@ void main() {
       ),
     );
 
-    expect(find.text('1. Elian left home years ago.  past'), findsOne);
+    expect(tagsOf(tester, '1. Elian left home years ago.'), [
+      'past',
+      'explicit',
+    ]);
     expect(find.textContaining('flashback'), findsNothing);
   });
 
@@ -119,12 +134,98 @@ void main() {
     expect(find.text('organization · First seen in Chapter 1'), findsOne);
   });
 
-  test('every temporal context but current is tagged with its own name', () {
-    expect(temporalTags(TemporalContext.current), isEmpty);
-    expect(temporalTags(TemporalContext.past), ['past']);
-    expect(temporalTags(TemporalContext.future), ['future']);
-    expect(temporalTags(TemporalContext.hypothetical), ['hypothetical']);
-    expect(temporalTags(TemporalContext.unknown), ['unknown']);
+  testWidgets('facts show their default labels too', (tester) async {
+    await pumpStoryMap(tester);
+    await showTab(tester, 'Chapter');
+
+    expect(tagsOf(tester, 'Elian sibling of Mara Quinn'), [
+      'current',
+      'explicit',
+    ]);
+
+    await tester.scrollUntilVisible(
+      find.text('2. Elian hands Mara a letter.'),
+      200,
+      scrollable: find.descendant(
+        of: find.byType(ChapterDigestView),
+        matching: find.byType(Scrollable),
+      ),
+    );
+
+    expect(tagsOf(tester, '2. Elian hands Mara a letter.'), [
+      'current',
+      'explicit',
+    ]);
+  });
+
+  test('only the usual labels count as defaults', () {
+    final defaults = [
+      for (final label in [
+        for (final time in TemporalContext.values) time.name,
+        for (final assertion in Assertion.values) assertion.name,
+      ])
+        if (FactTag(label).isDefault) label,
+    ];
+
+    expect(defaults, ['current', 'explicit']);
+  });
+
+  group('label guide', () {
+    final guideButton = find.byTooltip('Label guide');
+
+    testWidgets('explains every label the model can use', (tester) async {
+      tester.view.physicalSize = const Size(1000, 4000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await pumpStoryMap(tester);
+      await showTab(tester, 'Chapter');
+
+      await tester.tap(guideButton);
+      await tester.pumpAndSettle();
+
+      for (final label in [
+        for (final context in TemporalContext.values) context.name,
+        for (final assertion in Assertion.values) assertion.name,
+      ]) {
+        expect(
+          find.descendant(
+            of: find.byType(LabelGuideView),
+            matching: find.text(label),
+          ),
+          findsOne,
+          reason: label,
+        );
+      }
+    });
+
+    testWidgets('stays reachable while the chapter scrolls', (tester) async {
+      await pumpStoryMap(tester);
+      await showTab(tester, 'Chapter');
+
+      await tester.drag(
+        find.descendant(
+          of: find.byType(ChapterDigestView),
+          matching: find.byType(Scrollable),
+        ),
+        const Offset(0, -300),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(guideButton);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(LabelGuideView), findsOne);
+    });
+
+    testWidgets('only the Chapter tab has the button', (tester) async {
+      await pumpStoryMap(tester);
+      expect(guideButton, findsNothing);
+
+      await showTab(tester, 'Characters');
+      expect(guideButton, findsNothing);
+
+      await showTab(tester, 'Chapter');
+      expect(guideButton, findsOne);
+    });
   });
 
   group('graph guide', () {
