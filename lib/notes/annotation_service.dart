@@ -230,7 +230,8 @@ class AnnotationService extends ChangeNotifier {
     return edited;
   }
 
-  /// This deletes a note. The Notes tab asks the reader to confirm before calling this.
+  /// This deletes a note. The app asks the reader to confirm first, except for a
+  /// highlight with no text, since nothing written is lost.
   Future<void> deleteNote(String id) async {
     final index = _indexOf(id);
     await _save([..._notes]..removeAt(index));
