@@ -40,8 +40,8 @@ These are our six use cases and where each one stands in this beta.
 | Use case | Status | What you can do today |
 | :--- | :--- | :--- |
 | **3 · Take notes and highlights** | **Operational** | Select text in the reader and choose **Highlight**, **Add note** or **Copy**. Highlights are drawn on the page and stay there as you turn pages. Tap a highlight to edit or remove it. The Notes tab lists every note, with search, a color filter and an **All / Notes / Highlights** toggle. Tap a note to jump back to its passage. |
-| **5 · Explore the Story Map** | **Operational** with the demo story model | A relationship graph of the characters, with a chapter slider. Move the slider back and facts from later chapters disappear. The **Chapter** page lists what the reader learned in that chapter. |
-| **4 · Look up a character** | **Operational** with the demo story model | A searchable character list, and a card for each character showing what is known as of the chosen chapter. Opening a card by tapping a name in the reader isn't in yet. |
+| **5 · Explore the Story Map** | **Operational** | A relationship graph of the characters, with a chapter slider. Move the slider back and facts from later chapters disappear. The **Chapter** page lists what the reader learned in that chapter. |
+| **4 · Look up a character** | **Operational** | A searchable character list, and a card for each character showing what is known as of the chosen chapter. Opening a card by tapping a name in the reader isn't in yet. |
 | **1 · Get a recap when you come back** | In progress | |
 | **2 · Track a theory** | In progress | |
 | **6 · Ask about the story** | In progress | The Ask tab is in the app and unlocks with an API key, but it doesn't answer questions yet. |
@@ -110,7 +110,6 @@ flowchart LR
 - Answers in the Ask tab, using only the chapters you have read (use case 6).
 - A recap when you come back to a book (use case 1).
 - A theory tracker that checks your guesses as the story reveals more (use case 2).
-- A story model built in the app for any book you import.
 - A Story Map that stops at your page, and character cards opened by tapping a name in the reader.
 
 **Stretch goals:** confusion detection that notices rereading and stalls and offers a nudge (in progress), an AI-generated map of the story's world, and, if time allows, training our own model.
