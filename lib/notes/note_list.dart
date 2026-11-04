@@ -31,6 +31,8 @@ class _NoteListState extends State<NoteList> {
   String? _chapter;
   // This is the color the reader filtered by, or null for every color.
   HighlightColor? _color;
+  // This is whether the reader is looking at notes, highlights, or both.
+  NoteTypeFilter _type = NoteTypeFilter.all;
 
   @override
   void dispose() {
@@ -42,6 +44,7 @@ class _NoteListState extends State<NoteList> {
     query: _searchController.text,
     chapterLabel: _chapter,
     color: _color,
+    type: _type,
   );
 
   // This asks the reader to confirm and only then deletes the note.
@@ -136,7 +139,8 @@ class _NoteListState extends State<NoteList> {
     );
   }
 
-  // This builds the search box, the chapter picker, and the color filter chips.
+  // This builds the search box, the All / Notes / Highlights toggle, the chapter
+  // picker, and the color filter chips.
   Widget _buildFilters(List<String> chapters) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
@@ -152,6 +156,23 @@ class _NoteListState extends State<NoteList> {
               isDense: true,
             ),
             onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 8),
+          // This toggle has its own row and fills its width, so it fits on a narrow phone.
+          SegmentedButton<NoteTypeFilter>(
+            segments: const [
+              ButtonSegment(value: NoteTypeFilter.all, label: Text('All')),
+              ButtonSegment(value: NoteTypeFilter.notes, label: Text('Notes')),
+              ButtonSegment(
+                value: NoteTypeFilter.highlights,
+                label: Text('Highlights'),
+              ),
+            ],
+            selected: {_type},
+            showSelectedIcon: false,
+            expandedInsets: EdgeInsets.zero,
+            onSelectionChanged: (selection) =>
+                setState(() => _type = selection.single),
           ),
           const SizedBox(height: 8),
           SingleChildScrollView(

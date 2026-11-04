@@ -23,10 +23,25 @@ class NoteNotFoundException implements Exception {
   String toString() => 'No note with id $id.';
 }
 
+/// This enum lists which kinds of entries the Notes tab shows.
+/// A note has text the reader wrote, and a highlight has none.
+/// (See [Note.isHighlightOnly])
+enum NoteTypeFilter {
+  /// This shows notes and highlights.
+  all,
+
+  /// This shows only notes with text the reader wrote.
+  notes,
+
+  /// This shows only highlights with no text.
+  highlights,
+}
+
 /// This class holds the filters the reader picked in the Notes tab.
 /// Every filter is optional, and a null filter means "show everything".
 /// Ex. NoteFilter(color: HighlightColor.blue, query: 'Elian') shows only blue
 /// notes that mention Elian.
+/// Ex. NoteFilter(type: NoteTypeFilter.highlights) shows only highlights.
 class NoteFilter {
   /// This is the text to search for in the note and in the selected passage.
   final String query;
@@ -37,7 +52,15 @@ class NoteFilter {
   /// This is the only highlight color to show. (Optional)
   final HighlightColor? color;
 
-  const NoteFilter({this.query = '', this.chapterLabel, this.color});
+  /// This is whether to show notes, highlights, or both. (Optional, shows both by default)
+  final NoteTypeFilter type;
+
+  const NoteFilter({
+    this.query = '',
+    this.chapterLabel,
+    this.color,
+    this.type = NoteTypeFilter.all,
+  });
 
   /// This checks if a note passes every filter.
   bool matches(Note note) {
@@ -45,6 +68,10 @@ class NoteFilter {
       return false;
     }
     if (color != null && note.color != color) return false;
+    if (type == NoteTypeFilter.notes && note.isHighlightOnly) return false;
+    if (type == NoteTypeFilter.highlights && !note.isHighlightOnly) {
+      return false;
+    }
     final search = query.trim().toLowerCase();
     if (search.isEmpty) return true;
     return note.body.toLowerCase().contains(search) ||

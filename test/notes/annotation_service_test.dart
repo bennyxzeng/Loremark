@@ -244,6 +244,98 @@ void main() {
     });
   });
 
+  group('filtering by type', () {
+    Future<Note> addHighlight(
+      String selectedText, {
+      NoteAnchor anchor = const NoteAnchor(7, 0.4),
+      String chapter = 'Chapter 8',
+      HighlightColor color = HighlightColor.yellow,
+    }) => service.addHighlight(
+      anchor: anchor,
+      chapterLabel: chapter,
+      selectedText: selectedText,
+      color: color,
+    );
+
+    // Returns what the filter keeps, as note bodies or, for highlights, passages.
+    List<String> shown(NoteFilter filter) => [
+      for (final group in service.notesByChapter(filter))
+        for (final note in group.notes)
+          note.isHighlightOnly ? note.selectedText : note.body,
+    ];
+
+    setUp(() async {
+      await addNote('Mara hides the letter', anchor: const NoteAnchor(7, 0.2));
+      await addHighlight('The harbor lights went out.');
+      await addNote(
+        'The lighthouse keeper lies',
+        anchor: const NoteAnchor(2, 0.4),
+        chapter: 'Chapter 3',
+        color: HighlightColor.blue,
+      );
+      await addHighlight(
+        'He said the light was never lit.',
+        anchor: const NoteAnchor(2, 0.6),
+        chapter: 'Chapter 3',
+        color: HighlightColor.blue,
+      );
+    });
+
+    test('shows notes and highlights by default', () {
+      expect(const NoteFilter().type, NoteTypeFilter.all);
+      expect(shown(const NoteFilter()), hasLength(4));
+    });
+
+    test('notes keeps only entries with text the reader wrote', () {
+      expect(shown(const NoteFilter(type: NoteTypeFilter.notes)), [
+        'The lighthouse keeper lies',
+        'Mara hides the letter',
+      ]);
+    });
+
+    test('highlights keeps only entries with no text', () {
+      expect(shown(const NoteFilter(type: NoteTypeFilter.highlights)), [
+        'He said the light was never lit.',
+        'The harbor lights went out.',
+      ]);
+    });
+
+    test('works together with the chapter, color, and search filters', () {
+      expect(
+        shown(
+          const NoteFilter(
+            type: NoteTypeFilter.highlights,
+            chapterLabel: 'Chapter 3',
+          ),
+        ),
+        ['He said the light was never lit.'],
+      );
+      expect(
+        shown(
+          const NoteFilter(
+            type: NoteTypeFilter.notes,
+            color: HighlightColor.blue,
+          ),
+        ),
+        ['The lighthouse keeper lies'],
+      );
+      expect(
+        shown(
+          const NoteFilter(type: NoteTypeFilter.highlights, query: 'harbor'),
+        ),
+        ['The harbor lights went out.'],
+      );
+    });
+
+    test('returns no chapters when nothing matches every filter', () {
+      final groups = service.notesByChapter(
+        const NoteFilter(type: NoteTypeFilter.notes, query: 'never lit'),
+      );
+
+      expect(groups, isEmpty);
+    });
+  });
+
   group('a corrupted notes file', () {
     setUp(() {
       File('${bookDirectory.path}/notes.json').writeAsStringSync('{broken');

@@ -135,6 +135,89 @@ void main() {
       expect(find.text('Yellow note'), findsNothing);
     });
 
+    group('type toggle', () {
+      Future<void> addHighlight(String selectedText) => service.addHighlight(
+        anchor: const NoteAnchor(7, 0.5),
+        chapterLabel: 'Chapter 8',
+        selectedText: selectedText,
+      );
+
+      // Taps one of the All / Notes / Highlights segments.
+      Future<void> pickType(WidgetTester tester, String label) async {
+        await tester.tap(
+          find.descendant(
+            of: find.byType(SegmentedButton<NoteTypeFilter>),
+            matching: find.text(label),
+          ),
+        );
+        await tester.pump();
+      }
+
+      testWidgets('Notes shows only notes with text', (tester) async {
+        await addNote('Mara hides the letter');
+        await addHighlight('The harbor lights went out.');
+        await tester.pumpWidget(app(NoteList(service: service)));
+
+        await pickType(tester, 'Notes');
+
+        expect(find.text('Mara hides the letter'), findsOneWidget);
+        expect(find.textContaining('The harbor lights'), findsNothing);
+      });
+
+      testWidgets('Highlights shows only highlights', (tester) async {
+        await addNote('Mara hides the letter');
+        await addHighlight('The harbor lights went out.');
+        await tester.pumpWidget(app(NoteList(service: service)));
+
+        await pickType(tester, 'Highlights');
+
+        expect(find.textContaining('The harbor lights'), findsOneWidget);
+        expect(find.text('Mara hides the letter'), findsNothing);
+      });
+
+      testWidgets('All shows both, and is picked at the start', (tester) async {
+        await addNote('Mara hides the letter');
+        await addHighlight('The harbor lights went out.');
+        await tester.pumpWidget(app(NoteList(service: service)));
+
+        final toggle = tester.widget<SegmentedButton<NoteTypeFilter>>(
+          find.byType(SegmentedButton<NoteTypeFilter>),
+        );
+        expect(toggle.selected, {NoteTypeFilter.all});
+
+        await pickType(tester, 'Highlights');
+        await pickType(tester, 'All');
+
+        expect(find.text('Mara hides the letter'), findsOneWidget);
+        expect(find.textContaining('The harbor lights'), findsOneWidget);
+      });
+
+      testWidgets('says nothing matches when the type hides every entry', (
+        tester,
+      ) async {
+        await addNote('Mara hides the letter');
+        await tester.pumpWidget(app(NoteList(service: service)));
+
+        await pickType(tester, 'Highlights');
+
+        expect(find.text('No notes match your search.'), findsOneWidget);
+      });
+
+      testWidgets('fits on a 360 dp wide phone', (tester) async {
+        tester.view.physicalSize = const Size(360, 640);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await addNote('Mara hides the letter');
+        await tester.pumpWidget(app(NoteList(service: service)));
+
+        expect(tester.takeException(), isNull);
+        expect(
+          tester.getRect(find.byType(SegmentedButton<NoteTypeFilter>)).right,
+          lessThanOrEqualTo(360),
+        );
+      });
+    });
+
     testWidgets('delete asks for confirmation before deleting', (tester) async {
       await addNote('Delete me');
       await tester.pumpWidget(app(NoteList(service: service)));
