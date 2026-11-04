@@ -169,7 +169,7 @@ with causes and fixes is in [bug-log.md](bug-log.md): 48 bugs so far: 38 fixed, 
 - **Usability sessions.** They need outside readers.
 - **The large-jump confirmation.** The rule is tested, but no screen asks the reader to confirm
   yet (issue #53).
-- **iOS is not confirmed.** The integration test ran once on an iPhone simulator: 2 of 4 tests
-  passed. The two failures were in the test (issue #76). It has been changed, but the run has to be
-  repeated to confirm the fix. The iOS reader also shows no progress percentage (issue #77). Nobody has
-  tried it on a real iPhone. The force-quit, offline and privacy checks are Android only.
+- **iOS on a real iPhone.** The integration test passes 4 of 4 on an iPhone simulator (GitHub
+  Actions run 41785464685), but nobody has tried the app on a real iPhone. On the simulator the
+  reader shows no progress percentage (issue #77). The force-quit, offline and privacy checks are
+  Android only.

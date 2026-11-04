@@ -315,7 +315,7 @@ empty on iOS (OPEN-08). The "rejected key" test also passed without proving anyt
 would pass even if the tap missed. Fixed in PR #74: the key is sent with the keyboard's Done key,
 progress is compared only when the platform reports it, the rejected-key test checks that the key
 was really sent to the key check, and the workflow picks a Pro-size simulator. The Android run
-still passes 4 of 4. The iOS run has to be repeated to confirm.
+still passes 4 of 4, and the repeated iOS run passed 4 of 4 (GitHub Actions run 41785464685).
 
 **OPEN-01: A test fails on Windows only.** The iOS fix's test "native file location Android
 receives an encoded file URI" failed on Windows because Windows paths use `\`. The app itself was
