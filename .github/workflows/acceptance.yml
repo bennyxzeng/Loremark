@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   device:
-    name: Force-quit, offline and privacy checks
+    name: Force-quit, offline, privacy and start-to-finish checks
     if: >-
       github.event_name != 'pull_request' ||
       (github.event.action == 'labeled' && github.event.label.name == 'device-tests') ||
@@ -95,7 +95,11 @@ jobs:
           disable-animations: true
           emulator-boot-timeout: 300
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -tcpdump /tmp/emulator.pcap
-          script: dart run tool/acceptance/run.dart --ci --capture-optional --report build/acceptance --pcap /tmp/emulator.pcap
+          # Each line runs on its own. The second one is the start-to-finish
+          # test in integration_test/ (see docs/testing.md).
+          script: |
+            dart run tool/acceptance/run.dart --ci --capture-optional --report build/acceptance --pcap /tmp/emulator.pcap
+            flutter test integration_test -d emulator-5554
 
       - name: Publish summary
         if: always()

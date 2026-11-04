@@ -44,5 +44,22 @@ jobs:
       # Tests tagged `live` call a real LLM provider and tests tagged
       # `benchmark` time a 500,000-word book; both are run by hand. A boolean
       # tag selector excludes either one (see dart_test.yaml).
+      # `--coverage` writes coverage/lcov.info. It only slows the run a little.
       - name: Run tests
-        run: flutter test --exclude-tags "live || benchmark"
+        run: flutter test --coverage --exclude-tags "live || benchmark"
+
+      # Shown on the run page. It reports and never fails the build, and it
+      # lists the files no test loads, which the percentage cannot count.
+      # `if: always()` so a failing test does not hide the numbers.
+      - name: Coverage report
+        if: always()
+        run: dart run tool/coverage/report.dart --summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage data
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage
+          path: coverage/lcov.info
+          if-no-files-found: warn
+          retention-days: 14

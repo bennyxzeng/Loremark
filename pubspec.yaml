@@ -48,6 +48,11 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
 
+  # Runs the whole app on a device for the start-to-finish test in
+  # integration_test/.
+  integration_test:
+    sdk: flutter
+
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
   # activated in the `analysis_options.yaml` file located at the root of your

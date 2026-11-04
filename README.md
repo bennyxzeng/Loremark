@@ -119,10 +119,12 @@ flowchart LR
 
 ## Testing
 
-- **Continuous integration.** Every pull request runs `dart format`, `flutter analyze` and the test suite. See [docs/testing.md](docs/testing.md).
+- **Unit and widget tests.** About 900 tests cover 94% of the lines in `lib/`. Every pull request runs them with `dart format` and `flutter analyze` on GitHub Actions. See [docs/testing.md](docs/testing.md).
+- **Start-to-finish test.** `integration_test/app_test.dart` runs the real app on an Android emulator or iPhone simulator: first launch, API key, import, read, search, notes and offline mode. It follows the walkthrough above, except for creating a highlight, which needs native text selection and is covered by widget tests. The Android run passes. The iOS run is set up but has not been run yet.
 - **Acceptance checks.** 20 force-quit trials for restoring your place, an offline trial and a privacy audit run on an Android emulator. See [docs/acceptance.md](docs/acceptance.md).
-- **Spoiler safety.** Tests check that a story-model snapshot never includes facts from later chapters (`test/acceptance/story_model_spoiler_test.dart`).
+- **Spoiler safety.** Tests check that search and the story model never show text or facts from later chapters (`test/search/spoiler_property_test.dart`, `test/acceptance/story_model_spoiler_test.dart`).
 - **Scale and real books.** See [docs/benchmarks.md](docs/benchmarks.md) and [docs/corpus-testing.md](docs/corpus-testing.md).
+- **Bug tracking.** Bugs are GitHub issues with a P0, P1 or P2 label. There are 45 so far, listed with causes and fixes in [docs/bug-log.md](docs/bug-log.md).
 
 ## Getting started
 
@@ -137,6 +139,12 @@ flutter pub get
 dart format .
 flutter analyze
 flutter test --exclude-tags "live || benchmark"
+```
+
+The start-to-finish test needs a connected emulator, simulator or phone. List devices with `flutter devices`, then run:
+
+```bash
+flutter test integration_test -d <device id>
 ```
 
 ### Run the app

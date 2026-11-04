@@ -1,0 +1,56 @@
+# Runs the start-to-finish test in integration_test/ on an iPhone simulator.
+# The same test file runs on Android in acceptance.yml. See docs/testing.md.
+#
+# macOS runners are slow to start, so this is kept out of ci.yml. Like
+# acceptance.yml, a pull request runs it only with the `device-tests` label.
+name: Integration (iOS)
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Mondays, 10:00 UTC.
+    - cron: '0 10 * * 1'
+  pull_request:
+    types: [labeled, synchronize]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios:
+    name: Start-to-finish test on an iPhone simulator
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.action == 'labeled' && github.event.label.name == 'device-tests') ||
+      (github.event.action == 'synchronize' &&
+        contains(github.event.pull_request.labels.*.name, 'device-tests'))
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          # Same SDK as ci.yml.
+          flutter-version: 3.47.7
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get --enforce-lockfile
+
+      # The runner image already has simulators; use the first available iPhone.
+      - name: Boot an iPhone simulator
+        run: |
+          DEVICES=$(xcrun simctl list devices available)
+          UDID=$(grep -m1 'iPhone' <<< "$DEVICES" | grep -oE '[0-9A-F]{8}(-[0-9A-F]{4}){3}-[0-9A-F]{12}')
+          echo "Using simulator $UDID"
+          xcrun simctl boot "$UDID"
+          echo "SIM_UDID=$UDID" >> "$GITHUB_ENV"
+
+      - name: Run the integration test
+        run: flutter test integration_test -d "$SIM_UDID"
