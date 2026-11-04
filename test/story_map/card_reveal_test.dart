@@ -344,6 +344,43 @@ void main() {
       expect(tester.widget<CardFront>(find.byType(CardFront)).sheen, isNull);
     });
 
+    testWidgets('lets the light fade with the card after letting go', (
+      tester,
+    ) async {
+      await pumpStoryMap(tester);
+      await open(tester, 'Mara Quinn');
+      await tester.pumpAndSettle();
+      CardSheen? sheen() =>
+          tester.widget<CardFront>(find.byType(CardFront)).sheen;
+      double fromCenter() => (sheen()!.at - const Offset(0.5, 0.5)).distance;
+
+      final drag = await tester.startGesture(
+        tester.getCenter(find.byType(CardFront)),
+      );
+      await tester.pump();
+      await drag.moveBy(const Offset(60, 60));
+      await tester.pump();
+      await drag.moveBy(const Offset(40, 40));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(sheen()!.amount, 1);
+      final heldAt = fromCenter();
+
+      await drag.up();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      final fading = sheen()!.amount;
+      final fadingAt = fromCenter();
+      expect(fading, inExclusiveRange(0, 1));
+      expect(fadingAt, lessThan(heldAt));
+
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(sheen()!.amount, lessThan(fading));
+      expect(fromCenter(), lessThan(fadingAt));
+
+      await tester.pumpAndSettle();
+      expect(sheen(), isNull);
+    });
+
     testWidgets('opens a related card on top, and returns to it', (
       tester,
     ) async {

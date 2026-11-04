@@ -19,6 +19,12 @@ const _cardText = Color(0xFFF6EEDF);
 const _cardMuted = Color(0xFFCFC3B2);
 const cardRadius = 16.0;
 
+/// The light on a card that is being moved.
+///
+/// [at] is where it falls, from (0, 0) to (1, 1). [amount] is how much of it
+/// there is, from 0 to 1, so that it can fade rather than switch off.
+typedef CardSheen = ({Offset at, double amount});
+
 /// [lit] of the five stars of a card, lit from the left.
 class CardStars extends StatelessWidget {
   const CardStars({
@@ -71,9 +77,8 @@ class CardFront extends StatelessWidget {
   /// How many stars are lit, if not all of them yet.
   final int? litStars;
 
-  /// Where the reader is pressing, from (0, 0) to (1, 1), if anywhere. The foil
-  /// only catches the light while the card is being moved.
-  final Offset? sheen;
+  /// The light on the card, if any. It only catches the light as it is moved.
+  final CardSheen? sheen;
 
   String? get _strap {
     if (snapshot.revealOf(entityId) case final reveal?) {
@@ -301,8 +306,8 @@ class CollectibleCard extends StatefulWidget {
     this.onFlip,
   });
 
-  /// Built from where the reader is pressing, if anywhere. See [CardFront.sheen].
-  final Widget Function(Offset? sheen) front;
+  /// Built from the light on the card, if any. See [CardFront.sheen].
+  final Widget Function(CardSheen? sheen) front;
   final Widget back;
   final VoidCallback? onFlip;
 
@@ -312,6 +317,15 @@ class CollectibleCard extends StatefulWidget {
 
 class _CollectibleCardState extends State<CollectibleCard>
     with SingleTickerProviderStateMixin {
+  /// How closely the card follows the finger.
+  static const _follow = Duration(milliseconds: 60);
+
+  /// How quickly the card catches the light once it is picked up.
+  static const _catch = Duration(milliseconds: 220);
+
+  /// How long the card takes to level out and lose the light once let go.
+  static const _settle = Duration(milliseconds: 600);
+
   late final _flip = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 500),
@@ -368,28 +382,40 @@ class _CollectibleCardState extends State<CollectibleCard>
         onPanUpdate: _showsBack ? null : (d) => _aim(d.localPosition),
         onPanEnd: _showsBack ? null : (_) => _release(),
         onPanCancel: _showsBack ? null : _release,
-        child: TweenAnimationBuilder<Offset>(
-          tween: Tween(
-            end: press == null
-                ? Offset.zero
-                : Offset(press.dx * 2 - 1, press.dy * 2 - 1),
-          ),
-          duration: Duration(milliseconds: press == null ? 300 : 60),
+        child: TweenAnimationBuilder<double>(
+          tween: Tween(end: press == null ? 0 : 1),
+          duration: press == null ? _settle : _catch,
           curve: Curves.easeOut,
-          builder: (context, tilt, child) => Transform(
-            alignment: Alignment.center,
-            // The side being pressed dips away from the reader.
-            transform: _perspective()
-              ..rotateX(tilt.dy * 0.24)
-              ..rotateY(-tilt.dx * 0.3),
-            child: child,
-          ),
-          child: AnimatedBuilder(
-            animation: _flip,
-            builder: (context, _) => CardFlip(
-              angle: Curves.easeInOut.transform(_flip.value) * math.pi,
-              first: widget.front(press),
-              second: widget.back,
+          builder: (context, light, _) => TweenAnimationBuilder<Offset>(
+            tween: Tween(
+              end: press == null
+                  ? Offset.zero
+                  : Offset(press.dx * 2 - 1, press.dy * 2 - 1),
+            ),
+            duration: press == null ? _settle : _follow,
+            curve: Curves.easeOutCubic,
+            builder: (context, tilt, _) => Transform(
+              alignment: Alignment.center,
+              // The side being pressed dips away from the reader.
+              transform: _perspective()
+                ..rotateX(tilt.dy * 0.24)
+                ..rotateY(-tilt.dx * 0.3),
+              child: AnimatedBuilder(
+                animation: _flip,
+                builder: (context, _) => CardFlip(
+                  angle: Curves.easeInOut.transform(_flip.value) * math.pi,
+                  // The light moves with the card, so the two settle as one.
+                  first: widget.front(
+                    light == 0
+                        ? null
+                        : (
+                            at: Offset((tilt.dx + 1) / 2, (tilt.dy + 1) / 2),
+                            amount: light,
+                          ),
+                  ),
+                  second: widget.back,
+                ),
+              ),
             ),
           ),
         ),
@@ -438,42 +464,78 @@ class _CardFacePainter extends CustomPainter {
   bool shouldRepaint(_CardFacePainter oldDelegate) => oldDelegate.tier != tier;
 }
 
-/// A rainbow band that follows the reader's finger. Higher tiers shine more.
+/// A wide, soft pool of light with the foil's colors in it. Every card has a
+/// glossy shine; higher tiers show more color.
 class _FoilPainter extends CustomPainter {
   const _FoilPainter({required this.sheen, required this.stars});
 
-  static const _strength = [0.0, 0.08, 0.18, 0.3, 0.42];
+  static const _foil = [0.0, 0.1, 0.2, 0.32, 0.45];
+  static const _glare = 0.08;
 
-  final Offset? sheen;
+  /// A bell-shaped falloff, which leaves no visible edge.
+  static const _falloffStops = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0];
+  static const _falloff = [1.0, 0.85, 0.53, 0.24, 0.07, 0.0];
+
+  static const _foilColors = [
+    Color(0xFF6FE3F5),
+    Color(0xFFB39DF2),
+    Color(0xFFEE82EE),
+    Color(0xFFF7DE6A),
+    Color(0xFF8BEFC0),
+  ];
+
+  final CardSheen? sheen;
   final int stars;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final at = sheen;
-    final strength = _strength[stars - 1];
-    if (at == null || strength == 0) return;
+    final light = sheen;
+    if (light == null) return;
     final bounds = Offset.zero & size;
-    final center = (at.dx + at.dy) / 2;
-    final stops = [
-      for (final offset in const [-0.2, -0.07, 0.0, 0.07, 0.2])
-        (center + offset).clamp(0.0, 1.0),
-    ];
+    final center = Alignment(light.at.dx * 2 - 1, light.at.dy * 2 - 1);
+    Shader pool(double strength) => RadialGradient(
+      center: center,
+      radius: 1.25,
+      stops: _falloffStops,
+      colors: [
+        for (final part in _falloff)
+          Colors.white.withValues(alpha: part * strength),
+      ],
+    ).createShader(bounds);
+
+    final foil = _foil[stars - 1] * light.amount;
+    if (foil > 0) {
+      // The colors drift more slowly than the light, as if under the surface.
+      final drift = (light.at.dx + light.at.dy - 1) * 0.5;
+      canvas.saveLayer(
+        bounds,
+        Paint()
+          ..blendMode = BlendMode.screen
+          ..color = Colors.white.withValues(alpha: foil),
+      );
+      canvas.drawRect(
+        bounds,
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment(-0.7 - drift, -0.7 - drift),
+            end: Alignment(0.7 - drift, 0.7 - drift),
+            tileMode: TileMode.mirror,
+            colors: _foilColors,
+          ).createShader(bounds),
+      );
+      canvas.drawRect(
+        bounds,
+        Paint()
+          ..blendMode = BlendMode.dstIn
+          ..shader = pool(1),
+      );
+      canvas.restore();
+    }
     canvas.drawRect(
       bounds,
       Paint()
-        ..blendMode = BlendMode.colorDodge
-        ..shader = LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          stops: stops,
-          colors: [
-            Colors.transparent,
-            const Color(0xFF6FE3F5).withValues(alpha: strength),
-            const Color(0xFFEE82EE).withValues(alpha: strength),
-            const Color(0xFFF7DE6A).withValues(alpha: strength),
-            Colors.transparent,
-          ],
-        ).createShader(bounds),
+        ..blendMode = BlendMode.screen
+        ..shader = pool(_glare * light.amount),
     );
   }
 
