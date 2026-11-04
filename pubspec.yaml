@@ -42,6 +42,7 @@ dependencies:
   flutter_readium: 0.8.0
   flutter_secure_storage: ^11.2.0
   url_launcher: ^6.3.3
+  audioplayers: ^6.8.1
 
 dev_dependencies:
   flutter_test:
@@ -74,6 +75,8 @@ flutter:
     # Companion illustrations, cropped and compressed from assets/images/.
     - assets/app/
     - assets/reader/page_end.js
+    # Synthesized by tool/card_sounds/generate.dart.
+    - assets/sounds/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

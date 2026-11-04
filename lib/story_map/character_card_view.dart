@@ -4,37 +4,20 @@ import '../story_model/story_model.dart';
 import '../story_model/story_snapshot.dart';
 import 'story_facts.dart';
 
-/// Opens the card for [entityId] as a bottom sheet, limited to [snapshot].
-///
-/// Tapping a related entity on the card opens that entity's card on top, so
-/// closing it returns to this one.
-Future<void> showCharacterCard(
-  BuildContext context,
-  StorySnapshot snapshot,
-  String entityId,
-) {
-  return showFactSheet(
-    context,
-    builder: (context, scrollController) => CharacterCardView(
-      snapshot: snapshot,
-      entityId: entityId,
-      scrollController: scrollController,
-    ),
-  );
-}
-
 /// What the reader knows about one character (or place or group) so far.
 class CharacterCardView extends StatelessWidget {
   const CharacterCardView({
     super.key,
     required this.snapshot,
     required this.entityId,
-    this.scrollController,
+    required this.onEntityTap,
   });
 
   final StorySnapshot snapshot;
   final String entityId;
-  final ScrollController? scrollController;
+
+  /// Opens the card of a related entity.
+  final ValueChanged<String> onEntityTap;
 
   @override
   Widget build(BuildContext context) {
@@ -49,8 +32,7 @@ class CharacterCardView extends StatelessWidget {
     final questions = snapshot.questionsOf(entityId);
 
     return ListView(
-      controller: scrollController,
-      padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
+      padding: const EdgeInsets.fromLTRB(18, 0, 18, 24),
       children: [
         Text(
           snapshot.displayName(entityId),
@@ -102,11 +84,7 @@ class CharacterCardView extends StatelessWidget {
                 record.payload.temporalContext.name,
                 record.payload.assertion.name,
               ],
-              onTap: () => showCharacterCard(
-                context,
-                snapshot,
-                _otherEnd(record.payload),
-              ),
+              onTap: () => onEntityTap(_otherEnd(record.payload)),
             ),
         ],
         if (events.isNotEmpty) ...[

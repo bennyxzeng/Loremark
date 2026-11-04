@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loremark/story_map/chapter_digest_view.dart';
+import 'package:loremark/story_map/collectible_card.dart';
 import 'package:loremark/story_map/character_graph_view.dart';
 import 'package:loremark/story_map/graph_guide_sheet.dart';
 import 'package:loremark/story_map/label_guide_sheet.dart';
@@ -9,12 +10,18 @@ import 'package:loremark/story_map/story_map_screen.dart';
 import 'package:loremark/story_model/story_model.dart';
 
 import '../story_model/story_model_fixture.dart';
+import 'fake_card_sounds.dart';
 
 void main() {
   Future<void> pumpStoryMap(WidgetTester tester) async {
     await tester.pumpWidget(
       MaterialApp(
-        home: Scaffold(body: StoryMapScreen(model: storyModelFixture())),
+        home: Scaffold(
+          body: StoryMapScreen(
+            model: storyModelFixture(),
+            sounds: FakeCardSounds(),
+          ),
+        ),
       ),
     );
   }
@@ -33,6 +40,11 @@ void main() {
     ))
       tag.label,
   ];
+
+  Future<void> flipCard(WidgetTester tester) async {
+    await tester.tap(find.byType(CardFront));
+    await tester.pumpAndSettle();
+  }
 
   Future<void> showPage(WidgetTester tester, String label) async {
     await tester.tap(
@@ -99,6 +111,7 @@ void main() {
 
     await tester.tap(find.text('Mara Quinn'));
     await tester.pumpAndSettle();
+    await flipCard(tester);
 
     expect(find.text('character · First seen in Chapter 1'), findsOne);
     expect(find.text('Also known as the harbor girl'), findsOne);
@@ -116,6 +129,7 @@ void main() {
 
     await tester.tap(find.text('Mara Quinn'));
     await tester.pumpAndSettle();
+    await flipCard(tester);
 
     expect(find.text('Changes: Replaced'), findsOne);
     expect(find.text('Changes: Retracted'), findsOne);
@@ -162,6 +176,7 @@ void main() {
 
     await tester.tap(find.widgetWithText(ActionChip, 'Harbor Guild'));
     await tester.pumpAndSettle();
+    await flipCard(tester);
 
     expect(find.text('organization · First seen in Chapter 1'), findsOne);
   });

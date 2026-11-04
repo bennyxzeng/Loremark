@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../story_model/story_model.dart';
 import '../story_model/story_snapshot.dart';
+import 'card_reveal.dart';
+import 'card_sounds.dart';
 import 'chapter_digest_view.dart';
-import 'character_card_view.dart';
 import 'character_graph_view.dart';
 import 'character_list_view.dart';
 import 'graph_guide_sheet.dart';
@@ -16,9 +17,12 @@ enum _StoryMapTab { graph, characters, chapter }
 /// The slider starts at the latest processed chapter and can only move back,
 /// so nothing past it is ever shown.
 class StoryMapScreen extends StatefulWidget {
-  const StoryMapScreen({super.key, required this.model});
+  const StoryMapScreen({super.key, required this.model, this.sounds});
 
   final StoryModel model;
+
+  /// The card sounds to use instead of the device's audio.
+  final CardSounds? sounds;
 
   @override
   State<StoryMapScreen> createState() => _StoryMapScreenState();
@@ -28,6 +32,8 @@ class _StoryMapScreenState extends State<StoryMapScreen> {
   late int _sectionIndex = widget.model.sections.length - 1;
   late StorySnapshot _snapshot = _snapshotAt(_sectionIndex);
   _StoryMapTab _tab = _StoryMapTab.graph;
+  late final CardSounds _sounds = widget.sounds ?? AudioCardSounds();
+  late final _cards = CardSession(_sounds);
 
   StorySnapshot _snapshotAt(int index) =>
       StorySnapshot(widget.model, widget.model.sections[index]);
@@ -41,7 +47,13 @@ class _StoryMapScreenState extends State<StoryMapScreen> {
   }
 
   void _openCard(String entityId) =>
-      showCharacterCard(context, _snapshot, entityId);
+      showCharacterCard(context, _snapshot, entityId, _cards);
+
+  @override
+  void dispose() {
+    if (widget.sounds == null) _sounds.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

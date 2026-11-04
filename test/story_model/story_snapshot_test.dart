@@ -117,6 +117,8 @@ void main() {
       test('an explicit identity link reveals who both sides are', () {
         expect(chapter2.isRevealedEntity('c002'), isTrue);
         expect(chapter2.isRevealedEntity('c004'), isTrue);
+        expect(chapter2.revealOf('c002')?.note, 'also Captain Vell');
+        expect(chapter2.revealOf('c002')?.formerName, isNull);
       });
 
       test('an inferred identity link reveals nothing', () {
@@ -139,6 +141,8 @@ void main() {
         });
 
         expect(snapshot.isRevealedEntity('c001'), isTrue);
+        expect(snapshot.revealOf('c001')?.note, 'was Mara');
+        expect(snapshot.revealOf('c001')?.formerName, 'Mara');
       });
 
       test('an entity nothing happened to is not revealed', () {
@@ -150,6 +154,60 @@ void main() {
 
         expect(snapshot.isRevealedEntity('c002'), isFalse);
         expect(snapshot.isRevealedEntity('c001'), isFalse);
+      });
+    });
+
+    group('stars', () {
+      StorySnapshot withFacts(int count) {
+        final json = storyModelFixtureJson();
+        final records = json['records'] as Map<String, dynamic>;
+        (json['entities'] as List).add(<String, dynamic>{
+          'id': 'c009',
+          'kind': 'character',
+          'introduced_revision': 2,
+        });
+        (records['attributes'] as List).addAll(<Map<String, dynamic>>[
+          for (var i = 0; i < count; i++)
+            <String, dynamic>{
+              'id': 'extra$i',
+              'introduced_revision': 2,
+              'learned_in_section_id': 's2',
+              'legacy_id': null,
+              'payload': <String, dynamic>{
+                'entity_id': 'c009',
+                'label': 'detail_$i',
+                'value': 'fact $i',
+                'assertion': 'explicit',
+                'attributed_to_id': null,
+              },
+              'evidence': <Map<String, dynamic>>[],
+            },
+        ]);
+        final model = StoryModel.fromJson(json);
+        return StorySnapshot(model, model.sections[1]);
+      }
+
+      test('follow how many facts are known', () {
+        const expected = {
+          0: 1,
+          1: 1,
+          2: 2,
+          5: 2,
+          6: 3,
+          14: 3,
+          15: 4,
+          29: 4,
+          30: 5,
+          60: 5,
+        };
+        for (final MapEntry(key: facts, value: stars) in expected.entries) {
+          expect(withFacts(facts).starsOf('c009'), stars, reason: '$facts');
+        }
+      });
+
+      test('count only what the chapter has reached', () {
+        expect(chapter1.starsOf('c001'), 2);
+        expect(chapter2.starsOf('c001'), 3);
       });
     });
 

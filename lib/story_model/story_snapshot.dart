@@ -6,6 +6,10 @@ typedef StoryQuestion = ({
   RecordTransition? resolution,
 });
 
+/// What a chapter revealed about who an entity really is. [note] says it in a
+/// few words, and [formerName] is the name it replaced, if it replaced one.
+typedef StoryReveal = ({String note, String? formerName});
+
 /// What the reader knows at the end of [section].
 ///
 /// A record counts once the reader has reached the section it was learned in,
@@ -143,34 +147,70 @@ class StorySnapshot {
       firstSeenOrder(entityId) == section.order;
 
   /// Whether the reader learned in [section] who [entityId] really is.
-  bool isRevealedEntity(String entityId) =>
-      _revealedIds.contains(canonicalId(entityId));
+  bool isRevealedEntity(String entityId) => revealOf(entityId) != null;
+
+  /// What the reader learned in [section] about who [entityId] really is, if
+  /// anything.
+  StoryReveal? revealOf(String entityId) => _reveals[canonicalId(entityId)];
 
   /// Entities revealed in [section]: by an explicit identity link, or by a name
   /// replaced with an unrelated one.
-  late final Set<String> _revealedIds = () {
+  late final Map<String, StoryReveal> _reveals = () {
+    final reveals = <String, StoryReveal>{};
+    for (final record in model.identityLinks) {
+      final link = record.payload;
+      if (isNewRecord(record) &&
+          isActive(record) &&
+          link.assertion == Assertion.explicit &&
+          _isMember(link.leftEntityId, link.rightEntityId)) {
+        final id = canonicalId(link.leftEntityId);
+        final other = link.leftEntityId == id
+            ? link.rightEntityId
+            : link.leftEntityId;
+        final otherName = _active(model.names)
+            .where((name) => name.payload.entityId == other)
+            .lastOrNull;
+        reveals[id] = (
+          note: otherName == null
+              ? 'identity revealed'
+              : 'also ${otherName.payload.text}',
+          formerName: null,
+        );
+      }
+    }
     final names = {for (final name in model.names) name.id: name.payload};
-    return {
-      for (final record in model.identityLinks)
-        if (isNewRecord(record) &&
-            isActive(record) &&
-            record.payload.assertion == Assertion.explicit &&
-            _isMember(
-              record.payload.leftEntityId,
-              record.payload.rightEntityId,
-            ))
-          canonicalId(record.payload.leftEntityId),
-      for (final transition in transitions)
-        if (transition.learnedInSectionId == section.id)
-          if ((
-                names[transition.targetRecordId],
-                names[transition.replacementRecordId],
-              )
-              case (final before?, final after?)
-              when _isUnrelatedName(before.text, after.text))
-            canonicalId(before.entityId),
-    };
+    for (final transition in transitions) {
+      if (transition.learnedInSectionId != section.id) continue;
+      if ((
+            names[transition.targetRecordId],
+            names[transition.replacementRecordId],
+          )
+          case (final before?, final after?)
+          when _isUnrelatedName(before.text, after.text)) {
+        reveals[canonicalId(before.entityId)] = (
+          note: 'was ${before.text}',
+          formerName: before.text,
+        );
+      }
+    }
+    return reveals;
   }();
+
+  /// How much the reader knows about [entityId] by this chapter, from 1 to 5
+  /// stars. It counts only known facts, so it gives nothing away.
+  int starsOf(String entityId) {
+    final facts =
+        attributesOf(entityId).length +
+        relationshipsOf(entityId).length +
+        eventsOf(entityId).length;
+    return switch (facts) {
+      >= 30 => 5,
+      >= 15 => 4,
+      >= 6 => 3,
+      >= 2 => 2,
+      _ => 1,
+    };
+  }
 
   /// Entities the reader has met, one per identity group, in order of first
   /// appearance.
