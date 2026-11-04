@@ -257,6 +257,7 @@ class _ReadiumSession implements EpubReaderSession {
       final line = positionLogLine(locator, raw?.sectionIndex);
       if (line != null) debugPrintSynchronously(line);
     }
+    if (raw != null) _redrawOnNewFile(raw.sectionIndex);
     // Before the duplicate check: the page script's marker comes with the
     // second, full locator of a page, which has the same position as the bare
     // one.
@@ -426,6 +427,47 @@ class _ReadiumSession implements EpubReaderSession {
     await _readium.goToLocator(locator);
   }
 
+  /// The decorations last applied, by group, kept to draw them again.
+  final _decorations = <String, List<ReaderDecoration>>{};
+
+  /// The section the decorations were last drawn again for.
+  int? _decoratedSection;
+
+  Future<void> _decorate(String group, List<ReaderDecoration> decorations) {
+    _decorations[group] = decorations;
+    return _readium.applyDecorations(group, decorations);
+  }
+
+  /// Applies every decoration group again each time the reader shows a
+  /// different file, starting with the first one it shows.
+  ///
+  /// flutter_readium 0.8.0's Android navigator clears all decorations when the
+  /// page it shows moves to another file (`EpubNavigator.onPageChanged`), but
+  /// only puts them back when a file finishes loading (`onPageLoaded`). A file
+  /// the pager already holds, such as the one the reader just turned back
+  /// into, doesn't load again, so its highlights showed for a moment and were
+  /// gone. Decorations applied before the reader view exists are also dropped,
+  /// since the plugin has no view to send them to.
+  ///
+  /// Readium compares the list with the one it has, so this draws nothing new
+  /// when the plugin cleared nothing.
+  void _redrawOnNewFile(int section) {
+    if (section == _decoratedSection || _closed) return;
+    _decoratedSection = section;
+    for (final MapEntry(key: group, value: decorations)
+        in _decorations.entries) {
+      // An empty group is already what the plugin left.
+      if (decorations.isEmpty) continue;
+      unawaited(
+        _readium.applyDecorations(group, decorations).catchError((
+          Object error,
+        ) {
+          debugPrint('Could not draw the $group decorations again: $error');
+        }),
+      );
+    }
+  }
+
   @override
   Future<void> showPassage(PassageTarget target) async {
     final locator = locatorForPassage(
@@ -436,7 +478,7 @@ class _ReadiumSession implements EpubReaderSession {
     if (locator == null) return;
     // Readium draws a decoration only where the text quote is found, and finds
     // it again whichever page loads, so the order of the two calls is free.
-    await _readium.applyDecorations(passageHighlightGroup, [
+    await _decorate(passageHighlightGroup, [
       ReaderDecoration(
         id: 'hit',
         locator: locator,
@@ -448,14 +490,13 @@ class _ReadiumSession implements EpubReaderSession {
 
   @override
   Future<void> clearPassageHighlight() =>
-      _readium.applyDecorations(passageHighlightGroup, const []);
+      _decorate(passageHighlightGroup, const []);
 
   @override
-  Future<void> showNoteHighlights(List<NoteHighlight> highlights) =>
-      _readium.applyDecorations(
-        noteHighlightGroup,
-        noteDecorations(highlights, _publication.readingOrder, _indexOf),
-      );
+  Future<void> showNoteHighlights(List<NoteHighlight> highlights) => _decorate(
+    noteHighlightGroup,
+    noteDecorations(highlights, _publication.readingOrder, _indexOf),
+  );
 
   @override
   Future<void> goForward() => _readium.goForward();
