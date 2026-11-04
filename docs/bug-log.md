@@ -6,7 +6,7 @@ Every bug and failed check we know of, from the start of the project to 2026-11-
 the fix commit's message says what went wrong, why, and how it was fixed, and CI and the coding
 session notes kept the failures. That record stayed on each developer's branches instead of in a
 shared tracker. On 2026-11-02 we gathered it into this log and into GitHub Issues (#17 to #52),
-where the team tracks bugs from now on. Bugs found after that (BUG-20 to BUG-23, CI-07, OPEN-06, OPEN-07)
+where the team tracks bugs from now on. Bugs found after that (BUG-20 to BUG-23, CI-07, CI-08, OPEN-06 to OPEN-08)
 were filed as they were found. The sources were:
 
 - **Git history:** every commit whose message starts with `fix`, plus commits that fixed problems
@@ -32,15 +32,15 @@ Priorities and labels follow the living doc's Test Plan & Bugs section:
 | :--- | :--- |
 | App bugs fixed and merged into `main` | 23 (7 of them P0) |
 | App bugs fixed in reading insights (PR #13, merges after the beta) | 9 (2 of them P0) |
-| Test-harness and CI failures | 8 (6 fixed, 1 worked around, 1 fix in review) |
-| Still open | 6 |
+| Test-harness and CI failures | 9 (6 fixed, 1 worked around, 2 fix in review) |
+| Still open | 7 |
 
 Nearly every fix came with a regression test. The exceptions are the build fixes (they change
 build settings, not app code) and one cosmetic text fix; each row says which.
 
 ## All bugs
 
-Each ID links to its GitHub issue (#17 to #75). Commit hashes link to
+Each ID links to its GitHub issue (#17 to #77). Commit hashes link to
 `https://github.com/bennyxzeng/Loremark/commit/<hash>`. CI runs link to
 `https://github.com/bennyxzeng/Loremark/actions/runs/<id>`.
 
@@ -85,6 +85,7 @@ Each ID links to its GitHub issue (#17 to #75). Commit hashes link to
 | [CI-05](https://github.com/bennyxzeng/Loremark/issues/48) | 2026-11-01 | P2 | test-harness | CI failed whenever the capture could not be checked, even with every real check passing | Worked around (issue closed; the cause is OPEN-04) | `e0d5fc8` (PR #11) |
 | [CI-06](https://github.com/bennyxzeng/Loremark/issues/60) | 2026-11-03 | P1 | test-harness | The harness stopped at the first-run API key screen added in PR #58 | Fixed | `d4fff53` (PR #61) |
 | [CI-07](https://github.com/bennyxzeng/Loremark/issues/75) | 2026-11-04 | P2 | test-harness | A synthetic-book test failed on CI because the zip timestamp changed between two builds | Fix in review | PR #74 |
+| [CI-08](https://github.com/bennyxzeng/Loremark/issues/76) | 2026-11-04 | P2 | test-harness | The iOS run of the integration test failed on a missed tap and an Android-only check | Fix in review | PR #74 |
 | [OPEN-01](https://github.com/bennyxzeng/Loremark/issues/49) | 2026-11-02 | P2 | test-harness | One iOS-fix test fails on Windows only | Fixed | `e02a8b6` (PR #57) |
 | [OPEN-02](https://github.com/bennyxzeng/Loremark/issues/50) | 2026-11-02 | P1 | AI-quality | Story-model quotes from the LLM differ from the book's text and fail validation | Open | |
 | [OPEN-03](https://github.com/bennyxzeng/Loremark/issues/51) | 2026-11-02 | P1 | bug | Building after pulling `main` looped for 15 minutes on Vitalii's machine | Open, cause unknown | |
@@ -92,6 +93,7 @@ Each ID links to its GitHub issue (#17 to #75). Commit hashes link to
 | [OPEN-05](https://github.com/bennyxzeng/Loremark/issues/53) | 2026-11-02 | P1 | timeline | The large-jump confirmation is never shown, because nothing in the app calls `ReadingProgressTracker` | Open | |
 | [OPEN-06](https://github.com/bennyxzeng/Loremark/issues/71) | 2026-11-03 | P2 | usability | On Android, the reader's selection menu no longer has Share or Select All | Open | |
 | [OPEN-07](https://github.com/bennyxzeng/Loremark/issues/54) | 2026-11-03 | P2 | usability | Fixed-layout EPUBs (such as PDF conversions) keep the publisher's white pages; Readium ignores theme colours | Open | |
+| [OPEN-08](https://github.com/bennyxzeng/Loremark/issues/77) | 2026-11-04 | P2 | usability | On the iPhone simulator, the reader's progress percentage stays empty | Open, not confirmed on a real iPhone | |
 
 ## Details
 
@@ -306,6 +308,15 @@ passed locally. `buildEpub` in `test/library/test_epub.dart` now gives every fil
 timestamp. A temporary test that builds the book twice, three seconds apart, failed before the fix
 and passed after it.
 
+**CI-08: The first iOS run of the integration test failed.** On the iPhone simulator 2 of 4 tests
+passed. The tests had assumed the Android emulator's taller screen: a tap on Save key at the very
+bottom of a 667-point screen missed, and the progress percentage the reader test compared was
+empty on iOS (OPEN-08). The "rejected key" test also passed without proving anything, because it
+would pass even if the tap missed. Fixed in PR #74: the key is sent with the keyboard's Done key,
+progress is compared only when the platform reports it, the rejected-key test checks that the key
+was really sent to the key check, and the workflow picks a Pro-size simulator. The Android run
+still passes 4 of 4. The iOS run has to be repeated to confirm.
+
 **OPEN-01: A test fails on Windows only.** The iOS fix's test "native file location Android
 receives an encoded file URI" failed on Windows because Windows paths use `\`. The app itself was
 unaffected, and CI (Linux) passed. Fixed in `e02a8b6` (PR #57): the test now compares paths in a
@@ -341,3 +352,9 @@ the same way if we want it.
 **OPEN-07: Fixed-layout EPUBs keep the publisher's white pages.** Books converted from PDF look like
 the original PDF pages and ignore our theme colours. The reader plugin does not restyle them. We
 still need to decide how to handle these books.
+
+**OPEN-08: No progress percentage on the iPhone simulator.** After importing a book and turning
+three pages, the label between the page arrows stayed empty. It is shown only when the reader
+reports overall progress (`totalProgression`). The likely cause is that the iOS Readium renderer
+does not report it the way the Android one does, but this is not confirmed. Someone with a Mac
+needs to check on a real iPhone.

@@ -148,7 +148,7 @@ real-device parts of the reader, which only the emulator tests reach.
 ## Bug tracking
 
 Bugs are tracked in [GitHub Issues](https://github.com/bennyxzeng/Loremark/issues). The full list
-with causes and fixes is in [bug-log.md](bug-log.md): 46 bugs so far: 38 fixed, 1 worked around, 1 fix in review and 6 open.
+with causes and fixes is in [bug-log.md](bug-log.md): 48 bugs so far: 38 fixed, 1 worked around, 2 fix in review and 7 open.
 
 - **File an issue** with the "Bug report" form (`.github/ISSUE_TEMPLATE/bug_report.yml`). It asks
   for steps to reproduce, expected and actual result, and the build.
@@ -169,7 +169,7 @@ with causes and fixes is in [bug-log.md](bug-log.md): 46 bugs so far: 38 fixed, 
 - **Usability sessions.** They need outside readers.
 - **The large-jump confirmation.** The rule is tested, but no screen asks the reader to confirm
   yet (issue #53).
-- **iOS has not run yet.** The integration test is written to run on an iPhone simulator
-  (`.github/workflows/ios.yml`), but we develop on Windows and Android, so nobody has seen it
-  pass on iOS. Run the workflow by hand (Actions → Integration (iOS) → Run workflow) and fix
-  what it finds. The acceptance tests (force-quit, offline, privacy) are Android only.
+- **iOS is not confirmed.** The integration test ran once on an iPhone simulator: 2 of 4 tests
+  passed. The two failures were in the test (issue #76). It has been changed, but the run has to be
+  repeated to confirm the fix. The iOS reader also shows no progress percentage (issue #77). Nobody has
+  tried it on a real iPhone. The force-quit, offline and privacy checks are Android only.
