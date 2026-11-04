@@ -248,7 +248,7 @@ network requests, and the per-UID counters measure exactly that: 0 bytes sent
 and received by the app during the whole session. That is the evidence for
 "no unexpected traffic". The capture was meant to add two things the counters
 cannot: which hosts, and whether a request carries a whole book or more than
-one chapter. Neither matters until the app has an AI client, so an unverified
+one chapter. Neither matters until the app makes a request, so an unverified
 capture loses nothing today. **Once the app makes any request, the counters
 stop being enough: remove `--capture-optional` from the workflow and get the
 capture to verify first.**

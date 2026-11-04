@@ -85,7 +85,10 @@ at least 28 of 30 cards under 1 s, card p95 under 2 s). Normal CI skips it with
 
 ## Not measured yet
 
-Passage search (Feature A) is not merged. When it is, add two cases to `benchmarkCases` in
+Passage search is merged, and it has its own timing test:
+`flutter test --tags benchmark test/search/search_index_perf_test.dart` builds and queries the
+index for a generated 500,000-word book (results in [search.md](search.md), host JIT timings). It
+is not in this AOT runner yet. To add it, add two cases to `benchmarkCases` in
 `tool/benchmark/benchmark.dart` (the list is marked as the extension point):
 
 - search index build over `BenchmarkContext.sectionTexts`, as the "chapter processing" part
