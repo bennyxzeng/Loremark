@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loremark/home/book_screen.dart';
@@ -71,6 +72,44 @@ void main() {
         reason: label,
       );
     }
+  });
+
+  group('tabs have no tooltip repeating their label', () {
+    testWidgets('when hovered', (tester) async {
+      await pumpBook(tester);
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      addTearDown(mouse.removePointer);
+
+      for (final label in tabs) {
+        final shown = find.text(label).evaluate().length;
+        final tab = find.descendant(
+          of: find.byType(NavigationBar),
+          matching: find.text(label),
+        );
+        await mouse.moveTo(tester.getCenter(tab));
+        await tester.pump(const Duration(seconds: 1));
+
+        expect(find.text(label), findsNWidgets(shown), reason: label);
+      }
+    });
+
+    testWidgets('when long pressed', (tester) async {
+      await pumpBook(tester);
+
+      for (final label in tabs) {
+        final shown = find.text(label).evaluate().length;
+        final tab = find.descendant(
+          of: find.byType(NavigationBar),
+          matching: find.text(label),
+        );
+        final press = await tester.startGesture(tester.getCenter(tab));
+        await tester.pump(const Duration(seconds: 1));
+
+        expect(find.text(label), findsNWidgets(shown), reason: label);
+        await press.cancel();
+        await tester.pump(const Duration(seconds: 3));
+      }
+    });
   });
 
   testWidgets('opens on the Read tab', (tester) async {
