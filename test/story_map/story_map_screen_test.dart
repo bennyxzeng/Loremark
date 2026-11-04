@@ -91,6 +91,9 @@ void main() {
   });
 
   testWidgets('tapping a character opens its card', (tester) async {
+    tester.view.physicalSize = const Size(800, 2000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
     await pumpStoryMap(tester);
     await showTab(tester, 'Characters');
 
@@ -102,6 +105,22 @@ void main() {
     expect(find.text('role: dock clerk'), findsOne);
     expect(tagsOf(tester, 'role: dock clerk'), ['explicit']);
     expect(find.text('age: sixteen'), findsNothing);
+  });
+
+  testWidgets('cards group changes under what they did', (tester) async {
+    tester.view.physicalSize = const Size(800, 2000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await pumpStoryMap(tester);
+    await showTab(tester, 'Characters');
+
+    await tester.tap(find.text('Mara Quinn'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Changes: Replaced'), findsOne);
+    expect(find.text('Changes: Retracted'), findsOne);
+    expect(find.text('Changes: Answered'), findsNothing);
+    expect(find.text('Changes'), findsNothing);
   });
 
   testWidgets('chapter view lists what changed', (tester) async {
@@ -201,6 +220,36 @@ void main() {
 
       expect(find.text('Mara → Mara Quinn'), findsNothing);
       expect(find.text('2. Elian hands Mara a letter.'), findsOne);
+    });
+
+    testWidgets('group changes under what they did', (tester) async {
+      tester.view.physicalSize = const Size(800, 2000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await pumpStoryMap(tester);
+      await showTab(tester, 'Chapter');
+      double top(String text) => tester.getTopLeft(find.text(text)).dy;
+
+      expect(
+        [
+          top('Replaced'),
+          top('Mara → Mara Quinn'),
+          top('Retracted'),
+          top('No longer holds: age: sixteen'),
+          top('Answered'),
+          top('Who is the stranger? — He is Captain Vell.'),
+        ],
+        orderedEquals(
+          [
+            top('Replaced'),
+            top('Mara → Mara Quinn'),
+            top('Retracted'),
+            top('No longer holds: age: sixteen'),
+            top('Answered'),
+            top('Who is the stranger? — He is Captain Vell.'),
+          ]..sort(),
+        ),
+      );
     });
 
     testWidgets('mark the current one', (tester) async {
@@ -327,6 +376,40 @@ void main() {
           find.descendant(
             of: find.byType(LabelGuideView),
             matching: find.text(label),
+          ),
+          findsOne,
+          reason: label,
+        );
+      }
+    });
+
+    testWidgets('says which model label each change heading stands for', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(1000, 4000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await pumpStoryMap(tester);
+      await showTab(tester, 'Chapter');
+
+      await tester.tap(guideButton);
+      await tester.pumpAndSettle();
+
+      final guide = find.byType(LabelGuideView);
+      for (final (heading, label) in [
+        ('Replaced', 'supersede'),
+        ('Retracted', 'retract'),
+        ('Answered', 'resolve'),
+      ]) {
+        expect(
+          find.descendant(of: guide, matching: find.text(heading)),
+          findsOne,
+          reason: heading,
+        );
+        expect(
+          find.descendant(
+            of: guide,
+            matching: find.textContaining('Model label: $label.'),
           ),
           findsOne,
           reason: label,

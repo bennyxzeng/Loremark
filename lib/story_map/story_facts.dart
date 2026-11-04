@@ -33,8 +33,10 @@ class FactHeading extends StatelessWidget {
       padding: const EdgeInsets.only(top: 20, bottom: 8),
       child: Text(
         text,
-        style: Theme.of(context).textTheme.titleSmall
-            ?.copyWith(color: Theme.of(context).colorScheme.primary),
+        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+          color: Theme.of(context).colorScheme.primary,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
@@ -143,6 +145,26 @@ class FactTag extends StatelessWidget {
     );
   }
 }
+
+/// The heading above changes that did [action]. The label guide says which
+/// word the model uses for each.
+String changeHeading(TransitionAction action) => switch (action) {
+  TransitionAction.supersede => 'Replaced',
+  TransitionAction.retract => 'Retracted',
+  TransitionAction.resolve => 'Answered',
+};
+
+/// [changes] grouped by what they did, leaving out actions none of them did.
+Map<TransitionAction, List<RecordTransition>> changesByAction(
+  List<RecordTransition> changes,
+) => {
+  for (final action in TransitionAction.values)
+    if (changes.any((change) => change.action == action))
+      action: [
+        for (final change in changes)
+          if (change.action == action) change,
+      ],
+};
 
 /// The answer to [question], or null while it is still open.
 String? answerText(StoryQuestion question) => switch (question.resolution) {

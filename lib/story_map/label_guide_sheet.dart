@@ -12,8 +12,8 @@ Future<void> showLabelGuide(BuildContext context) {
   );
 }
 
-/// What each `temporal_context` and `assertion` label means, in the terms of
-/// the lab's `STORY_MODEL_FORMAT.md`.
+/// What each `temporal_context` and `assertion` label and each change heading
+/// means, in the terms of the lab's `STORY_MODEL_FORMAT.md`.
 class LabelGuideView extends StatelessWidget {
   const LabelGuideView({super.key, this.scrollController});
 
@@ -36,7 +36,7 @@ class LabelGuideView extends StatelessWidget {
         ),
         const FactHeading('When does it hold?'),
         for (final time in TemporalContext.values)
-          _LabelRow(time.name, switch (time) {
+          _LabelRow(FactTag(time.name), switch (time) {
             TemporalContext.current => 'Part of the present story.',
             TemporalContext.past =>
               'Earlier than the present story: a memory, flashback or '
@@ -49,22 +49,39 @@ class LabelGuideView extends StatelessWidget {
           }),
         const FactHeading('How do we know?'),
         for (final assertion in Assertion.values)
-          _LabelRow(assertion.name, switch (assertion) {
+          _LabelRow(FactTag(assertion.name), switch (assertion) {
             Assertion.explicit => 'The narration says it directly.',
             Assertion.reported =>
               'A character or in-world source says it. It may be false.',
             Assertion.inferred =>
               'Not said outright, but it follows from the text.',
           }),
+        const FactHeading('What changed?'),
+        for (final action in TransitionAction.values)
+          _LabelRow(
+            Text(
+              changeHeading(action),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            '${_meaningOf(action)} Model label: ${action.name}.',
+          ),
       ],
     );
   }
 }
 
+String _meaningOf(TransitionAction action) => switch (action) {
+  TransitionAction.supersede => 'A new fact takes the place of an older one.',
+  TransitionAction.retract => 'A later chapter shows an old fact was wrong.',
+  TransitionAction.resolve => 'A later chapter answers an open question.',
+};
+
 class _LabelRow extends StatelessWidget {
   const _LabelRow(this.label, this.meaning);
 
-  final String label;
+  final Widget label;
   final String meaning;
 
   @override
@@ -77,7 +94,7 @@ class _LabelRow extends StatelessWidget {
         children: [
           SizedBox(
             width: 104,
-            child: Align(alignment: Alignment.topLeft, child: FactTag(label)),
+            child: Align(alignment: Alignment.topLeft, child: label),
           ),
           Expanded(child: Text(meaning, style: theme.textTheme.bodyMedium)),
         ],

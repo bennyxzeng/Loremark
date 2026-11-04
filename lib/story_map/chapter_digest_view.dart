@@ -83,13 +83,18 @@ class _ChapterDigestViewState extends State<ChapterDigestView> {
 
     List<Widget> factsOn(_DigestPage page) => switch (page) {
       _DigestPage.changes => [
-        for (final change in changes)
-          FactTile(
-            model: model,
-            text: snapshot.describeTransition(change),
-            detail: change.reason,
-            evidence: change.evidence,
-          ),
+        for (final MapEntry(key: action, value: group) in changesByAction(
+          changes,
+        ).entries) ...[
+          FactHeading(changeHeading(action)),
+          for (final change in group)
+            FactTile(
+              model: model,
+              text: snapshot.describeTransition(change),
+              detail: change.reason,
+              evidence: change.evidence,
+            ),
+        ],
       ],
       _DigestPage.entities => [
         if (newCharacters.isNotEmpty) ...[

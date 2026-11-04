@@ -68,9 +68,11 @@ class CharacterCardView extends StatelessWidget {
           const SizedBox(height: 8),
           Text('Also known as ${aliases.join(', ')}'),
         ],
-        if (changes.isNotEmpty) ...[
-          const FactHeading('Changes'),
-          for (final change in changes)
+        for (final MapEntry(key: action, value: group) in changesByAction(
+          changes,
+        ).entries) ...[
+          FactHeading('Changes: ${changeHeading(action)}'),
+          for (final change in group)
             FactTile(
               model: model,
               text:
