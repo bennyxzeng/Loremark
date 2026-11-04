@@ -159,8 +159,6 @@ progress.
 
 ### Not yet in CI
 
-- **SwiftLint.** `coding-guidelines.md` lists it, but the only Swift code is Flutter's generated
-  `ios/Runner`. We will add a SwiftLint job when we write our own Swift code.
 - **iOS build and simulator integration tests.** These need a macOS runner. We plan to add an
   `integration_test` job before the beta build.
 - **Live LLM tests.** These stay manual to protect our API budget (Risk 4).
