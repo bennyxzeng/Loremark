@@ -358,7 +358,7 @@ class _ReadScreenState extends State<ReadScreen> {
       context,
       selectedText: selection.text,
     );
-    if (result == null || !mounted) return;
+    if (result is! AddNoteResult || !mounted) return;
     await saveOrReport(
       context,
       () => notes.addNote(
@@ -374,7 +374,8 @@ class _ReadScreenState extends State<ReadScreen> {
     );
   }
 
-  /// Opens the note behind the highlight the reader tapped, to edit it.
+  /// Opens the note behind the highlight the reader tapped, to edit or remove
+  /// it. A removed note is taken off the page by [_drawNoteHighlights].
   Future<void> _onHighlightTap(String id) async {
     final notes = _notes;
     if (notes == null || !mounted) return;

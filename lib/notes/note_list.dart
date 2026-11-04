@@ -46,24 +46,8 @@ class _NoteListState extends State<NoteList> {
 
   // This asks the reader to confirm and only then deletes the note.
   Future<void> _deleteNote(Note note) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete this note?'),
-        content: const Text('This cannot be undone.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
+    final confirmed = await confirmDeleteNote(context);
+    if (!confirmed || !mounted) return;
     await saveOrReport(context, () => widget.service.deleteNote(note.id));
   }
 
@@ -191,11 +175,14 @@ class _NoteListState extends State<NoteList> {
 }
 
 /// This opens the note sheet with the note's current text and color, and saves
-/// what the reader changes. Used by the Notes tab and by tapping a highlight in
-/// the Read tab.
+/// what the reader changes. The sheet also has a button to remove the note.
+/// Used by the Notes tab and by tapping a highlight in the Read tab.
 /// Parameters:
 /// - service: The service that holds the note.
-/// - note: The note to edit. A highlight with no text gets "Add note" as its title.
+/// - note: The note to edit. A highlight with no text gets "Add note" as its
+///   title and a "Remove highlight" button that removes it right away, since
+///   nothing written is lost. A note with text gets a "Delete note" button
+///   that asks the reader to confirm first.
 Future<void> editNoteWithSheet(
   BuildContext context,
   AnnotationService service,
@@ -207,12 +194,46 @@ Future<void> editNoteWithSheet(
     initialBody: note.body,
     initialColor: note.color,
     title: note.isHighlightOnly ? 'Add note' : 'Edit note',
+    removeLabel: note.isHighlightOnly ? 'Remove highlight' : 'Delete note',
   );
   if (result == null || !context.mounted) return;
-  await saveOrReport(
-    context,
-    () => service.editNote(note.id, body: result.body, color: result.color),
+  switch (result) {
+    case AddNoteResult(:final body, :final color):
+      await saveOrReport(
+        context,
+        () => service.editNote(note.id, body: body, color: color),
+      );
+    case RemoveNoteResult():
+      if (!note.isHighlightOnly) {
+        final confirmed = await confirmDeleteNote(context);
+        if (!confirmed || !context.mounted) return;
+      }
+      await saveOrReport(context, () => service.deleteNote(note.id));
+  }
+}
+
+/// This asks the reader to confirm before a note is deleted.
+/// Returns: True if the reader tapped Delete, or false if they tapped Cancel
+/// or closed the dialog.
+Future<bool> confirmDeleteNote(BuildContext context) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Delete this note?'),
+      content: const Text('This cannot be undone.'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Delete'),
+        ),
+      ],
+    ),
   );
+  return confirmed ?? false;
 }
 
 /// This runs a save and shows a small message at the bottom if it fails,
