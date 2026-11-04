@@ -3,8 +3,14 @@ import 'package:flutter/material.dart';
 import 'highlight_colors.dart';
 import 'note.dart';
 
+/// This class is what the reader chose in the note sheet: save the note
+/// ([AddNoteResult]) or remove it ([RemoveNoteResult]).
+sealed class NoteSheetResult {
+  const NoteSheetResult();
+}
+
 /// This class holds what the reader typed and picked in the note sheet.
-class AddNoteResult {
+final class AddNoteResult extends NoteSheetResult {
   /// This is the text of the note, with spaces trimmed from both ends.
   final String body;
 
@@ -14,6 +20,12 @@ class AddNoteResult {
   const AddNoteResult(this.body, this.color);
 }
 
+/// This class means the reader tapped the remove button to remove the note
+/// they were editing.
+final class RemoveNoteResult extends NoteSheetResult {
+  const RemoveNoteResult();
+}
+
 /// This shows the sheet where a reader writes a note about the passage they selected.
 /// The same sheet is used to edit a note by passing in its current text and color.
 /// Parameters:
@@ -21,15 +33,20 @@ class AddNoteResult {
 /// - initialBody: The text already in the note when editing. (Optional)
 /// - initialColor: The color already picked when editing. (Optional)
 /// - title: The title of the sheet. (Ex. 'Add note' or 'Edit note')
-/// Returns: The typed note and color, or null if the reader closed the sheet.
-Future<AddNoteResult?> showAddNoteSheet(
+/// - removeLabel: The label of a button next to "Save note" that removes the
+///   note being edited. No button is shown when it is null, as when adding a
+///   new note. (Optional) (Ex. 'Remove highlight' or 'Delete note')
+/// Returns: The typed note and color, a [RemoveNoteResult] if the reader tapped
+/// the remove button, or null if the reader closed the sheet.
+Future<NoteSheetResult?> showAddNoteSheet(
   BuildContext context, {
   required String selectedText,
   String initialBody = '',
   HighlightColor initialColor = HighlightColor.yellow,
   String title = 'Add note',
+  String? removeLabel,
 }) {
-  return showModalBottomSheet<AddNoteResult>(
+  return showModalBottomSheet<NoteSheetResult>(
     context: context,
     isScrollControlled: true,
     showDragHandle: true,
@@ -38,6 +55,7 @@ Future<AddNoteResult?> showAddNoteSheet(
       initialBody: initialBody,
       initialColor: initialColor,
       title: title,
+      removeLabel: removeLabel,
     ),
   );
 }
@@ -47,12 +65,14 @@ class _AddNoteSheet extends StatefulWidget {
   final String initialBody;
   final HighlightColor initialColor;
   final String title;
+  final String? removeLabel;
 
   const _AddNoteSheet({
     required this.selectedText,
     required this.initialBody,
     required this.initialColor,
     required this.title,
+    required this.removeLabel,
   });
 
   @override
@@ -89,7 +109,13 @@ class _AddNoteSheetState extends State<_AddNoteSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
+    final theme = Theme.of(context);
+    final textTheme = theme.textTheme;
+    final removeLabel = widget.removeLabel;
+    final saveButton = FilledButton(
+      onPressed: _save,
+      child: const Text('Save note'),
+    );
 
     return Padding(
       // This moves the sheet up above the keyboard when it is open.
@@ -152,7 +178,24 @@ class _AddNoteSheetState extends State<_AddNoteSheet> {
             ],
           ),
           const SizedBox(height: 20),
-          FilledButton(onPressed: _save, child: const Text('Save note')),
+          if (removeLabel == null)
+            saveButton
+          else
+            // When editing, the remove button sits next to "Save note" in red.
+            Row(
+              children: [
+                TextButton(
+                  style: TextButton.styleFrom(
+                    foregroundColor: theme.colorScheme.error,
+                  ),
+                  onPressed: () =>
+                      Navigator.of(context).pop(const RemoveNoteResult()),
+                  child: Text(removeLabel),
+                ),
+                const SizedBox(width: 12),
+                Expanded(child: saveButton),
+              ],
+            ),
         ],
       ),
     );

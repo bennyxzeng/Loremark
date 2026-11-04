@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../library/book.dart';
+import '../notes/annotation_service.dart';
 import '../reader/readium_reader_service.dart';
 import '../settings/ai_lock.dart';
 import '../search/search_index_store.dart';
@@ -29,6 +32,15 @@ class _BookScreenState extends State<BookScreen> {
   late final Future<StoryModel> _storyModel = loadStoryModel(
     demoStoryModelAsset,
   );
+
+  /// The book's notes, shared by the Read tab, which adds and draws them, and
+  /// the Notes tab, which lists them.
+  late final Future<AnnotationService> _notes = AnnotationService.openForBook(
+    widget.book.id,
+  );
+
+  /// Sends the Read tab to a note tapped in the Notes tab.
+  final _noteJumps = NoteJumpController();
 
   void _selectTab(int index) {
     setState(() {
@@ -60,17 +72,21 @@ class _BookScreenState extends State<BookScreen> {
                           bookId: widget.book.id,
                           epubPath: widget.book.epubPath,
                         ),
+                        notes: _notes,
+                        noteJumps: _noteJumps,
                       ),
                       const AiLock(
                         feature: 'Ask',
                         needsConnection: true,
                         child: AskScreen(),
                       ),
-                      // Tapping a note goes back to the Read tab. Jumping to the
-                      // exact passage comes with the Readium notes hookup.
+                      // Tapping a note goes back to the Read tab, at its passage.
                       NotesScreen(
-                        book: widget.book,
-                        onOpenNote: (_) => _selectTab(0),
+                        notes: _notes,
+                        onOpenNote: (note) {
+                          _selectTab(0);
+                          unawaited(_noteJumps.show(note));
+                        },
                       ),
                       // A built map is stored data, so it stays readable offline.
                       AiLock(feature: 'Story Map', child: _buildStoryMapTab()),

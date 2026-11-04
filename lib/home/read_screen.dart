@@ -1,9 +1,15 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../library/book.dart';
 import '../library/library_screen.dart';
+import '../notes/add_note_sheet.dart';
+import '../notes/annotation_service.dart';
+import '../notes/highlight_colors.dart';
+import '../notes/note.dart';
+import '../notes/note_list.dart';
 import '../reader/epub_reader_service.dart';
 import '../reader/reader_position.dart';
 import '../reader/reading_position_store.dart';
@@ -29,6 +35,8 @@ class ReadScreen extends StatefulWidget {
     this.openSearch,
     this.furthestPosition,
     this.searchController,
+    this.notes,
+    this.noteJumps,
   });
 
   final Book book;
@@ -58,8 +66,32 @@ class ReadScreen extends StatefulWidget {
   /// action.
   final SearchSheetController? searchController;
 
+  /// The book's notes and highlights. Once they open, they are drawn on the
+  /// page, and Highlight and Add note in the menu over selected text save to
+  /// them. If they fail to open, reading is unaffected.
+  final Future<AnnotationService>? notes;
+
+  /// Lets other code send the reader to a note's passage, such as tapping a
+  /// note in the Notes tab.
+  final NoteJumpController? noteJumps;
+
   @override
   State<ReadScreen> createState() => _ReadScreenState();
+}
+
+/// Lets other code send the Read tab to a saved note's passage.
+class NoteJumpController {
+  Future<void> Function(Note note)? _jumper;
+
+  /// Called by the screen that shows the book. [detach] undoes it.
+  void attach(Future<void> Function(Note note) jumper) => _jumper = jumper;
+
+  void detach(Future<void> Function(Note note) jumper) {
+    if (_jumper == jumper) _jumper = null;
+  }
+
+  /// Jumps to [note]'s passage and highlights it, if a book is showing.
+  Future<void> show(Note note) async => _jumper?.call(note);
 }
 
 class _ReadScreenState extends State<ReadScreen> {
@@ -71,6 +103,11 @@ class _ReadScreenState extends State<ReadScreen> {
   StreamSubscription<ReaderPosition>? _positionSubscription;
   StreamSubscription<TextPosition>? _pageTextSubscription;
   StreamSubscription<TocEntry>? _chapterSubscription;
+  StreamSubscription<PassageSelection>? _selectionSubscription;
+  StreamSubscription<String>? _highlightTapSubscription;
+
+  /// The book's notes, once [ReadScreen.notes] opened them.
+  AnnotationService? _notes;
 
   /// The chapter the renderer says the reader is in, if it could tell.
   TocEntry? _chapter;
@@ -136,7 +173,9 @@ class _ReadScreenState extends State<ReadScreen> {
   void initState() {
     super.initState();
     widget.searchController?.attach(_openSearchSheet);
+    widget.noteJumps?.attach(_showNote);
     unawaited(_open());
+    unawaited(_openNotes());
   }
 
   @override
@@ -146,8 +185,16 @@ class _ReadScreenState extends State<ReadScreen> {
       oldWidget.searchController?.detach(_openSearchSheet);
       widget.searchController?.attach(_openSearchSheet);
     }
+    if (oldWidget.noteJumps != widget.noteJumps) {
+      oldWidget.noteJumps?.detach(_showNote);
+      widget.noteJumps?.attach(_showNote);
+    }
     if (oldWidget.book.id != widget.book.id) {
       unawaited(_open());
+    }
+    if (oldWidget.notes != widget.notes) {
+      _setNotes(null);
+      unawaited(_openNotes());
     }
   }
 
@@ -156,6 +203,8 @@ class _ReadScreenState extends State<ReadScreen> {
     _generation++;
     _pickTimer?.cancel();
     widget.searchController?.detach(_openSearchSheet);
+    widget.noteJumps?.detach(_showNote);
+    _notes?.removeListener(_drawNoteHighlights);
     _releaseSession();
     _cutoff.dispose();
     super.dispose();
@@ -209,8 +258,139 @@ class _ReadScreenState extends State<ReadScreen> {
       _chapterSubscription = session.chapterChanges.listen(
         (chapter) => setState(() => _chapter = chapter),
       );
+      _selectionSubscription = session.selections.listen(
+        (selection) => unawaited(_onSelection(selection)),
+      );
+      _highlightTapSubscription = session.highlightTaps.listen(
+        (id) => unawaited(_onHighlightTap(id)),
+      );
       _view = session.buildView(initialPosition: position);
     });
+    _drawNoteHighlights();
+  }
+
+  /// Waits for the book's notes, then draws them and redraws them whenever
+  /// they change. If they fail to open, the book just shows without them.
+  Future<void> _openNotes() async {
+    final future = widget.notes;
+    if (future == null) return;
+    final AnnotationService notes;
+    try {
+      notes = await future;
+    } on Object catch (error) {
+      debugPrint('Could not open the notes of ${widget.book.title}: $error');
+      return;
+    }
+    if (!mounted || !identical(future, widget.notes)) return;
+    _setNotes(notes);
+    _drawNoteHighlights();
+  }
+
+  void _setNotes(AnnotationService? notes) {
+    _notes?.removeListener(_drawNoteHighlights);
+    _notes = notes;
+    notes?.addListener(_drawNoteHighlights);
+  }
+
+  /// Draws every saved note and highlight on the page, replacing the ones
+  /// drawn before. Best effort: the book reads fine without them.
+  void _drawNoteHighlights() {
+    final session = _session;
+    final notes = _notes;
+    if (session == null || notes == null) return;
+    final highlights = [
+      for (final note in notes.notes)
+        NoteHighlight(
+          id: note.id,
+          target: _passageOf(note),
+          color: note.color.pageTint,
+        ),
+    ];
+    unawaited(
+      session.showNoteHighlights(highlights).catchError((Object error) {
+        debugPrint('Could not draw the notes: $error');
+      }),
+    );
+  }
+
+  PassageTarget _passageOf(Note note) => PassageTarget(
+    sectionIndex: note.anchor.sectionIndex,
+    progression: note.anchor.progression,
+    highlight: note.selectedText,
+    before: note.textBefore,
+    after: note.textAfter,
+  );
+
+  /// Does what the reader picked from the menu over the text they selected.
+  ///
+  /// The chapter is read before the note sheet opens, since the reader can't
+  /// turn pages while it is up anyway.
+  Future<void> _onSelection(PassageSelection selection) async {
+    final session = _session;
+    if (session == null) return;
+    if (selection.command == SelectionCommand.copy) {
+      await Clipboard.setData(ClipboardData(text: selection.text));
+      return;
+    }
+    final notes = _notes;
+    if (notes == null || !mounted) return;
+    final anchor = NoteAnchor(
+      selection.sectionIndex,
+      selection.progression.clamp(0.0, 1.0),
+    );
+    final chapter =
+        _currentEntry(_usableEntries(session))?.title ?? widget.book.title;
+    if (selection.command == SelectionCommand.highlight) {
+      await saveOrReport(
+        context,
+        () => notes.addHighlight(
+          anchor: anchor,
+          chapterLabel: chapter,
+          selectedText: selection.text,
+          textBefore: selection.before,
+          textAfter: selection.after,
+        ),
+        failureMessage: 'Could not save your highlight. Try again.',
+      );
+      return;
+    }
+    final result = await showAddNoteSheet(
+      context,
+      selectedText: selection.text,
+    );
+    if (result is! AddNoteResult || !mounted) return;
+    await saveOrReport(
+      context,
+      () => notes.addNote(
+        anchor: anchor,
+        chapterLabel: chapter,
+        selectedText: selection.text,
+        textBefore: selection.before,
+        textAfter: selection.after,
+        body: result.body,
+        color: result.color,
+      ),
+      failureMessage: 'Could not save your note. Try again.',
+    );
+  }
+
+  /// Opens the note behind the highlight the reader tapped, to edit or remove
+  /// it. A removed note is taken off the page by [_drawNoteHighlights].
+  Future<void> _onHighlightTap(String id) async {
+    final notes = _notes;
+    if (notes == null || !mounted) return;
+    final note = notes.notes.where((note) => note.id == id).firstOrNull;
+    if (note == null) return;
+    await editNoteWithSheet(context, notes, note);
+  }
+
+  /// Jumps to [note]'s passage and highlights it, as a search hit is.
+  Future<void> _showNote(Note note) async {
+    final session = _session;
+    if (session == null || !mounted) return;
+    _stopRestoring();
+    _highlightShown = true;
+    await _navigate(() => session.showPassage(_passageOf(note)));
   }
 
   /// Wraps [EpubReaderService.open] so a synchronous throw is also a failed
@@ -238,6 +418,10 @@ class _ReadScreenState extends State<ReadScreen> {
     _pageTextSubscription = null;
     unawaited(_chapterSubscription?.cancel());
     _chapterSubscription = null;
+    unawaited(_selectionSubscription?.cancel());
+    _selectionSubscription = null;
+    unawaited(_highlightTapSubscription?.cancel());
+    _highlightTapSubscription = null;
     final session = _session;
     _session = null;
     _view = null;

@@ -31,6 +31,8 @@ class _NoteListState extends State<NoteList> {
   String? _chapter;
   // This is the color the reader filtered by, or null for every color.
   HighlightColor? _color;
+  // This is whether the reader is looking at notes, highlights, or both.
+  NoteTypeFilter _type = NoteTypeFilter.all;
 
   @override
   void dispose() {
@@ -42,61 +44,14 @@ class _NoteListState extends State<NoteList> {
     query: _searchController.text,
     chapterLabel: _chapter,
     color: _color,
+    type: _type,
   );
-
-  // This opens the note sheet with the note's current text so the reader can change it.
-  Future<void> _editNote(Note note) async {
-    final result = await showAddNoteSheet(
-      context,
-      selectedText: note.selectedText,
-      initialBody: note.body,
-      initialColor: note.color,
-      title: note.isHighlightOnly ? 'Add note' : 'Edit note',
-    );
-    if (result == null) return;
-    await _runAndReportErrors(
-      () => widget.service.editNote(
-        note.id,
-        body: result.body,
-        color: result.color,
-      ),
-    );
-  }
 
   // This asks the reader to confirm and only then deletes the note.
   Future<void> _deleteNote(Note note) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete this note?'),
-        content: const Text('This cannot be undone.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-    await _runAndReportErrors(() => widget.service.deleteNote(note.id));
-  }
-
-  // This runs a save and shows a small message at the bottom if it fails,
-  // so a failed save never closes the app or loses the reader's other notes.
-  Future<void> _runAndReportErrors(Future<void> Function() action) async {
-    try {
-      await action();
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not save your change. Try again.')),
-      );
-    }
+    final confirmed = await confirmDeleteNote(context);
+    if (!confirmed || !mounted) return;
+    await saveOrReport(context, () => widget.service.deleteNote(note.id));
   }
 
   @override
@@ -151,7 +106,11 @@ class _NoteListState extends State<NoteList> {
                               onTap: widget.onOpenNote == null
                                   ? null
                                   : () => widget.onOpenNote!(note),
-                              onEdit: () => _editNote(note),
+                              onEdit: () => editNoteWithSheet(
+                                context,
+                                widget.service,
+                                note,
+                              ),
                               onDelete: () => _deleteNote(note),
                             ),
                         ],
@@ -164,7 +123,8 @@ class _NoteListState extends State<NoteList> {
     );
   }
 
-  // This builds the search box, the chapter picker, and the color filter chips.
+  // This builds the search box, the All / Notes / Highlights toggle, the chapter
+  // picker, and the color filter chips.
   Widget _buildFilters(List<String> chapters) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
@@ -180,6 +140,23 @@ class _NoteListState extends State<NoteList> {
               isDense: true,
             ),
             onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 8),
+          // This toggle has its own row and fills its width, so it fits on a narrow phone.
+          SegmentedButton<NoteTypeFilter>(
+            segments: const [
+              ButtonSegment(value: NoteTypeFilter.all, label: Text('All')),
+              ButtonSegment(value: NoteTypeFilter.notes, label: Text('Notes')),
+              ButtonSegment(
+                value: NoteTypeFilter.highlights,
+                label: Text('Highlights'),
+              ),
+            ],
+            selected: {_type},
+            showSelectedIcon: false,
+            expandedInsets: EdgeInsets.zero,
+            onSelectionChanged: (selection) =>
+                setState(() => _type = selection.single),
           ),
           const SizedBox(height: 8),
           SingleChildScrollView(
@@ -215,6 +192,86 @@ class _NoteListState extends State<NoteList> {
         ],
       ),
     );
+  }
+}
+
+/// This opens the note sheet with the note's current text and color, and saves
+/// what the reader changes. The sheet also has a button to remove the note.
+/// Used by the Notes tab and by tapping a highlight in the Read tab.
+/// Parameters:
+/// - service: The service that holds the note.
+/// - note: The note to edit. A highlight with no text gets "Add note" as its
+///   title and a "Remove highlight" button that removes it right away, since
+///   nothing written is lost. A note with text gets a "Delete note" button
+///   that asks the reader to confirm first.
+Future<void> editNoteWithSheet(
+  BuildContext context,
+  AnnotationService service,
+  Note note,
+) async {
+  final result = await showAddNoteSheet(
+    context,
+    selectedText: note.selectedText,
+    initialBody: note.body,
+    initialColor: note.color,
+    title: note.isHighlightOnly ? 'Add note' : 'Edit note',
+    removeLabel: note.isHighlightOnly ? 'Remove highlight' : 'Delete note',
+  );
+  if (result == null || !context.mounted) return;
+  switch (result) {
+    case AddNoteResult(:final body, :final color):
+      await saveOrReport(
+        context,
+        () => service.editNote(note.id, body: body, color: color),
+      );
+    case RemoveNoteResult():
+      if (!note.isHighlightOnly) {
+        final confirmed = await confirmDeleteNote(context);
+        if (!confirmed || !context.mounted) return;
+      }
+      await saveOrReport(context, () => service.deleteNote(note.id));
+  }
+}
+
+/// This asks the reader to confirm before a note is deleted.
+/// Returns: True if the reader tapped Delete, or false if they tapped Cancel
+/// or closed the dialog.
+Future<bool> confirmDeleteNote(BuildContext context) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Delete this note?'),
+      content: const Text('This cannot be undone.'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Delete'),
+        ),
+      ],
+    ),
+  );
+  return confirmed ?? false;
+}
+
+/// This runs a save and shows a small message at the bottom if it fails,
+/// so a failed save never closes the app or loses the reader's other notes.
+/// Parameters:
+/// - save: The change to save. (Ex. adding, editing, or deleting a note)
+/// - failureMessage: What to show if it fails. (Optional)
+Future<void> saveOrReport(
+  BuildContext context,
+  Future<void> Function() save, {
+  String failureMessage = 'Could not save your change. Try again.',
+}) async {
+  final messenger = ScaffoldMessenger.of(context);
+  try {
+    await save();
+  } catch (_) {
+    messenger.showSnackBar(SnackBar(content: Text(failureMessage)));
   }
 }
 

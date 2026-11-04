@@ -23,10 +23,25 @@ class NoteNotFoundException implements Exception {
   String toString() => 'No note with id $id.';
 }
 
+/// This enum lists which kinds of entries the Notes tab shows.
+/// A note has text the reader wrote, and a highlight has none.
+/// (See [Note.isHighlightOnly])
+enum NoteTypeFilter {
+  /// This shows notes and highlights.
+  all,
+
+  /// This shows only notes with text the reader wrote.
+  notes,
+
+  /// This shows only highlights with no text.
+  highlights,
+}
+
 /// This class holds the filters the reader picked in the Notes tab.
 /// Every filter is optional, and a null filter means "show everything".
 /// Ex. NoteFilter(color: HighlightColor.blue, query: 'Elian') shows only blue
 /// notes that mention Elian.
+/// Ex. NoteFilter(type: NoteTypeFilter.highlights) shows only highlights.
 class NoteFilter {
   /// This is the text to search for in the note and in the selected passage.
   final String query;
@@ -37,7 +52,15 @@ class NoteFilter {
   /// This is the only highlight color to show. (Optional)
   final HighlightColor? color;
 
-  const NoteFilter({this.query = '', this.chapterLabel, this.color});
+  /// This is whether to show notes, highlights, or both. (Optional, shows both by default)
+  final NoteTypeFilter type;
+
+  const NoteFilter({
+    this.query = '',
+    this.chapterLabel,
+    this.color,
+    this.type = NoteTypeFilter.all,
+  });
 
   /// This checks if a note passes every filter.
   bool matches(Note note) {
@@ -45,6 +68,10 @@ class NoteFilter {
       return false;
     }
     if (color != null && note.color != color) return false;
+    if (type == NoteTypeFilter.notes && note.isHighlightOnly) return false;
+    if (type == NoteTypeFilter.highlights && !note.isHighlightOnly) {
+      return false;
+    }
     final search = query.trim().toLowerCase();
     if (search.isEmpty) return true;
     return note.body.toLowerCase().contains(search) ||
@@ -93,6 +120,20 @@ class AnnotationService extends ChangeNotifier {
     DateTime Function()? clock,
   }) : _clock = clock ?? DateTime.now;
 
+  /// This creates the service for a book's notes saved on the device and loads them.
+  /// The Read and Notes tabs share the one it returns.
+  /// Parameters:
+  /// - bookId: The id of the book. (Ex. 'abc123')
+  /// Returns: The loaded service. A corrupted notes file shows up in [loadError] instead.
+  static Future<AnnotationService> openForBook(String bookId) async {
+    final service = AnnotationService(
+      bookId: bookId,
+      repository: await NoteRepository.forBook(bookId),
+    );
+    await service.load();
+    return service;
+  }
+
   /// These are all the notes of the book in reading order.
   List<Note> get notes => List.unmodifiable(_notes);
 
@@ -123,6 +164,7 @@ class AnnotationService extends ChangeNotifier {
   /// - anchor: Where the selected passage is in the book.
   /// - chapterLabel: The chapter name to show in the Notes tab.
   /// - selectedText: The passage the reader selected.
+  /// - textBefore, textAfter: The text just around the passage. (Optional)
   /// - body: What the reader wrote. (Required, cannot be blank)
   /// - color: The highlight color of the passage.
   /// Returns: The saved note, or throws an [EmptyNoteException] if the body is blank.
@@ -130,11 +172,21 @@ class AnnotationService extends ChangeNotifier {
     required NoteAnchor anchor,
     required String chapterLabel,
     required String selectedText,
+    String textBefore = '',
+    String textAfter = '',
     required String body,
     HighlightColor color = HighlightColor.yellow,
   }) async {
     if (body.trim().isEmpty) throw const EmptyNoteException();
-    return _add(anchor, chapterLabel, selectedText, body.trim(), color);
+    return _add(
+      anchor: anchor,
+      chapterLabel: chapterLabel,
+      selectedText: selectedText,
+      textBefore: textBefore,
+      textAfter: textAfter,
+      body: body.trim(),
+      color: color,
+    );
   }
 
   /// This saves a colored highlight on a passage without any written text.
@@ -143,8 +195,18 @@ class AnnotationService extends ChangeNotifier {
     required NoteAnchor anchor,
     required String chapterLabel,
     required String selectedText,
+    String textBefore = '',
+    String textAfter = '',
     HighlightColor color = HighlightColor.yellow,
-  }) => _add(anchor, chapterLabel, selectedText, '', color);
+  }) => _add(
+    anchor: anchor,
+    chapterLabel: chapterLabel,
+    selectedText: selectedText,
+    textBefore: textBefore,
+    textAfter: textAfter,
+    body: '',
+    color: color,
+  );
 
   /// This changes the text and/or color of a saved note.
   /// Parameters:
@@ -168,7 +230,8 @@ class AnnotationService extends ChangeNotifier {
     return edited;
   }
 
-  /// This deletes a note. The Notes tab asks the reader to confirm before calling this.
+  /// This deletes a note. The app asks the reader to confirm first, except for a
+  /// highlight with no text, since nothing written is lost.
   Future<void> deleteNote(String id) async {
     final index = _indexOf(id);
     await _save([..._notes]..removeAt(index));
@@ -191,13 +254,15 @@ class AnnotationService extends ChangeNotifier {
     ];
   }
 
-  Future<Note> _add(
-    NoteAnchor anchor,
-    String chapterLabel,
-    String selectedText,
-    String body,
-    HighlightColor color,
-  ) async {
+  Future<Note> _add({
+    required NoteAnchor anchor,
+    required String chapterLabel,
+    required String selectedText,
+    required String textBefore,
+    required String textAfter,
+    required String body,
+    required HighlightColor color,
+  }) async {
     final now = _clock();
     final note = Note(
       id: '${now.microsecondsSinceEpoch}-${_idCounter++}',
@@ -205,6 +270,8 @@ class AnnotationService extends ChangeNotifier {
       anchor: anchor,
       chapterLabel: chapterLabel,
       selectedText: selectedText,
+      textBefore: textBefore,
+      textAfter: textAfter,
       body: body,
       color: color,
       createdAt: now,

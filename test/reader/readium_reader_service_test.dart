@@ -1,3 +1,5 @@
+import 'dart:ui' show Color;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_readium/flutter_readium.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -394,6 +396,176 @@ void main() {
       );
 
       expect(locator, isNull);
+    });
+  });
+
+  group('passageSelectionFrom', () {
+    Locator selected({
+      String href = 'OEBPS/ch1.xhtml',
+      LocatorText? text = const LocatorText(
+        before: 'There was ',
+        highlight: 'a grey cat',
+        after: ' on the wall',
+      ),
+    }) => Locator(
+      href: href,
+      type: _xhtml,
+      locations: const Locations(progression: 0.4),
+      text: text,
+    );
+
+    test('carries the action, place and text quote', () {
+      final selection = passageSelectionFrom(
+        SelectionActionEvent(actionId: 'addNote', locator: selected()),
+        _indexOf,
+      );
+
+      expect(selection?.command, SelectionCommand.addNote);
+      expect(selection?.sectionIndex, 1);
+      expect(selection?.progression, 0.4);
+      expect(selection?.text, 'a grey cat');
+      expect(selection?.before, 'There was ');
+      expect(selection?.after, ' on the wall');
+    });
+
+    test('falls back to the selected text when the locator has none', () {
+      final selection = passageSelectionFrom(
+        SelectionActionEvent(
+          actionId: 'highlight',
+          locator: selected(text: null),
+          selectedText: 'a grey cat',
+        ),
+        _indexOf,
+      );
+
+      expect(selection?.command, SelectionCommand.highlight);
+      expect(selection?.text, 'a grey cat');
+      expect(selection?.before, '');
+    });
+
+    test('is null for an action Loremark did not add', () {
+      final selection = passageSelectionFrom(
+        SelectionActionEvent(actionId: 'share', locator: selected()),
+        _indexOf,
+      );
+
+      expect(selection, isNull);
+    });
+
+    test('is null outside the spine or without any text', () {
+      expect(
+        passageSelectionFrom(
+          SelectionActionEvent(
+            actionId: 'copy',
+            locator: selected(href: 'OEBPS/nav.xhtml'),
+          ),
+          _indexOf,
+        ),
+        isNull,
+      );
+      expect(
+        passageSelectionFrom(
+          SelectionActionEvent(
+            actionId: 'copy',
+            locator: selected(text: const LocatorText(highlight: '  ')),
+          ),
+          _indexOf,
+        ),
+        isNull,
+      );
+    });
+  });
+
+  group('selectionMenu', () {
+    test('offers every selection command under its own name', () {
+      expect(
+        [for (final action in selectionMenu) action.id],
+        [for (final command in SelectionCommand.values) command.name],
+      );
+      expect(
+        [for (final action in selectionMenu) action.title],
+        ['Highlight', 'Add note', 'Copy'],
+      );
+    });
+  });
+
+  group('noteDecorations', () {
+    final readingOrder = [
+      for (final href in _hrefs) Link(href: href, type: _xhtml),
+    ];
+
+    test('draws each highlight at its quote in its own color', () {
+      final decorations = noteDecorations(
+        const [
+          NoteHighlight(
+            id: 'note-1',
+            target: PassageTarget(
+              sectionIndex: 1,
+              progression: 0.4,
+              highlight: 'a grey cat',
+              before: 'There was ',
+            ),
+            color: Color(0x6654D27A),
+          ),
+        ],
+        readingOrder,
+        _indexOf,
+      );
+
+      expect(decorations, hasLength(1));
+      expect(decorations.single.id, 'note-1');
+      expect(decorations.single.locator.text?.highlight, 'a grey cat');
+      expect(decorations.single.locator.text?.before, 'There was ');
+      expect(decorations.single.style.tint, const Color(0x6654D27A));
+    });
+
+    // The session applies the same list again whenever the reader moves to
+    // another file, and Readium redraws only decorations that differ.
+    test('builds the same decorations every time for the same notes', () {
+      const highlights = [
+        NoteHighlight(
+          id: 'note-1',
+          target: PassageTarget(
+            sectionIndex: 1,
+            progression: 0.4,
+            highlight: 'a grey cat',
+            before: 'There was ',
+            after: ' on the wall',
+          ),
+          color: Color(0x7354D27A),
+        ),
+      ];
+
+      List<Object?> json() => [
+        for (final decoration in noteDecorations(
+          highlights,
+          readingOrder,
+          _indexOf,
+        ))
+          decoration.toJson(),
+      ];
+
+      expect(json(), json());
+    });
+
+    test('skips a highlight whose section is not in the reading order', () {
+      final decorations = noteDecorations(
+        const [
+          NoteHighlight(
+            id: 'lost',
+            target: PassageTarget(
+              sectionIndex: 9,
+              progression: 0,
+              highlight: 'x',
+            ),
+            color: Color(0x66FFC107),
+          ),
+        ],
+        readingOrder,
+        _indexOf,
+      );
+
+      expect(decorations, isEmpty);
     });
   });
 

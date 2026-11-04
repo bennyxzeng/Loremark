@@ -208,6 +208,8 @@ class _ReadiumSession implements EpubReaderSession {
   final _positions = StreamController<ReaderPosition>();
   final _pageTextEnds = StreamController<TextPosition>();
   final _chapterChanges = StreamController<TocEntry>();
+  final _selections = StreamController<PassageSelection>();
+  final _highlightTaps = StreamController<String>();
 
   @override
   final List<TocEntry> tableOfContents;
@@ -224,6 +226,22 @@ class _ReadiumSession implements EpubReaderSession {
   @override
   Stream<TocEntry> get chapterChanges => _chapterChanges.stream;
 
+  @override
+  Stream<PassageSelection> get selections => _selections.stream;
+
+  @override
+  Stream<String> get highlightTaps => _highlightTaps.stream;
+
+  void _onSelectionAction(SelectionActionEvent event) {
+    final selection = passageSelectionFrom(event, _indexOf);
+    if (selection != null && !_closed) _selections.add(selection);
+  }
+
+  void _onDecorationInteraction(DecorationInteractionEvent event) {
+    if (event.group != noteHighlightGroup || _closed) return;
+    _highlightTaps.add(event.decorationId);
+  }
+
   int? _indexOf(String href) => spineIndexOf(_spine, href);
 
   ReaderPosition? _lastRaw;
@@ -238,6 +256,9 @@ class _ReadiumSession implements EpubReaderSession {
     if (kDebugMode || kProfileMode) {
       final line = positionLogLine(locator, raw?.sectionIndex);
       if (line != null) debugPrintSynchronously(line);
+    }
+    if (raw != null) {
+      _redrawOnNewPage((raw.sectionIndex, locator.locations?.progression));
     }
     // Before the duplicate check: the page script's marker comes with the
     // second, full locator of a page, which has the same position as the bare
@@ -341,11 +362,15 @@ class _ReadiumSession implements EpubReaderSession {
 
   @override
   Widget buildView({ReaderPosition? initialPosition}) {
-    // Plugin issue #298: the view ignores callbacks changed on rebuild, so none
-    // are passed. Positions come from the streams instead.
+    // Plugin issue #298: the view ignores callbacks changed on rebuild.
+    // Positions come from the streams instead, and the two callbacks below are
+    // this session's own methods, which never change.
     return ReadiumReaderWidget(
       publication: _publication,
       fontFamilyDeclarations: _servedScript,
+      selectionActions: selectionMenu,
+      onSelectionAction: _onSelectionAction,
+      onDecorationInteraction: _onDecorationInteraction,
       initialLocator: initialPosition == null
           ? null
           : _locatorFor(initialPosition),
@@ -404,6 +429,50 @@ class _ReadiumSession implements EpubReaderSession {
     await _readium.goToLocator(locator);
   }
 
+  /// The decorations last applied, by group, kept to draw them again.
+  final _decorations = <String, List<ReaderDecoration>>{};
+
+  /// The page, as section and progression, the decorations were last drawn
+  /// again for.
+  (int, double?)? _decoratedPage;
+
+  Future<void> _decorate(String group, List<ReaderDecoration> decorations) {
+    _decorations[group] = decorations;
+    return _readium.applyDecorations(group, decorations);
+  }
+
+  /// Applies every decoration group again each time the reader shows another
+  /// page, starting with the first one it shows. Readium reports each page
+  /// twice with the same progression, so that counts as one page.
+  ///
+  /// flutter_readium 0.8.0's Android navigator clears all decorations when the
+  /// page it shows moves to another file (`EpubNavigator.onPageChanged`), but
+  /// only puts them back when a file finishes loading (`onPageLoaded`). A file
+  /// the pager already holds, such as the one the reader just turned back
+  /// into, doesn't load again, so its highlights showed for a moment and were
+  /// gone. Decorations applied before the reader view exists are also dropped,
+  /// since the plugin has no view to send them to.
+  ///
+  /// Every page, not only a new file, because highlights were also seen to
+  /// vanish after turning one page and back. Readium compares the list with
+  /// the one it has, so this draws nothing new when nothing was cleared.
+  void _redrawOnNewPage((int, double?) page) {
+    if (page == _decoratedPage || _closed) return;
+    _decoratedPage = page;
+    for (final MapEntry(key: group, value: decorations)
+        in _decorations.entries) {
+      // An empty group is already what the plugin left.
+      if (decorations.isEmpty) continue;
+      unawaited(
+        _readium.applyDecorations(group, decorations).catchError((
+          Object error,
+        ) {
+          debugPrint('Could not draw the $group decorations again: $error');
+        }),
+      );
+    }
+  }
+
   @override
   Future<void> showPassage(PassageTarget target) async {
     final locator = locatorForPassage(
@@ -414,7 +483,7 @@ class _ReadiumSession implements EpubReaderSession {
     if (locator == null) return;
     // Readium draws a decoration only where the text quote is found, and finds
     // it again whichever page loads, so the order of the two calls is free.
-    await _readium.applyDecorations(passageHighlightGroup, [
+    await _decorate(passageHighlightGroup, [
       ReaderDecoration(
         id: 'hit',
         locator: locator,
@@ -426,7 +495,13 @@ class _ReadiumSession implements EpubReaderSession {
 
   @override
   Future<void> clearPassageHighlight() =>
-      _readium.applyDecorations(passageHighlightGroup, const []);
+      _decorate(passageHighlightGroup, const []);
+
+  @override
+  Future<void> showNoteHighlights(List<NoteHighlight> highlights) => _decorate(
+    noteHighlightGroup,
+    noteDecorations(highlights, _publication.readingOrder, _indexOf),
+  );
 
   @override
   Future<void> goForward() => _readium.goForward();
@@ -454,6 +529,8 @@ class _ReadiumSession implements EpubReaderSession {
     unawaited(_positions.close());
     unawaited(_pageTextEnds.close());
     unawaited(_chapterChanges.close());
+    unawaited(_selections.close());
+    unawaited(_highlightTaps.close());
     if (!identical(ReadiumReaderService._current, this)) return;
     ReadiumReaderService._current = null;
     await _readium.closePublication();
@@ -642,6 +719,71 @@ Locator? locatorForPassage(
     ),
   );
 }
+
+/// The menu over selected text, one action per [SelectionCommand], each with
+/// the command's name as its id.
+///
+/// On Android these replace the system menu, Copy included, which is why Copy
+/// is one of ours.
+const selectionMenu = [
+  SelectionAction(id: 'highlight', title: 'Highlight'),
+  SelectionAction(id: 'addNote', title: 'Add note'),
+  SelectionAction(id: 'copy', title: 'Copy'),
+];
+
+/// The selection [event] reports, or null if its action isn't one of
+/// [selectionMenu], it is outside the spine, or no text came with it.
+///
+/// Readium puts the selected text and the text around it in the locator's
+/// quote; the event's own text is only the fallback.
+PassageSelection? passageSelectionFrom(
+  SelectionActionEvent event,
+  int? Function(String href) indexOf,
+) {
+  final command = SelectionCommand.values
+      .where((command) => command.name == event.actionId)
+      .firstOrNull;
+  final sectionIndex = indexOf(event.locator.href);
+  final quote = event.locator.text;
+  final text = quote?.highlight ?? event.selectedText ?? '';
+  if (command == null || sectionIndex == null || text.trim().isEmpty) {
+    return null;
+  }
+  return PassageSelection(
+    command: command,
+    sectionIndex: sectionIndex,
+    progression: event.locator.locations?.progression ?? 0,
+    text: text,
+    before: quote?.before ?? '',
+    after: quote?.after ?? '',
+  );
+}
+
+/// The decoration group of saved notes and highlights, apart from
+/// [passageHighlightGroup] so search and notes never clear each other.
+const noteHighlightGroup = 'loremark-notes';
+
+/// The decorations that draw [highlights], each at its text quote. A highlight
+/// whose section isn't in [readingOrder] is left out.
+///
+/// Every style has a tint, which Android needs (see [passageHighlightStyle]).
+List<ReaderDecoration> noteDecorations(
+  List<NoteHighlight> highlights,
+  List<Link> readingOrder,
+  int? Function(String href) indexOf,
+) => [
+  for (final highlight in highlights)
+    if (locatorForPassage(highlight.target, readingOrder, indexOf)
+        case final locator?)
+      ReaderDecoration(
+        id: highlight.id,
+        locator: locator,
+        style: ReaderDecorationStyle(
+          style: DecorationStyle.highlight,
+          tint: highlight.color,
+        ),
+      ),
+];
 
 /// The entry of [entries] the plugin's `tocHref` ("path#fragment") names, or
 /// null if none does.

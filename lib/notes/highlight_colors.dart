@@ -20,4 +20,8 @@ extension HighlightColorDisplay on HighlightColor {
     HighlightColor.blue => const Color(0xFF9CC3E6),
     HighlightColor.pink => const Color(0xFFF2A7C3),
   };
+
+  /// This is the see-through version of [swatch] drawn over the text in the
+  /// book, so the words under it stay readable.
+  Color get pageTint => swatch.withValues(alpha: 0.45);
 }
