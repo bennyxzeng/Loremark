@@ -3,6 +3,24 @@ import 'package:flutter/material.dart';
 import '../story_model/story_model.dart';
 import '../story_model/story_snapshot.dart';
 
+/// Opens a draggable bottom sheet, as used for character cards and guides.
+Future<void> showFactSheet(
+  BuildContext context, {
+  required ScrollableWidgetBuilder builder,
+}) {
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (context) => DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.6,
+      maxChildSize: 0.95,
+      builder: builder,
+    ),
+  );
+}
+
 /// A small heading above a group of facts.
 class FactHeading extends StatelessWidget {
   const FactHeading(this.text, {super.key});
@@ -15,8 +33,10 @@ class FactHeading extends StatelessWidget {
       padding: const EdgeInsets.only(top: 20, bottom: 8),
       child: Text(
         text,
-        style: Theme.of(context).textTheme.titleSmall
-            ?.copyWith(color: Theme.of(context).colorScheme.primary),
+        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+          color: Theme.of(context).colorScheme.primary,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
@@ -52,25 +72,22 @@ class FactTile extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text.rich(
-            TextSpan(
-              children: [
-                TextSpan(text: text),
-                for (final tag in tags)
-                  TextSpan(
-                    text: '  $tag',
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: theme.colorScheme.tertiary,
-                    ),
-                  ),
-              ],
-            ),
+          Text(
+            text,
             style: theme.textTheme.bodyMedium?.copyWith(
               color: onTap == null ? null : theme.colorScheme.primary,
             ),
           ),
+          if (tags.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              children: [for (final tag in tags) FactTag(tag)],
+            ),
+          ],
           if (detail != null) ...[
-            const SizedBox(height: 2),
+            SizedBox(height: tags.isEmpty ? 2 : 4),
             Text(detail!, style: muted),
           ],
           for (final quote in evidence) ...[
@@ -88,17 +105,66 @@ class FactTile extends StatelessWidget {
   }
 }
 
-/// Tags that flag facts the text does not state directly.
-List<String> assertionTags(Assertion assertion) => switch (assertion) {
-  Assertion.explicit => const [],
-  Assertion.reported => const ['reported'],
-  Assertion.inferred => const ['inferred'],
+/// A label on a fact, such as `past`, in a rounded box.
+///
+/// Most facts are `current` and `explicit`, so those stay quiet and the other
+/// labels stand out.
+class FactTag extends StatelessWidget {
+  const FactTag(this.label, {super.key});
+
+  final String label;
+
+  bool get isDefault =>
+      label == TemporalContext.current.name || label == Assertion.explicit.name;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: isDefault
+            ? colors.surfaceContainerHighest
+            : colors.tertiaryContainer,
+        border: Border.all(
+          color: isDefault
+              ? colors.outlineVariant
+              : colors.tertiary.withValues(alpha: 0.5),
+        ),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+        child: Text(
+          label,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: isDefault ? colors.onSurface : colors.onTertiaryContainer,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The heading above changes that did [action]. The label guide says which
+/// word the model uses for each.
+String changeHeading(TransitionAction action) => switch (action) {
+  TransitionAction.supersede => 'Replaced',
+  TransitionAction.retract => 'Retracted',
+  TransitionAction.resolve => 'Answered',
 };
 
-/// The model's `temporal_context`, word for word. `current` is the default and
-/// gets no tag.
-List<String> temporalTags(TemporalContext context) =>
-    context == TemporalContext.current ? const [] : [context.name];
+/// [changes] grouped by what they did, leaving out actions none of them did.
+Map<TransitionAction, List<RecordTransition>> changesByAction(
+  List<RecordTransition> changes,
+) => {
+  for (final action in TransitionAction.values)
+    if (changes.any((change) => change.action == action))
+      action: [
+        for (final change in changes)
+          if (change.action == action) change,
+      ],
+};
 
 /// The answer to [question], or null while it is still open.
 String? answerText(StoryQuestion question) => switch (question.resolution) {

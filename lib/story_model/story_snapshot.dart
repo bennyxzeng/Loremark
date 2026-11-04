@@ -142,6 +142,36 @@ class StorySnapshot {
   bool isNewEntity(String entityId) =>
       firstSeenOrder(entityId) == section.order;
 
+  /// Whether the reader learned in [section] who [entityId] really is.
+  bool isRevealedEntity(String entityId) =>
+      _revealedIds.contains(canonicalId(entityId));
+
+  /// Entities revealed in [section]: by an explicit identity link, or by a name
+  /// replaced with an unrelated one.
+  late final Set<String> _revealedIds = () {
+    final names = {for (final name in model.names) name.id: name.payload};
+    return {
+      for (final record in model.identityLinks)
+        if (isNewRecord(record) &&
+            isActive(record) &&
+            record.payload.assertion == Assertion.explicit &&
+            _isMember(
+              record.payload.leftEntityId,
+              record.payload.rightEntityId,
+            ))
+          canonicalId(record.payload.leftEntityId),
+      for (final transition in transitions)
+        if (transition.learnedInSectionId == section.id)
+          if ((
+                names[transition.targetRecordId],
+                names[transition.replacementRecordId],
+              )
+              case (final before?, final after?)
+              when _isUnrelatedName(before.text, after.text))
+            canonicalId(before.entityId),
+    };
+  }();
+
   /// Entities the reader has met, one per identity group, in order of first
   /// appearance.
   late final List<StoryEntity> knownEntities = () {
@@ -278,6 +308,14 @@ class StorySnapshot {
         return '$before — ${transition.resolution ?? 'answered'}';
     }
   }
+}
+
+/// Whether neither name contains the other. "Raiden" and "Raiden Shuga" are the
+/// same name spelled out in full, not a new identity.
+bool _isUnrelatedName(String first, String second) {
+  final a = first.toLowerCase();
+  final b = second.toLowerCase();
+  return !a.contains(b) && !b.contains(a);
 }
 
 /// Turns a snake_case label such as `member_of` into "member of".

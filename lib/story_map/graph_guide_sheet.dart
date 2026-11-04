@@ -12,18 +12,11 @@ Future<void> showGraphGuide(
   BuildContext context, {
   required String sectionLabel,
 }) {
-  return showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    showDragHandle: true,
-    builder: (context) => DraggableScrollableSheet(
-      expand: false,
-      initialChildSize: 0.6,
-      maxChildSize: 0.95,
-      builder: (context, scrollController) => GraphGuideView(
-        sectionLabel: sectionLabel,
-        scrollController: scrollController,
-      ),
+  return showFactSheet(
+    context,
+    builder: (context, scrollController) => GraphGuideView(
+      sectionLabel: sectionLabel,
+      scrollController: scrollController,
     ),
   );
 }
@@ -63,8 +56,10 @@ class GraphGuideView extends StatelessWidget {
         ),
         _LegendRow(
           sample: GraphLegendSample.node(EntityKind.character, isNew: true),
-          title: 'New in $sectionLabel',
-          detail: 'Bold outline and name.',
+          title: 'New or revealed in $sectionLabel',
+          detail:
+              'Bold outline and name. Revealed means you learn who they '
+              'really are.',
         ),
         const FactHeading('Lines'),
         const _LegendRow(

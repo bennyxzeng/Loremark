@@ -7,6 +7,7 @@ import 'character_card_view.dart';
 import 'character_graph_view.dart';
 import 'character_list_view.dart';
 import 'graph_guide_sheet.dart';
+import 'label_guide_sheet.dart';
 
 enum _StoryMapTab { graph, characters, chapter }
 
@@ -126,6 +127,7 @@ class _StoryMapScreenState extends State<StoryMapScreen> {
             _StoryMapTab.chapter => ChapterDigestView(
               snapshot: _snapshot,
               onEntityTap: _openCard,
+              onGuideTap: () => showLabelGuide(context),
             ),
           },
         ),

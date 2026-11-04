@@ -266,7 +266,8 @@ class _CharacterGraphViewState extends State<CharacterGraphView> {
             kind: _model.entities[id]!.kind,
             center: position,
             degree: degree,
-            isNew: snapshot.isNewEntity(id),
+            isHighlighted:
+                snapshot.isNewEntity(id) || snapshot.isRevealedEntity(id),
           ),
     };
     final edges = _edges(relationships, nodes);
@@ -449,7 +450,7 @@ class GraphLegendSample extends StatelessWidget {
               kind: kind,
               center: center,
               degree: 0,
-              isNew: isNew,
+              isHighlighted: isNew,
             ),
         ],
         edges: [
@@ -480,7 +481,7 @@ class _GraphNode {
     required this.kind,
     required this.center,
     required this.degree,
-    required this.isNew,
+    required this.isHighlighted,
   });
 
   final String id;
@@ -490,7 +491,9 @@ class _GraphNode {
 
   /// Number of relationships shown for this node.
   final int degree;
-  final bool isNew;
+
+  /// Whether this chapter introduced the entity or revealed who it really is.
+  final bool isHighlighted;
 }
 
 class _GraphEdge {
@@ -580,7 +583,9 @@ class _GraphPainter extends CustomPainter {
     final byPriority = [...nodes]
       ..sort((a, b) {
         if (a.degree != b.degree) return b.degree.compareTo(a.degree);
-        if (a.isNew != b.isNew) return a.isNew ? -1 : 1;
+        if (a.isHighlighted != b.isHighlighted) {
+          return a.isHighlighted ? -1 : 1;
+        }
         return a.label.compareTo(b.label);
       });
     for (final node in byPriority) {
@@ -721,8 +726,8 @@ class _GraphPainter extends CustomPainter {
       path,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = (node.isNew ? 3 : 1) * metrics.point
-        ..color = node.isNew ? colors.primary : colors.outline,
+        ..strokeWidth = (node.isHighlighted ? 3 : 1) * metrics.point
+        ..color = node.isHighlighted ? colors.primary : colors.outline,
     );
   }
 
@@ -737,7 +742,7 @@ class _GraphPainter extends CustomPainter {
       textStyle.copyWith(
         fontSize: metrics.nameSize,
         color: colors.onSurface,
-        fontWeight: node.isNew ? FontWeight.w700 : FontWeight.w500,
+        fontWeight: node.isHighlighted ? FontWeight.w700 : FontWeight.w500,
       ),
       maxWidth: 110 * metrics.point,
       maxLines: 2,
