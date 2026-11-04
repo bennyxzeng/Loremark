@@ -65,7 +65,7 @@ class CharacterCardView extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         Text(
-          '${entityKindLabel(entity.kind)} · First seen in '
+          '${entity.kind.name} · First seen in '
           '${snapshot.firstSeenSection(entityId).label}',
           style: theme.textTheme.bodyMedium?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
@@ -104,8 +104,7 @@ class CharacterCardView extends StatelessWidget {
               text: snapshot.describe(record.payload),
               detail: record.payload.description,
               tags: [
-                if (record.payload.temporalContext == TemporalContext.past)
-                  'past',
+                ...temporalTags(record.payload.temporalContext),
                 ...assertionTags(record.payload.assertion),
               ],
               onTap: () => showCharacterCard(
@@ -123,8 +122,7 @@ class CharacterCardView extends StatelessWidget {
               text: record.payload.description,
               detail: model.sectionById(record.learnedInSectionId)?.label,
               tags: [
-                if (record.payload.temporalContext == TemporalContext.past)
-                  'flashback',
+                ...temporalTags(record.payload.temporalContext),
                 ...assertionTags(record.payload.assertion),
               ],
             ),

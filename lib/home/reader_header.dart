@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../library/book.dart';
+import '../settings/connection_status.dart';
 import '../theme/loremark_theme.dart';
+import 'offline_banner.dart';
 
-/// The top of every tab: the open book. Tapping it returns to the library.
+/// The top of every tab: the open book, and an offline chip while the device
+/// has no network. Tapping it returns to the library.
 class ReaderHeader extends StatelessWidget {
   const ReaderHeader({
     super.key,
@@ -52,6 +55,10 @@ class ReaderHeader extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
+                if (!ConnectionScope.of(context).isOnline) ...[
+                  const OfflineChip(),
+                  const SizedBox(width: 10),
+                ],
                 const Icon(
                   Icons.local_library_outlined,
                   color: LoremarkColors.muted,

@@ -166,9 +166,32 @@ Things we learned on the emulator that shaped this:
 - Saves are queued, and fast page turns coalesce, so only the newest position is written. A save keeps any other keys in the file, so PR #2's tracker can store `furthest` and `boundary` next to `current`.
 - On the emulator, 5 force-quit and relaunch cycles each reopened on the same page. (The living doc's check is 20 of 20 within one page.)
 
+**The first position after opening must not overwrite the saved one (issue #59, BUG-19).** The screen saved every position the reader reported, including the first. Readium can report a first position that is not the saved one: it opens at the start of the book or chapter and only then jumps, or it never applies the position it was given. On a device, a saved position the reader did not land on was overwritten by `{sectionIndex: 0, progression: 1.0}` within a second of opening, so the next open started at the start. The rule now, in `read_screen.dart`:
+
+- When a book opens with a saved position, saving is held until the reader shows that position. Positions are still passed on and still move the chapter bar and the search cutoff; they are only not written to disk.
+- If the first position is somewhere else, the screen asks the reader to jump back to the saved position, once.
+- Once the reader shows the saved position, it is saved (this also records the exact progression the reader landed on) and saving is normal from then on.
+- "Shows the saved position" means the same section and a progression within 0.02 of the saved one. 0.02 is about one page in a long chapter; a reopened page can land a fraction of a page off (seen on a device: 0.5298 saved, 0.5238 shown).
+- After the jump back, positions in the section the reader opened in, or in the saved section, are still held. They are the opening, or Readium honouring the jump only partly. A position in any other section means the reader really moved on: the wait ends and that position is saved, so saving is never blocked for good.
+- Why section and not time: Readium sends a bare locator first, and the full locator for the same page can come seconds later. On the emulator a one-page section came out as (0, 0.0) and then (0, 1.0), more than 2 seconds apart on a big book. A time limit (we tried 2 seconds) gave up on the second one and overwrote the saved position. Both arrive in the same section, so the section tells "same page, more detail" from "the reader moved on".
+- Known limit: if the jump back fails and the reader swipes on inside the opened or saved section without using the page buttons, those pages are not saved until they reach another section or use the controls. That is the price of never overwriting a good position with an opening one.
+- Anything the reader does from the Read tab to move (a Contents jump, a search result, the previous or next page buttons) ends the wait before it moves, so their next position is saved as usual.
+- A book with no saved position has nothing to protect, so its first position is saved at once, as before.
+
 ### Table of contents
 
-The book's own TOC, flattened with nesting depth. Each entry knows its section index, and entries pointing outside the spine are hidden. The chapter bar shows the last TOC entry at or before the current section.
+The book's own TOC, flattened with nesting depth. Each entry knows its section index, and entries pointing outside the spine are hidden.
+
+**Which chapter is the reader in?** Several chapters can share one spine file (our Gatsby copy has chapters I to V in one), so the section index alone can't tell. Readium works out the chapter of each page from where it starts and puts it on the page's locator (`tocHref`); the reader passes that on as `chapterChanges`, and the chapter bar shows it. Only when the plugin gives none does the bar fall back to "the last TOC entry in or before the current file".
+
+**Jumping to a chapter.** Readium opens a file you jump into from another file at its *last page* and ignores the chapter you asked for, as if you had turned back into it. Asking again once the file is showing scrolls to the right place. So `_go` in `readium_reader_service.dart` jumps, waits for the file to show (up to 2 seconds), and jumps again; a jump inside the file you are already in needs only one. Search result jumps use the same path. (Measured on the emulator with Gatsby: from chapter IX, every jump to chapter I or III landed at the end of the first file before this, and at the chapter after.)
+
+**A book with no usable TOC.** "Usable" means at least two entries that point into the spine. A missing contents list, an empty one, one with a single entry, or one whose links all point nowhere gets the living doc's plan instead (Risk 3, `SectionBuilder`): the book is cut into sections of about 5,000 words, `Section 1`, `Section 2`, and so on, listed in Contents with a short note saying why.
+
+- The number of sections is `round(words / 5000)`, cut into equal parts. A cut that falls near the start of a spine file moves to that start; the others fall inside a file at the share of its words they are at. Chinese, Japanese and Korean text counts each character as 0.6 of a word.
+- A book under about 7,500 words is not cut (nothing to navigate), so its Contents button stays off.
+- Jumping to a section goes to that share of the file's *pages*, which is close to, not exactly, the cut, since pages and words differ. Sections are for finding your way, not for the spoiler line, which never depends on them.
+- Code: [`lib/reader/toc_builder.dart`](../lib/reader/toc_builder.dart) (`sectionsWithoutToc`); the reader decides when to use it (`_tableOfContents`). Footnote-style files the reader never pages through are left out.
 
 ### Section texts for the AI side
 
@@ -288,10 +311,11 @@ Options for letting the TA/professor install it easily:
 
 | Problem | Impact | Fix / plan |
 | :--- | :--- | :--- |
-| One spine file with many chapters (some EPUBs do this) | The chapter bar shows the last chapter in that file; the section index is coarse | Match the TOC fragment against the locator's `tocHref`; `SectionBuilder` can split by TOC anchors |
-| Book with no TOC | Contents button disabled; sections are raw spine files | Living-doc Risk 3 plan: `SectionBuilder` cuts ~5,000-word sections |
+| One spine file with many chapters (some EPUBs do this) | The section index is coarse (the chapter bar and Contents jumps are fixed, see Table of contents) | Spoiler-safe search no longer depends on it (page-level cutoff, [search.md](search.md)); the AI side still counts whole files |
+| Book with no TOC | Fixed: cut into sections of about 5,000 words | See Table of contents |
 | Plugin is 0.x and young (first release June 2026) | API breaks between minor versions; open issues (#229 scroll-mode back links, #254 release AAB crash report) | Pinned to 0.8.0; everything is behind `EpubReaderService`; only one file changes on upgrade |
 | Page count differs between the first open and a cold start (seen: 15 vs 13 pages in one chapter) | The restored progression value differs slightly | Still the same page (page index is what's restored); the living doc only needs "within one page" |
+| The first position after opening overwrote the saved one (BUG-19, issue #59): the reader reported the start of the book before, or instead of, the saved place | The next open started at the beginning | Fixed: saving is held until the reader shows the saved position (same section, progression within 0.02), the reader is sent back once if it opens elsewhere, positions in the opened or saved section stay held, and a position in any other section ends the wait; see Save and resume |
 | Deleting a book leaves its position file | A tiny orphan file; re-importing the same book resumes there | Delete `reading_state/<id>.json` in `BookRepository.remove` |
 | Fonts/themes not adjustable | Accessibility | `EPUBPreferences` supports font size, family, line height and night mode; add a settings sheet |
 | iOS untested | Could hit a build or runtime difference | Kevin's Mac test (steps above); the plugin's iOS page info could be 1-based (then the 1.0 would come one page early, harmless) |
@@ -324,7 +348,7 @@ The living doc's scalability requirement: 500,000-word books, chapter processing
 - Non-linear items keep their index, and Readium skips them in page turns.
 - Hrefs with spaces, accents, `#fragments` and leading slashes all map correctly; this is tested with real device formats.
 - A broken chapter yields empty text, not a crash.
-- No TOC just disables the contents button.
+- No TOC (or an unusable one): the book is cut into sections of about 5,000 words, and Contents lists them.
 
 **What if the app crashes mid-save?** The temp file + rename means the old or the new position survives, never a corrupt mix. A corrupt or unknown file is ignored, and the book opens at the start.
 
