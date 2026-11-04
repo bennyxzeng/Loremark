@@ -20,7 +20,7 @@ void main() {
 
   Widget app(Widget child) => MaterialApp(home: Scaffold(body: child));
 
-  Future<void> addNote(
+  Future<Note> addNote(
     String body, {
     NoteAnchor anchor = const NoteAnchor(7, 0.2),
     String chapter = 'Chapter 8',
@@ -35,8 +35,11 @@ void main() {
 
   group('Add note sheet', () {
     // Opens the sheet and returns a getter for what it returned once closed.
-    Future<AddNoteResult? Function()> openSheet(WidgetTester tester) async {
-      AddNoteResult? result;
+    Future<NoteSheetResult? Function()> openSheet(
+      WidgetTester tester, {
+      String? removeLabel,
+    }) async {
+      NoteSheetResult? result;
       await tester.pumpWidget(
         app(
           Builder(
@@ -45,6 +48,7 @@ void main() {
                 result = await showAddNoteSheet(
                   context,
                   selectedText: 'You’re my sister, Mara.',
+                  removeLabel: removeLabel,
                 );
               },
               child: const Text('open'),
@@ -79,9 +83,70 @@ void main() {
       await tester.tap(find.text('Save note'));
       await tester.pumpAndSettle();
 
-      final saved = result();
+      final saved = result() as AddNoteResult?;
       expect(saved?.body, 'She knew.');
       expect(saved?.color, HighlightColor.blue);
+    });
+
+    testWidgets('has no remove button when adding a note', (tester) async {
+      await openSheet(tester);
+
+      expect(find.text('Remove highlight'), findsNothing);
+      expect(find.text('Delete note'), findsNothing);
+    });
+
+    testWidgets('returns remove when the remove button is tapped', (
+      tester,
+    ) async {
+      final result = await openSheet(tester, removeLabel: 'Remove highlight');
+
+      await tester.tap(find.text('Remove highlight'));
+      await tester.pumpAndSettle();
+
+      expect(result(), isA<RemoveNoteResult>());
+      expect(find.text('Save note'), findsNothing);
+    });
+  });
+
+  group('Edit note sheet', () {
+    // Opens the edit sheet for [note] the way the Notes and Read tabs do.
+    Future<void> openEditSheet(WidgetTester tester, Note note) async {
+      await tester.pumpWidget(
+        app(
+          Builder(
+            builder: (context) => TextButton(
+              onPressed: () => editNoteWithSheet(context, service, note),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('offers Remove highlight for a highlight with no text', (
+      tester,
+    ) async {
+      final highlight = await service.addHighlight(
+        anchor: const NoteAnchor(7, 0.2),
+        chapterLabel: 'Chapter 8',
+        selectedText: 'A quiet harbor',
+      );
+
+      await openEditSheet(tester, highlight);
+
+      expect(find.text('Remove highlight'), findsOneWidget);
+      expect(find.text('Delete note'), findsNothing);
+    });
+
+    testWidgets('offers Delete note for a note with text', (tester) async {
+      final note = await addNote('She knew.');
+
+      await openEditSheet(tester, note);
+
+      expect(find.text('Delete note'), findsOneWidget);
+      expect(find.text('Remove highlight'), findsNothing);
     });
   });
 

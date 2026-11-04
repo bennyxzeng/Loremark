@@ -176,6 +176,58 @@ void main() {
     expect(notes.notes.single.body, 'A stray.');
   });
 
+  testWidgets('Remove highlight takes a highlight off the page', (
+    tester,
+  ) async {
+    final highlight = await notes.addHighlight(
+      anchor: const NoteAnchor(4, 0.3),
+      chapterLabel: 'Chapter Two',
+      selectedText: 'a grey cat',
+      textBefore: 'There was ',
+    );
+    final session = await openBook(tester);
+
+    session.tapHighlight(highlight.id);
+    await tester.idle();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Remove highlight'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Delete this note?'), findsNothing);
+    expect(notes.notes, isEmpty);
+    expect(session.shownNoteHighlights.last, isEmpty);
+  });
+
+  testWidgets('Delete note asks first, and Cancel keeps the note', (
+    tester,
+  ) async {
+    final note = await addSavedNote();
+    final session = await openBook(tester);
+
+    session.tapHighlight(note.id);
+    await tester.idle();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete note'));
+    await tester.pumpAndSettle();
+    expect(find.text('Delete this note?'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+
+    expect(notes.notes.single.id, note.id);
+    expect(session.shownNoteHighlights.last.single.id, note.id);
+
+    session.tapHighlight(note.id);
+    await tester.idle();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete note'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+    await tester.pumpAndSettle();
+
+    expect(notes.notes, isEmpty);
+    expect(session.shownNoteHighlights.last, isEmpty);
+  });
+
   testWidgets('a deleted note is taken off the page', (tester) async {
     final note = await addSavedNote();
     final session = await openBook(tester);
