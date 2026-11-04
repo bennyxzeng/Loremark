@@ -46,8 +46,6 @@ These are our six use cases and where each one stands in this beta.
 | **2 · Track a theory** | In progress | |
 | **6 · Ask about the story** | In progress | The Ask tab is in the app and unlocks with an API key, but it doesn't answer questions yet. |
 
-**About the demo story model.** In the beta, the Story Map and character cards use a story model for *86—EIGHTY-SIX, Vol. 1*. Our extraction pipeline generated it ahead of time, and it ships with the app. The app shows this model whichever book is open, so the Story Map makes sense with that book. Building the model inside the app for any book you import is the main work left for the final release.
-
 These features support the use cases above, and all of them work in the beta:
 
 - **Library and reader.** Import DRM-free EPUBs, read them with [Readium](https://readium.org/), jump to a chapter from the contents, and reopen each book on the page where you left off.
