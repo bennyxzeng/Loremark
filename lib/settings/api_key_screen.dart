@@ -114,8 +114,8 @@ class _ApiKeyScreenState extends State<ApiKeyScreen> {
       builder: (context) => AlertDialog(
         title: const Text('Continue without AI?'),
         content: const Text(
-          'Without an API key, Ask and Story Map stay locked: no recaps, '
-          'no questions about the story, no character map.\n\n'
+          'Without an API key, Ask stays locked and Story Map can’t update: '
+          'no recaps, no questions about the story, no new character maps.\n\n'
           'Importing and reading books still work. You can add a key '
           'any time in Settings.',
         ),

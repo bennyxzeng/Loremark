@@ -43,6 +43,8 @@ class StorySection {
     required this.order,
     required this.chapterNumber,
     required this.title,
+    this.href,
+    this.quotesChecked = true,
   });
 
   factory StorySection.fromJson(Map<String, dynamic> json) => StorySection(
@@ -50,6 +52,8 @@ class StorySection {
     order: json['section_order'] as int,
     chapterNumber: json['chapter_number'] as int?,
     title: json['title'] as String,
+    href: json['href'] as String?,
+    quotesChecked: json['quotes_checked'] as bool? ?? true,
   );
 
   final String id;
@@ -58,6 +62,13 @@ class StorySection {
   final int order;
   final int? chapterNumber;
   final String title;
+
+  /// The section's document inside the EPUB.
+  final String? href;
+
+  /// False if this section was added with the quote check off, so a quote may
+  /// not match the paragraph it names.
+  final bool quotesChecked;
 
   /// A short label such as "Chapter 2", or the title if there is no number.
   String get label => chapterNumber == null ? title : 'Chapter $chapterNumber';

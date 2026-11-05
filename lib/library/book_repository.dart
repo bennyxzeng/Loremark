@@ -7,6 +7,8 @@ import 'package:path_provider/path_provider.dart';
 
 import 'book.dart';
 import 'epub_metadata.dart';
+import '../story_update/story_import.dart';
+import '../story_update/story_updater.dart';
 
 /// The reader's imported books, kept on the device.
 ///
@@ -114,6 +116,12 @@ class BookRepository {
       if (path == null) continue;
       final file = File(path);
       if (await file.exists()) await file.delete();
+    }
+    final storyModel = Directory(storyStorePath(root.path, book.id));
+    if (await storyModel.exists()) await storyModel.delete(recursive: true);
+    for (final path in storySidePaths(storyModel.path)) {
+      final folder = Directory(path);
+      if (await folder.exists()) await folder.delete(recursive: true);
     }
   }
 

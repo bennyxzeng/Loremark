@@ -1,0 +1,631 @@
+{
+  "$defs": {
+    "AttributePayload": {
+      "additionalProperties": false,
+      "properties": {
+        "entity_id": {
+          "title": "Entity Id",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "string"
+        },
+        "assertion": {
+          "enum": [
+            "explicit",
+            "reported",
+            "inferred"
+          ],
+          "title": "Assertion",
+          "type": "string"
+        },
+        "attributed_to_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Attributed To Id"
+        }
+      },
+      "required": [
+        "entity_id",
+        "label",
+        "value",
+        "assertion",
+        "attributed_to_id"
+      ],
+      "title": "AttributePayload",
+      "type": "object"
+    },
+    "DeltaEntity": {
+      "additionalProperties": false,
+      "properties": {
+        "local_id": {
+          "title": "Local Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "character",
+            "location",
+            "organization"
+          ],
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "local_id",
+        "kind"
+      ],
+      "title": "DeltaEntity",
+      "type": "object"
+    },
+    "DeltaRecordCollections": {
+      "additionalProperties": false,
+      "properties": {
+        "names": {
+          "items": {
+            "$ref": "#/$defs/DeltaRecord_EntityTextPayload_"
+          },
+          "title": "Names",
+          "type": "array"
+        },
+        "aliases": {
+          "items": {
+            "$ref": "#/$defs/DeltaRecord_EntityTextPayload_"
+          },
+          "title": "Aliases",
+          "type": "array"
+        },
+        "attributes": {
+          "items": {
+            "$ref": "#/$defs/DeltaRecord_AttributePayload_"
+          },
+          "title": "Attributes",
+          "type": "array"
+        },
+        "relationships": {
+          "items": {
+            "$ref": "#/$defs/DeltaRecord_RelationshipPayload_"
+          },
+          "title": "Relationships",
+          "type": "array"
+        },
+        "events": {
+          "items": {
+            "$ref": "#/$defs/DeltaRecord_EventPayload_"
+          },
+          "title": "Events",
+          "type": "array"
+        },
+        "uncertainties": {
+          "items": {
+            "$ref": "#/$defs/DeltaRecord_UncertaintyPayload_"
+          },
+          "title": "Uncertainties",
+          "type": "array"
+        },
+        "identity_links": {
+          "items": {
+            "$ref": "#/$defs/DeltaRecord_IdentityLinkPayload_"
+          },
+          "title": "Identity Links",
+          "type": "array"
+        }
+      },
+      "required": [
+        "names",
+        "aliases",
+        "attributes",
+        "relationships",
+        "events",
+        "uncertainties",
+        "identity_links"
+      ],
+      "title": "DeltaRecordCollections",
+      "type": "object"
+    },
+    "DeltaRecord_AttributePayload_": {
+      "additionalProperties": false,
+      "properties": {
+        "local_id": {
+          "title": "Local Id",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/AttributePayload"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/EvidenceV2"
+          },
+          "title": "Evidence",
+          "type": "array"
+        }
+      },
+      "required": [
+        "local_id",
+        "payload",
+        "evidence"
+      ],
+      "title": "DeltaRecord[AttributePayload]",
+      "type": "object"
+    },
+    "DeltaRecord_EntityTextPayload_": {
+      "additionalProperties": false,
+      "properties": {
+        "local_id": {
+          "title": "Local Id",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/EntityTextPayload"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/EvidenceV2"
+          },
+          "title": "Evidence",
+          "type": "array"
+        }
+      },
+      "required": [
+        "local_id",
+        "payload",
+        "evidence"
+      ],
+      "title": "DeltaRecord[EntityTextPayload]",
+      "type": "object"
+    },
+    "DeltaRecord_EventPayload_": {
+      "additionalProperties": false,
+      "properties": {
+        "local_id": {
+          "title": "Local Id",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/EventPayload"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/EvidenceV2"
+          },
+          "title": "Evidence",
+          "type": "array"
+        }
+      },
+      "required": [
+        "local_id",
+        "payload",
+        "evidence"
+      ],
+      "title": "DeltaRecord[EventPayload]",
+      "type": "object"
+    },
+    "DeltaRecord_IdentityLinkPayload_": {
+      "additionalProperties": false,
+      "properties": {
+        "local_id": {
+          "title": "Local Id",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/IdentityLinkPayload"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/EvidenceV2"
+          },
+          "title": "Evidence",
+          "type": "array"
+        }
+      },
+      "required": [
+        "local_id",
+        "payload",
+        "evidence"
+      ],
+      "title": "DeltaRecord[IdentityLinkPayload]",
+      "type": "object"
+    },
+    "DeltaRecord_RelationshipPayload_": {
+      "additionalProperties": false,
+      "properties": {
+        "local_id": {
+          "title": "Local Id",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/RelationshipPayload"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/EvidenceV2"
+          },
+          "title": "Evidence",
+          "type": "array"
+        }
+      },
+      "required": [
+        "local_id",
+        "payload",
+        "evidence"
+      ],
+      "title": "DeltaRecord[RelationshipPayload]",
+      "type": "object"
+    },
+    "DeltaRecord_UncertaintyPayload_": {
+      "additionalProperties": false,
+      "properties": {
+        "local_id": {
+          "title": "Local Id",
+          "type": "string"
+        },
+        "payload": {
+          "$ref": "#/$defs/UncertaintyPayload"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/EvidenceV2"
+          },
+          "title": "Evidence",
+          "type": "array"
+        }
+      },
+      "required": [
+        "local_id",
+        "payload",
+        "evidence"
+      ],
+      "title": "DeltaRecord[UncertaintyPayload]",
+      "type": "object"
+    },
+    "DeltaTransition": {
+      "additionalProperties": false,
+      "properties": {
+        "target_record_id": {
+          "title": "Target Record Id",
+          "type": "string"
+        },
+        "action": {
+          "enum": [
+            "supersede",
+            "retract",
+            "resolve"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "replacement_local_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Replacement Local Id"
+        },
+        "resolution": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Resolution"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/EvidenceV2"
+          },
+          "title": "Evidence",
+          "type": "array"
+        }
+      },
+      "required": [
+        "target_record_id",
+        "action",
+        "replacement_local_id",
+        "resolution",
+        "reason",
+        "evidence"
+      ],
+      "title": "DeltaTransition",
+      "type": "object"
+    },
+    "EntityTextPayload": {
+      "additionalProperties": false,
+      "description": "A name or an alias of one entity.",
+      "properties": {
+        "entity_id": {
+          "title": "Entity Id",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "entity_id",
+        "text"
+      ],
+      "title": "EntityTextPayload",
+      "type": "object"
+    },
+    "EventPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "participant_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Participant Ids",
+          "type": "array"
+        },
+        "location_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Location Id"
+        },
+        "narrative_order": {
+          "title": "Narrative Order",
+          "type": "integer"
+        },
+        "temporal_context": {
+          "enum": [
+            "current",
+            "past",
+            "future",
+            "hypothetical",
+            "unknown"
+          ],
+          "title": "Temporal Context",
+          "type": "string"
+        },
+        "story_time": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Story Time"
+        },
+        "assertion": {
+          "enum": [
+            "explicit",
+            "reported",
+            "inferred"
+          ],
+          "title": "Assertion",
+          "type": "string"
+        },
+        "attributed_to_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Attributed To Id"
+        }
+      },
+      "required": [
+        "description",
+        "participant_ids",
+        "location_id",
+        "narrative_order",
+        "temporal_context",
+        "story_time",
+        "assertion",
+        "attributed_to_id"
+      ],
+      "title": "EventPayload",
+      "type": "object"
+    },
+    "EvidenceV2": {
+      "additionalProperties": false,
+      "properties": {
+        "section_id": {
+          "title": "Section Id",
+          "type": "string"
+        },
+        "paragraph_id": {
+          "title": "Paragraph Id",
+          "type": "string"
+        },
+        "quote": {
+          "title": "Quote",
+          "type": "string"
+        }
+      },
+      "required": [
+        "section_id",
+        "paragraph_id",
+        "quote"
+      ],
+      "title": "EvidenceV2",
+      "type": "object"
+    },
+    "IdentityLinkPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "left_entity_id": {
+          "title": "Left Entity Id",
+          "type": "string"
+        },
+        "right_entity_id": {
+          "title": "Right Entity Id",
+          "type": "string"
+        },
+        "assertion": {
+          "enum": [
+            "explicit",
+            "reported",
+            "inferred"
+          ],
+          "title": "Assertion",
+          "type": "string"
+        },
+        "explanation": {
+          "title": "Explanation",
+          "type": "string"
+        }
+      },
+      "required": [
+        "left_entity_id",
+        "right_entity_id",
+        "assertion",
+        "explanation"
+      ],
+      "title": "IdentityLinkPayload",
+      "type": "object"
+    },
+    "RelationshipPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "source_id": {
+          "title": "Source Id",
+          "type": "string"
+        },
+        "target_id": {
+          "title": "Target Id",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "assertion": {
+          "enum": [
+            "explicit",
+            "reported",
+            "inferred"
+          ],
+          "title": "Assertion",
+          "type": "string"
+        },
+        "attributed_to_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Attributed To Id"
+        },
+        "temporal_context": {
+          "enum": [
+            "current",
+            "past",
+            "future",
+            "hypothetical",
+            "unknown"
+          ],
+          "title": "Temporal Context",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_id",
+        "target_id",
+        "label",
+        "description",
+        "assertion",
+        "attributed_to_id",
+        "temporal_context"
+      ],
+      "title": "RelationshipPayload",
+      "type": "object"
+    },
+    "UncertaintyPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "question": {
+          "title": "Question",
+          "type": "string"
+        },
+        "related_entity_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Related Entity Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "question",
+        "related_entity_ids"
+      ],
+      "title": "UncertaintyPayload",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "new_entities": {
+      "items": {
+        "$ref": "#/$defs/DeltaEntity"
+      },
+      "title": "New Entities",
+      "type": "array"
+    },
+    "new_records": {
+      "$ref": "#/$defs/DeltaRecordCollections"
+    },
+    "transitions": {
+      "items": {
+        "$ref": "#/$defs/DeltaTransition"
+      },
+      "title": "Transitions",
+      "type": "array"
+    }
+  },
+  "required": [
+    "new_entities",
+    "new_records",
+    "transitions"
+  ],
+  "title": "StoryDelta",
+  "type": "object"
+}

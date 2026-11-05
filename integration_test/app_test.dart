@@ -154,7 +154,9 @@ void main() {
   }
 
   testWidgets('a reader without an API key can import, read, search and '
-      'see notes, while Ask and Story Map stay locked', (tester) async {
+      'see notes, while Ask stays locked and Story Map can\'t update', (
+    tester,
+  ) async {
     await launch(tester);
 
     // First launch asks for a key; the reader skips it.
@@ -201,11 +203,13 @@ void main() {
       findsOne,
     );
 
-    // Without a key, the AI tabs are locked.
+    // Without a key, Ask is locked. Story Map opens, since a map can be loaded
+    // and looked at, but it can't be updated.
     await openTab(tester, 'Ask');
     expect(find.text('Ask needs an API key'), findsOne);
     await openTab(tester, 'Story Map');
-    expect(find.text('Story Map needs an API key'), findsOne);
+    await waitFor(tester, find.text('Add an API key in Settings to update.'));
+    expect(find.text('Story Map needs an API key'), findsNothing);
 
     // Back to the library, where the book is now the last one opened.
     await openTab(tester, 'Read');
@@ -238,8 +242,8 @@ void main() {
     expect(find.text('Ask needs an API key'), findsNothing);
 
     await openTab(tester, 'Story Map');
-    await waitFor(tester, find.textContaining('Known by the end of'));
-    expect(find.byType(Slider), findsOne);
+    await waitFor(tester, find.text('No Story Map yet'));
+    expect(find.text('Update'), findsOne);
     expect(find.text('Story Map needs an API key'), findsNothing);
   });
 
@@ -257,7 +261,7 @@ void main() {
     expect(find.text('Ask needs a connection'), findsOne);
 
     await openTab(tester, 'Story Map');
-    await waitFor(tester, find.textContaining('Known by the end of'));
+    await waitFor(tester, find.textContaining('You’re offline. Updating'));
     expect(find.text('Story Map needs a connection'), findsNothing);
 
     connection.isOnline = true;

@@ -163,6 +163,15 @@ class _ChapterDigestViewState extends State<ChapterDigestView> {
             ],
           ),
         ),
+        if (!section.quotesChecked)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+            child: Text(
+              'The quotes in this chapter weren’t checked against the book, '
+              'so one may not match its passage.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
         if (pages.isEmpty)
           const Expanded(
             child: Center(child: Text('Nothing new in this chapter.')),

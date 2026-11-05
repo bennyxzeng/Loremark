@@ -134,21 +134,18 @@ void main() {
     }
   });
 
-  testWidgets('without an API key, Ask and Story Map are locked', (
+  testWidgets('without an API key, Ask is locked but Story Map opens', (
     tester,
   ) async {
     await pumpBook(tester, hasKey: false);
 
-    for (final label in ['Ask', 'Story Map']) {
-      await tester.tap(
-        find.descendant(
-          of: find.byType(NavigationBar),
-          matching: find.text(label),
-        ),
-      );
-      await tester.pumpAndSettle();
-      expect(find.text('$label needs an API key'), findsOne, reason: label);
-    }
+    await openTab(tester, 'Ask');
+    expect(find.text('Ask needs an API key'), findsOne);
+    expect(find.textContaining('Ask uses an AI model'), findsOne);
+
+    await openTab(tester, 'Story Map');
+    expect(find.text('Story Map needs an API key'), findsNothing);
+    expect(find.byTooltip('Story Map files'), findsOne);
   });
 
   testWidgets('with an API key, nothing is locked', (tester) async {

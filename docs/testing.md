@@ -15,6 +15,7 @@ our living document (Process description → Test Plan & Bugs).
 | Acceptance tests | 20 force-quits, offline reading, no unexpected network traffic | `tool/acceptance/`, [acceptance.md](acceptance.md) | Emulator workflow |
 | Benchmarks | A 500,000-word book stays fast enough | `flutter test --tags benchmark`, [benchmarks.md](benchmarks.md) | No (manual) |
 | Real-book corpus | 50 public-domain EPUBs and 24 broken variants | `flutter test --tags corpus`, [corpus-testing.md](corpus-testing.md) | No (needs the books) |
+| Story Map updates | The Dart port matches the story model lab, and a failed update changes nothing | `flutter test test/story_update`, [story-update.md](story-update.md) | Yes |
 | Manual | Usability sessions with outside readers | Not run yet | No |
 
 Tests use `flutter_test`, the test framework that ships with Flutter. It runs unit and widget
@@ -45,10 +46,11 @@ Only three things are replaced: the file picker (returns the generated book), th
 
 | Test | Steps and checks |
 | :--- | :--- |
-| Reader without an API key | First launch shows "Connect an AI provider". Skip it. Import the book. It opens in the reader. Next page moves the progress. Search finds a word from a read chapter, and finds nothing for a word in a chapter not reached yet. Notes is empty. Ask and Story Map say "needs an API key". Back in the library the book is "LAST OPENED". |
+| Reader without an API key | First launch shows "Connect an AI provider". Skip it. Import the book. It opens in the reader. Next page moves the progress. Search finds a word from a read chapter, and finds nothing for a word in a chapter not reached yet. Notes is empty. Ask says "needs an API key". Story Map opens, but says to add a key before updating. Back in the library the book is "LAST OPENED". |
 | Rejected API key | A key the check rejects keeps the reader on the key screen. |
 | Valid API key | A valid key opens the library. After import, Ask opens, and Story Map shows its chapter slider. |
 | Offline | The "You're offline" banner shows. Ask is locked, Story Map still opens. Going back online unlocks Ask. |
+| Story Map files (by hand; system dialogs can't be automated) | Update a section, then pick **Export files…** from the ⋯ menu and save the zip to Files. It unzips to `store/` and `runs/`. **Load from file…** with that zip gives back a map that can still be updated. Loading a lone `story_model.json` shows the map, and says it can only be viewed. |
 
 It cannot select text, so creating a highlight or note is covered by widget tests
 (`test/home/read_screen_notes_test.dart`, `test/notes/`) instead. The generated book has no table
