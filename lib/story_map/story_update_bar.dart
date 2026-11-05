@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../story_update/story_import.dart';
 import '../story_update/story_updater.dart';
 
 /// [elapsed] as minutes and seconds, such as `2:51`.
@@ -70,8 +71,12 @@ class StoryUpdateBar extends StatelessWidget {
     super.key,
     required this.status,
     required this.online,
+    required this.hasKey,
     required this.onUpdate,
     required this.onChoose,
+    required this.onLoad,
+    required this.onExport,
+    this.filesBusy = false,
     this.updateStartedAt,
     this.updateSectionId,
     this.notice,
@@ -82,8 +87,17 @@ class StoryUpdateBar extends StatelessWidget {
   /// What pressing Update would do; null while that is being worked out.
   final StoryUpdateStatus? status;
   final bool online;
+
+  /// Whether the reader has an API key. Looking at a map doesn't need one, but
+  /// adding to it does.
+  final bool hasKey;
   final VoidCallback onUpdate;
   final VoidCallback onChoose;
+  final VoidCallback onLoad;
+  final VoidCallback onExport;
+
+  /// Whether files are being exported or loaded, which an update mustn't overlap.
+  final bool filesBusy;
 
   /// When the update under way began, if one is.
   final DateTime? updateStartedAt;
@@ -106,6 +120,7 @@ class StoryUpdateBar extends StatelessWidget {
     final status = this.status;
     final startedAt = updateStartedAt;
     final updating = startedAt != null;
+    final canAct = online && hasKey && !updating && !filesBusy;
     final muted = theme.textTheme.bodySmall?.copyWith(
       color: theme.colorScheme.onSurfaceVariant,
     );
@@ -128,8 +143,13 @@ class StoryUpdateBar extends StatelessWidget {
       title = status.isNewStore
           ? 'No Story Map yet'
           : 'Next: ${status.nextTitle}';
-      canUpdate = online;
-      if (!online) detail = 'You’re offline. Updating needs the internet.';
+      canUpdate = canAct;
+      // A missing key comes first: reconnecting wouldn't unlock anything.
+      if (!hasKey) {
+        detail = 'Add an API key in Settings to update.';
+      } else if (!online) {
+        detail = 'You’re offline. Updating needs the internet.';
+      }
     }
 
     return Padding(
@@ -150,17 +170,42 @@ class StoryUpdateBar extends StatelessWidget {
               if (status?.canChoose ?? false) ...[
                 const SizedBox(width: 4),
                 TextButton(
-                  onPressed: online && !updating ? onChoose : null,
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                  onPressed: canAct ? onChoose : null,
                   child: const Text('Choose'),
                 ),
               ],
               if (showButton) ...[
                 const SizedBox(width: 4),
                 FilledButton.tonal(
-                  onPressed: canUpdate && !updating ? onUpdate : null,
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                  ),
+                  onPressed: canUpdate ? onUpdate : null,
                   child: const Text('Update'),
                 ),
               ],
+              PopupMenuButton<VoidCallback>(
+                enabled: !updating && !filesBusy,
+                tooltip: 'Story Map files',
+                icon: const Icon(Icons.more_horiz),
+                // Narrower than usual, to leave the title room on a small phone.
+                padding: EdgeInsets.zero,
+                style: IconButton.styleFrom(minimumSize: const Size(36, 40)),
+                onSelected: (action) => action(),
+                itemBuilder: (context) => [
+                  PopupMenuItem(
+                    value: onLoad,
+                    child: const Text('Load from file…'),
+                  ),
+                  PopupMenuItem(
+                    value: onExport,
+                    child: const Text('Export files…'),
+                  ),
+                ],
+              ),
             ],
           ),
           if (startedAt != null)
@@ -361,6 +406,47 @@ Future<String?> showStorySectionDialog(
       ),
     ),
   );
+}
+
+/// Asks before [staged] takes the place of the map here, which has
+/// [currentSections] sections, if it could be read. Returns whether to go ahead.
+Future<bool> showStoryReplaceDialog(
+  BuildContext context, {
+  required int? currentSections,
+  required StagedStoryImport staged,
+}) async {
+  String count(int sections) =>
+      sections == 1 ? '1 section' : '$sections sections';
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Replace this Story Map?'),
+      content: SingleChildScrollView(
+        child: Text(
+          [
+            if (currentSections != null)
+              'The map here has ${count(currentSections)}.',
+            'The file has ${count(staged.sectionCount)}.',
+            if (staged.viewOnly)
+              'It can only be viewed, not updated, since it’s a single file.',
+            'Replacing deletes the map here. Export first if you want to keep '
+                'it.',
+          ].join(' '),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('Replace'),
+        ),
+      ],
+    ),
+  );
+  return confirmed ?? false;
 }
 
 String _skipWarning(List<String> skips) => skips.length == 1

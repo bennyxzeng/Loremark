@@ -11,12 +11,13 @@ import 'package:loremark/story_update/story_updater.dart';
 ///
 ///   dart run tool/story_update/run.dart --epub=book.epub --store=some/folder \
 ///     --section=section-004 --model=deepseek-flash --effort=high \
-///     --out=some/run/folder --dry-run
+///     --out=some/runs --dry-run
 ///
 /// `--section` is where a new store starts, or a later section to skip ahead to
-/// (without it, the next section). `--dry-run` writes the request to `--out` and
-/// sends nothing. Otherwise the provider's key comes from DEEPSEEK_API_KEY or
-/// OPENAI_API_KEY, and is never printed or saved.
+/// (without it, the next section). `--out` is a folder to keep run folders in,
+/// each holding what the app keeps about an update. `--dry-run` sends nothing.
+/// Otherwise the provider's key comes from DEEPSEEK_API_KEY or OPENAI_API_KEY,
+/// and is never printed or saved.
 ///
 /// `--ledger=<file>` limits what a run may spend: it counts requests, and
 /// refuses to send once `--max-successes` updates have succeeded or
@@ -44,8 +45,8 @@ Future<void> main(List<String> args) async {
     schemaText: File('assets/story_update/story_delta.schema.json')
         .readAsStringSync(),
     sectionId: option('section'),
+    runsPath: option('out'),
   );
-  final out = option('out');
 
   final PreparedStoryUpdate? prepared;
   try {
@@ -62,11 +63,10 @@ Future<void> main(List<String> args) async {
     'Section: ${prepared.chapter['section_id']} ($title), '
     '${(prepared.chapter['paragraphs'] as List).length} paragraphs',
   );
+  final run = prepared.run;
+  if (run != null) stdout.writeln('Output: ${run.path}');
   if (args.contains('--dry-run')) {
-    if (out != null) {
-      Directory(out).createSync(recursive: true);
-      File('$out/request.json').writeAsStringSync(prepared.body);
-    }
+    run?.finish('dry_run');
     stdout.writeln('Status: dry_run (nothing sent, store unchanged)');
     return;
   }
@@ -103,21 +103,6 @@ Future<void> main(List<String> args) async {
   );
   for (final issue in errors.take(20)) {
     stdout.writeln('  $issue');
-  }
-  if (out != null) {
-    Directory(out).createSync(recursive: true);
-    File('$out/outcome.json').writeAsStringSync(
-      const JsonEncoder.withIndent('  ').convert({
-        'status': outcome.status,
-        'message': outcome.message,
-        'category': outcome.category,
-        'request_id': outcome.requestId,
-        'usage': outcome.usage,
-        'seconds': seconds,
-        'issues': [for (final issue in outcome.issues) '$issue'],
-        'output_text': outcome.outputText,
-      }),
-    );
   }
   if (!outcome.committed) {
     _fail(

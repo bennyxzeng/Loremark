@@ -94,7 +94,7 @@ class MemorySecretStore implements SecretStore {
 /// The reader's AI provider settings, and whether they have seen the
 /// first-run API key screen.
 ///
-/// Ask and Story Map stay locked until [credentials] is set.
+/// Ask stays locked, and Story Map can't be updated, until [credentials] is set.
 class AiSettings extends ChangeNotifier {
   AiSettings(this._store, {this.verify = verifyApiKey});
 

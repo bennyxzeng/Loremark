@@ -8,6 +8,7 @@ import 'story_api_client.dart';
 import 'story_book.dart';
 import 'story_merge.dart';
 import 'story_model_choice.dart';
+import 'story_run_folder.dart';
 import 'story_store.dart';
 import 'story_validation.dart';
 
@@ -27,9 +28,10 @@ final _frontMatterTitle = RegExp(
 String storyStorePath(String library, String bookId) =>
     '$library/story_models/$bookId';
 
-/// Where the last failed update of the store at [storePath] is kept: beside the
-/// store and not in it, since a new store has to start from an empty folder.
-String storyFailurePath(String storePath) => '$storePath.last_failure.json';
+/// Why a map loaded from a single `story_model.json` can't be added to.
+const storyViewOnlyReason =
+    'This map was loaded from a single file, so it can only be viewed. Load the '
+    'full .zip to keep updating.';
 
 /// A section the reader can pick: where a new Story Map starts, or a later one
 /// to add to an existing map.
@@ -120,6 +122,7 @@ class StoryUpdateRequest {
     required this.prompt,
     required this.schemaText,
     this.sectionId,
+    this.runsPath,
   });
 
   final String epubPath;
@@ -136,6 +139,9 @@ class StoryUpdateRequest {
   /// The section to add: where a new store starts, or a later one to skip ahead
   /// to. Null for an existing store means the next section.
   final String? sectionId;
+
+  /// The folder to keep a [StoryRunFolder] of this update in, if any.
+  final String? runsPath;
 }
 
 /// An update ready to send: everything a finished call is checked against.
@@ -148,6 +154,7 @@ class PreparedStoryUpdate {
     required this.body,
     required this.hashes,
     required this.runId,
+    this.run,
   });
 
   final StoryUpdateRequest request;
@@ -159,6 +166,7 @@ class PreparedStoryUpdate {
   final String body;
   final JsonMap hashes;
   final String runId;
+  final StoryRunFolder? run;
 }
 
 /// How an update ended. Failing never changes the store.
@@ -171,8 +179,6 @@ class StoryUpdateOutcome {
     this.usage,
     this.issues = const [],
     this.category,
-    this.outputText,
-    this.requestId,
   });
 
   /// `committed`, or the lab's name for what went wrong: `input_error`,
@@ -190,10 +196,6 @@ class StoryUpdateOutcome {
   /// For an `api_error`: `authentication`, `rate_limit`, `network` and so on.
   final String? category;
 
-  /// What the model returned, if it wasn't usable, for diagnosing it.
-  final String? outputText;
-  final String? requestId;
-
   bool get committed => status == 'committed';
 
   /// How many quotes weren't found in their paragraph, with the check off.
@@ -202,8 +204,10 @@ class StoryUpdateOutcome {
 }
 
 /// Reads the store at [storePath] for showing it, or null if there is none.
-JsonMap? readStoryModel(String storePath) =>
-    StoryStore(Directory(storePath)).readLatest();
+JsonMap? readStoryModel(String storePath) {
+  recoverReplacedStore(storePath);
+  return StoryStore(Directory(storePath)).readLatest();
+}
 
 /// What pressing Update would do for the book at [epubPath].
 StoryUpdateStatus inspectStoryUpdate(String epubPath, String storePath) {
@@ -212,7 +216,10 @@ StoryUpdateStatus inspectStoryUpdate(String epubPath, String storePath) {
     final store = StoryStore(Directory(storePath));
     final model = store.readLatest();
     if (model == null) return _newStoreStatus(book);
-    _checkContinues(model, book);
+    if (!store.hasSnapshotOf(model)) {
+      return const StoryUpdateStatus.blocked(storyViewOnlyReason);
+    }
+    checkStoryContinues(model, book);
     final choices = _laterChoices(model, book);
     try {
       final next = _nextSection(model, book);
@@ -268,7 +275,8 @@ StoryUpdateStatus _newStoreStatus(StoryBook book) {
 }
 
 /// Checks that [model] was built from [book], so sections still mean the same.
-void _checkContinues(JsonMap model, StoryBook book) {
+/// Throws a [StoryEpubError] if not.
+void checkStoryContinues(JsonMap model, StoryBook book) {
   final bookRef = model['book'] as JsonMap;
   if (book.sha256Hash != bookRef['epub_sha256']) {
     throw const StoryEpubError(
@@ -402,9 +410,6 @@ JsonMap _emptyModel(StoryBook book, StoryBookSection start) => {
   'provenance': {'manual_corrections': <dynamic>[]},
 };
 
-String _utcNow() =>
-    '${DateTime.now().toUtc().toIso8601String().split('.').first}Z';
-
 String _randomHex(int bytes) {
   final random = Random.secure();
   return [
@@ -414,7 +419,7 @@ String _randomHex(int bytes) {
 }
 
 String _newRunId() {
-  final stamp = _utcNow().replaceAll('-', '').replaceAll(':', '');
+  final stamp = storyUtcNow().replaceAll('-', '').replaceAll(':', '');
   return '$stamp-${_randomHex(3)}';
 }
 
@@ -431,7 +436,7 @@ PreparedStoryUpdate? prepareStoryUpdate(StoryUpdateRequest request) {
   final int sectionOrder;
   if (store.exists) {
     state = store.load();
-    _checkContinues(state.model, book);
+    checkStoryContinues(state.model, book);
     final next = request.sectionId == null
         ? _nextSection(state.model, book)
         : _chosenSection(state.model, book, request.sectionId!);
@@ -459,30 +464,79 @@ PreparedStoryUpdate? prepareStoryUpdate(StoryUpdateRequest request) {
     chapter,
     sectionOrder: sectionOrder,
   );
+  final body = buildUpdateRequest(
+    context: context,
+    prompt: request.prompt,
+    schema: schema,
+    model: request.model,
+    effort: request.effort,
+  );
+  final hashes = {
+    'text_sha256': chapter['text_sha256'],
+    'prompt_sha256': sha256OfBytes(utf8.encode(request.prompt)),
+    'schema_sha256': sha256OfJson(schema),
+    'context_sha256': sha256OfJson(context),
+    'base_sha256': state.latestSha256,
+  };
+  final runId = _newRunId();
+  final runsPath = request.runsPath;
   return PreparedStoryUpdate(
     request: request,
     state: state,
     chapter: chapter,
     sectionOrder: sectionOrder,
-    body: jsonEncode(
-      buildUpdateRequest(
-        context: context,
-        prompt: request.prompt,
-        schema: schema,
-        model: request.model,
-        effort: request.effort,
-      ),
-    ),
-    hashes: {
-      'text_sha256': chapter['text_sha256'],
-      'prompt_sha256': sha256OfBytes(utf8.encode(request.prompt)),
-      'schema_sha256': sha256OfJson(schema),
-      'context_sha256': sha256OfJson(context),
-      'base_sha256': state.latestSha256,
-    },
-    runId: _newRunId(),
+    body: jsonEncode(body),
+    hashes: hashes,
+    runId: runId,
+    run: runsPath == null
+        ? null
+        : StoryRunFolder.start(
+            runsPath: runsPath,
+            runId: runId,
+            book: book,
+            epubPath: request.epubPath,
+            storePath: request.storePath,
+            chapter: chapter,
+            sectionOrder: sectionOrder,
+            prompt: request.prompt,
+            promptSource: _promptSource,
+            schema: schema,
+            context: context,
+            requestBody: body,
+            model: request.model,
+            effort: request.effort,
+            checkQuotes: request.checkQuotes,
+            hashes: hashes,
+            state: state,
+          ),
   );
 }
+
+const _promptSource = 'builtin:$updatePromptName';
+
+/// A failure as the lab records it in `failure.json`.
+JsonMap _failureRecord(
+  StoryCallResult call,
+  String status,
+  StoryUpdateValidation? validation,
+) => {
+  'status': status,
+  'error': call.status == 'completed' && validation != null
+      ? {
+          'category': 'validation',
+          'message': '${validation.errors.length} errors; see validation.json',
+        }
+      : call.error,
+  'response_id': call.responseId,
+  'request_id': call.requestId,
+  'usage': call.usage,
+  'output_text': call.candidate == null ? call.outputText : null,
+};
+
+JsonMap _commitFailure(String status, String message) => {
+  'status': status,
+  'error': {'category': status, 'message': message},
+};
 
 String _failureStatus(String callStatus, StoryUpdateValidation? validation) {
   if (callStatus == 'parse_error') return 'schema_invalid';
@@ -496,7 +550,9 @@ StoryUpdateOutcome finishStoryUpdate(
   PreparedStoryUpdate prepared,
   StoryCallResult call,
 ) {
-  final PreparedStoryUpdate(:request, :state, :chapter) = prepared;
+  final PreparedStoryUpdate(:request, :state, :chapter, :run) = prepared;
+  // First of all, so that nothing below can lose what was paid for.
+  run?.recordCall(call);
   final title = chapter['title'] as String;
   final base = state.model;
   final number = ((base['revision'] as JsonMap)['number'] as int) + 1;
@@ -509,7 +565,7 @@ StoryUpdateOutcome finishStoryUpdate(
   final revision = <String, dynamic>{
     'number': number,
     'id': _randomHex(6),
-    'created_at': _utcNow(),
+    'created_at': storyUtcNow(),
     'source_run_id': prepared.runId,
     'parent_snapshot_path': state.snapshotPath,
     'parent_sha256': state.latestSha256,
@@ -526,22 +582,24 @@ StoryUpdateOutcome finishStoryUpdate(
       section: section,
       revision: revision,
     );
+    run?.recordValidation(validation);
   }
 
   if (call.status != 'completed' || validation == null || !validation.passed) {
+    final status = _failureStatus(call.status, validation);
+    run?.finish(status, failure: _failureRecord(call, status, validation));
     return StoryUpdateOutcome(
-      _failureStatus(call.status, validation),
+      status,
       message: call.error?['message'] as String?,
       category: call.error?['category'] as String?,
       sectionTitle: title,
       usage: call.usage,
       issues: validation?.issues ?? const [],
-      outputText: call.outputText,
-      requestId: call.requestId,
     );
   }
 
   final after = validation.after!;
+  final candidateRevision = {'number': number, 'id': revision['id']};
   final files = <String, List<int>>{
     inputPath: inputData,
     ..._provenanceFiles(prepared, call, validation, section, revision),
@@ -550,6 +608,12 @@ StoryUpdateOutcome finishStoryUpdate(
     StoryStore(Directory(request.storePath))
         .commit(after, files, expectedBaseSha256: state.latestSha256);
   } on StaleBaseError catch (error) {
+    run?.finish(
+      'stale_base',
+      failure: _commitFailure('stale_base', error.message),
+      commitStatus: 'stale_base',
+      candidateRevision: candidateRevision,
+    );
     return StoryUpdateOutcome(
       'stale_base',
       message: error.message,
@@ -557,68 +621,44 @@ StoryUpdateOutcome finishStoryUpdate(
       usage: call.usage,
     );
   } on StoryStoreError catch (error) {
-    return StoryUpdateOutcome(
-      'commit_failed',
-      message: error.message,
-      sectionTitle: title,
-      usage: call.usage,
-    );
+    return _commitFailed(run, error.message, candidateRevision, title, call);
   } on FileSystemException catch (error) {
-    return StoryUpdateOutcome(
-      'commit_failed',
-      message: error.message,
-      sectionTitle: title,
-      usage: call.usage,
-    );
+    return _commitFailed(run, error.message, candidateRevision, title, call);
   }
+  run?.finish(
+    'committed',
+    commitStatus: 'committed',
+    candidateRevision: candidateRevision,
+    committedRevision: candidateRevision,
+  );
   return StoryUpdateOutcome(
     'committed',
     sectionTitle: title,
     revision: number,
     usage: call.usage,
     issues: validation.issues,
-    requestId: call.requestId,
   );
 }
 
-/// Keeps what came back from a failed update, for diagnosing it: the answer was
-/// paid for, and asking again gets a different one. Only the last is kept, so
-/// failures can't fill the device.
-void _saveFailure(PreparedStoryUpdate prepared, StoryUpdateOutcome outcome) {
-  final request = prepared.request;
-  try {
-    final file = File(storyFailurePath(request.storePath));
-    file.parent.createSync(recursive: true);
-    file.writeAsStringSync(
-      const JsonEncoder.withIndent('  ').convert({
-        'run_id': prepared.runId,
-        'section_id': prepared.chapter['section_id'],
-        'section_title': outcome.sectionTitle,
-        'model': request.model.id,
-        'effort': request.effort?.name,
-        'check_quotes': request.checkQuotes,
-        'status': outcome.status,
-        'category': outcome.category,
-        'message': outcome.message,
-        'request_id': outcome.requestId,
-        'usage': outcome.usage,
-        'hashes': prepared.hashes,
-        'issues': [
-          for (final issue in outcome.issues)
-            {
-              'severity': issue.severity,
-              'code': issue.code,
-              'path': issue.path,
-              'message': issue.message,
-              'record_id': issue.recordId,
-            },
-        ],
-        'output_text': outcome.outputText,
-      }),
-    );
-  } on FileSystemException {
-    // It's only for diagnosing, so it mustn't change how the update ended.
-  }
+StoryUpdateOutcome _commitFailed(
+  StoryRunFolder? run,
+  String message,
+  JsonMap candidateRevision,
+  String title,
+  StoryCallResult call,
+) {
+  run?.finish(
+    'commit_failed',
+    failure: _commitFailure('commit_failed', message),
+    commitStatus: 'failed',
+    candidateRevision: candidateRevision,
+  );
+  return StoryUpdateOutcome(
+    'commit_failed',
+    message: message,
+    sectionTitle: title,
+    usage: call.usage,
+  );
 }
 
 /// What the store keeps about an update: the delta, ID map and base it was
@@ -654,7 +694,7 @@ Map<String, List<int>> _provenanceFiles(
       'response_model': call.responseModel,
       'response_id': call.responseId,
       'usage': call.usage,
-      'prompt_source': 'builtin:$updatePromptName',
+      'prompt_source': _promptSource,
       'hashes': prepared.hashes,
       'manual_corrections': const <dynamic>[],
     }),
@@ -718,9 +758,11 @@ class StoryUpdater {
     String apiKey,
     StoryHttpPost post,
   ) async {
+    PreparedStoryUpdate? prepared;
     try {
-      final prepared = await Isolate.run(() => prepareStoryUpdate(request));
-      if (prepared == null) {
+      final ready = await Isolate.run(() => prepareStoryUpdate(request));
+      prepared = ready;
+      if (ready == null) {
         return const StoryUpdateOutcome(
           'input_error',
           message: 'Every section is already in the Story Map.',
@@ -729,14 +771,10 @@ class StoryUpdater {
       final call = await callResponsesApi(
         model: request.model,
         apiKey: apiKey,
-        body: prepared.body,
+        body: ready.body,
         post: post,
       );
-      return await Isolate.run(() {
-        final outcome = finishStoryUpdate(prepared, call);
-        if (!outcome.committed) _saveFailure(prepared, outcome);
-        return outcome;
-      });
+      return await Isolate.run(() => finishStoryUpdate(ready, call));
     } on StoryEpubError catch (error) {
       return StoryUpdateOutcome('input_error', message: error.message);
     } on StoryStoreError catch (error) {
@@ -744,9 +782,10 @@ class StoryUpdater {
     } on FileSystemException catch (error) {
       return StoryUpdateOutcome('input_error', message: error.message);
     } on Object catch (error) {
-      // Whatever it is, the reader mustn't be left waiting. The key never
-      // reaches the code that could throw this: see [callResponsesApi].
-      return StoryUpdateOutcome('input_error', message: 'Unexpected: $error');
+      // Whatever it is, the reader mustn't be left waiting.
+      final message = redactStoryKey('$error', apiKey);
+      prepared?.run?.recordCrash(error, message);
+      return StoryUpdateOutcome('input_error', message: 'Unexpected: $message');
     }
   }
 }

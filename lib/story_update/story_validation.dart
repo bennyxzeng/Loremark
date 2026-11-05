@@ -4,6 +4,14 @@ import 'delta_schema.dart';
 import 'story_book.dart';
 import 'story_merge.dart';
 
+/// The version of the lab's validator these checks follow, kept with each run.
+const storyValidatorVersion = '2.0';
+
+/// What passing doesn't mean, in the lab's words, kept with each run's checks.
+const storyValidationNote =
+    'A matched quote only shows the text exists in that paragraph; '
+    'it does not show that the quote supports the claim.';
+
 const _maxQuoteChars = 300;
 const _allKinds = {'character', 'location', 'organization'};
 const _speakerKinds = {'character', 'organization'};

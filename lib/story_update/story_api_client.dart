@@ -69,7 +69,21 @@ class StoryCallResult {
 
   /// `category` and `message`, never anything from the request's headers.
   JsonMap? error;
+
+  /// The provider's reply as it came, without the key, if there was a reply.
+  String? responseBody;
+  int? httpStatus;
+
+  /// The reply's own `status` field.
+  Object? apiStatus;
+
+  /// How long the request took, whether or not it was answered.
+  double? elapsedSeconds;
 }
+
+/// [text] without [apiKey], in case a provider repeats the key in what it says.
+String redactStoryKey(String text, String apiKey) =>
+    apiKey.isEmpty ? text : text.replaceAll(apiKey, '[API key removed]');
 
 const _statusCategories = {
   400: 'invalid_request',
@@ -175,6 +189,17 @@ Future<StoryCallResult> callResponsesApi({
   required String body,
   StoryHttpPost post = postStoryRequest,
 }) async {
+  final clock = Stopwatch()..start();
+  final result = await _send(model, apiKey, body, post);
+  return result..elapsedSeconds = clock.elapsedMilliseconds / 1000;
+}
+
+Future<StoryCallResult> _send(
+  StoryModelChoice model,
+  String apiKey,
+  String body,
+  StoryHttpPost post,
+) async {
   final StoryHttpResponse response;
   try {
     response = await post(
@@ -206,17 +231,20 @@ Future<StoryCallResult> callResponsesApi({
       },
     );
   }
+  final text = redactStoryKey(response.body, apiKey);
   final result = response.statusCode >= 200 && response.statusCode < 300
-      ? _interpret(response.body)
-      : _apiError(response);
-  return result..requestId = response.requestId;
+      ? _interpret(text)
+      : _apiError(response.statusCode, text);
+  return result
+    ..requestId = response.requestId
+    ..responseBody = text
+    ..httpStatus = response.statusCode;
 }
 
-StoryCallResult _apiError(StoryHttpResponse response) {
-  final code = response.statusCode;
+StoryCallResult _apiError(int code, String text) {
   String? message;
   try {
-    final body = jsonDecode(response.body);
+    final body = jsonDecode(text);
     final error = body is Map ? body['error'] : null;
     message = error is Map ? error['message'] as String? : null;
   } on FormatException {
@@ -269,7 +297,8 @@ StoryCallResult _interpret(String text) {
       ..responseId = decoded['id'] as String?
       ..responseModel = decoded['model'] as String?
       ..usage = decoded['usage'] as JsonMap?
-      ..outputText = texts.firstOrNull;
+      ..outputText = texts.firstOrNull
+      ..apiStatus = status;
   } on TypeError {
     return StoryCallResult(
       'api_error',

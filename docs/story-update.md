@@ -18,11 +18,16 @@ the command line.
 | `story_api_client.dart` | `openai_client.py`, `prompting.py` | Builds the request, calls the Responses API, classifies the result |
 | `story_model_choice.dart` | `config.py` | The models and reasoning efforts readers can pick |
 | `story_updater.dart` | `incremental_pipeline.py` | Next section → request → checks → commit |
+| `story_run_folder.dart` | `pipeline.py`, `artifacts.py` | Keeps a folder of everything about each update |
+| `story_archive.dart` | (new) | Zips a book's store and run folders to export them |
+| `story_import.dart` | (new) | Checks a file and loads it as a book's store |
 
 Not ported: the command line, the `review.md` and `diff.md` reports, and committing a run after
-manual corrections. A reader can't correct a run, so a failed one is simply tried again.
+manual corrections. A reader can't correct a run in the app, so a failed one is tried again, or
+exported and corrected with the lab: see [Files on the phone](#files-on-the-phone).
 
-A book's store is at `<app support>/library/story_models/<book id>/`, and goes when the book does.
+A book's store is at `<app support>/library/story_models/<book id>/`, and its run folders are beside
+it, in `<book id>.runs/`. Both go when the book does.
 
 ## Behavior
 
@@ -38,11 +43,10 @@ A book's store is at `<app support>/library/story_models/<book id>/`, and goes w
   time is read from the clock and from when the update really began, so it stays right after the
   system holds the app back, and after leaving the book and coming back.
 - **A failed update changes nothing.** The store only moves when the whole answer passes.
-- **The last failure is kept for diagnosing it.** The bar names the first check that failed. The
-  whole list and the model's answer go in `story_models/<book id>.last_failure.json`, because that
-  answer was paid for and asking again gets a different one. It sits beside the store, since a new
-  store has to start from an empty folder. It stays on the device, holds no key, and is removed with
-  the book.
+- **Every update leaves a folder.** The bar names the first check that failed, and the update's run
+  folder holds the rest: see [Files on the phone](#files-on-the-phone).
+- **Looking at a map needs no API key.** Only Update and Choose do, since a map is stored data. So a
+  reader with no key can load a map from a file, and look at it.
 - **Updating isn't tied to reading progress.** The reader can update past where they are. The
   slider asks before showing anything past their position instead (`StoryMapScreen`). That uses
   `ReaderPosition.current`, because the furthest position isn't stored yet; once it is, pass it to
@@ -64,8 +68,71 @@ A book's store is at `<app support>/library/story_models/<book id>/`, and goes w
   a store with gaps, check it and carry on from it, since its checks only need increasing order.
 - **A 15-minute request timeout, and no automatic retries.** The lab has no timeout, and its
   SDK retries twice.
-- **Only the last failure is kept.** The lab leaves a folder for every run, which `run.dart --out`
-  also does. On a phone, that would grow with every failed update.
+- **Run folders leave some things out.** No `diff.md` or `review.md`, whose reports aren't ported,
+  and no `evidence` or `counts` in `validation.json`. `response.json` is the reply byte for byte,
+  where the lab re-encodes it, and a reply that isn't JSON goes in `response.txt`.
+
+## Files on the phone
+
+**Each update leaves a run folder**, `<book id>.runs/<run id>/`, in the lab's format. Its run ID is
+the one in the store's `provenance/`.
+
+| When | Files |
+| --- | --- |
+| Before sending | `chapter.json`, `chapter.txt`, `prompt.txt`, `schema.json`, `request.json`, `context.json`, `base_story_model.json`, `base_inputs/`, `run.json` |
+| On the reply | `response.json` (or `response.txt`), `delta.candidate.json` |
+| After the checks | `validation.json`; if it passed, also `delta.json`, `id_map.json`, `story_model.after.json` |
+| At the end | `run.json` again, with how it ended and how long it took; if it failed, also `failure.json` |
+
+If the folder can't be written before sending, nothing is sent, since the answer couldn't be kept.
+After that the request has been paid for, so failing to write never changes how the update ends. The
+key is never written, and is taken out of whatever a provider says in case it repeats it.
+
+These add up: a rough estimate is 50–60 MB for a whole 18-section novel, and 2–3 MB per failed try.
+Most of that is copies the lab also keeps, which its `validate --run` needs. Nothing clears them
+short of removing the book.
+
+**Export files…** in the ⋯ menu saves one zip, wherever the reader chooses, in the system's dialog:
+
+```text
+store/   story_model.json, revisions/, inputs/, provenance/
+runs/    <run id>/...
+```
+
+It holds the book's text and no key. Unzipped, the lab can read it:
+
+```bash
+story-model show --store store
+story-model validate --run runs/<run id>
+```
+
+A failed run can be corrected with the lab's `story-model commit --run`, after pointing `store.path`
+in its `run.json` at the unzipped store. Zipping `store/` and `runs/` again gives a file the app can
+load, with the correction on record.
+
+**Load from file…** in the same menu takes:
+
+| File | What the reader gets |
+| --- | --- |
+| A zip from **Export files…** | The map and its run folders, ready to update. Runs already here aren't overwritten |
+| A zip of a store's folder, from the lab | The map, ready to update |
+| A `story_model.json` alone, or in a zip | The map, which can only be viewed |
+
+A lone model can't be continued, because `StoryStore.load` needs every revision's snapshot and
+provenance, as does the lab.
+
+Nothing in a file is trusted. It is unpacked and checked beside the store, which stays as it is
+until the reader agrees to replace it:
+
+- It has to be from this EPUB file, by `epub_sha256`.
+- A zip is refused whole if a path leads outside its folder or an entry is a symbolic link, and
+  there are limits on its size and number of files. Only the store's own files and `runs/` are
+  taken, so `.lock`, `.DS_Store` and `__MACOSX/` are left behind. Run folders are never read again.
+- A store has to pass `StoryStore.load`, which checks all of it.
+- A lone model is checked against text extracted from the book, since it brings none of its own.
+
+Replacing goes by renames, and `recoverReplacedStore` finishes the job if the app stops partway, so
+the store is always the old one or the new. The replaced store is deleted, and its run folders stay.
 
 ## Staying in step with the lab
 
@@ -95,11 +162,11 @@ A store written here can be checked the other way, with the lab's `story-model s
 
 ```bash
 dart run tool/story_update/run.dart --epub=book.epub --store=some/folder \
-  --section=section-004 --model=deepseek-flash --effort=high --out=some/run --dry-run
+  --section=section-004 --model=deepseek-flash --effort=high --out=some/runs --dry-run
 ```
 
 `--section` is where a new store starts, or a later section to skip ahead to; without it, the next
-section. `--dry-run` writes the request to `--out` and sends nothing.
+section. `--out` is a folder to keep run folders in, the same as the app's. `--dry-run` sends nothing.
 Without it, the key comes from `DEEPSEEK_API_KEY` or `OPENAI_API_KEY`. `--ledger=<file>` caps
 spending: it refuses to send after `--max-successes` updates (default 4) or `--max-failures`
 failures in a row (default 2).

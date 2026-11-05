@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:archive/archive.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loremark/library/book.dart';
@@ -10,6 +11,7 @@ import 'package:loremark/settings/ai_settings.dart';
 import 'package:loremark/story_map/story_map_backend.dart';
 import 'package:loremark/story_update/story_api_client.dart';
 import 'package:loremark/story_update/story_book.dart';
+import 'package:loremark/story_update/story_import.dart';
 import 'package:loremark/story_update/story_model_choice.dart';
 
 import '../story_update/golden.dart';
@@ -98,5 +100,72 @@ void main() {
     final positions = await ReadingPositionStore.open();
     await positions.save(book.id, const ReaderPosition(1, 1));
     expect(await backend.finishedSections(book, model.sections), 1);
+
+    // That update left a run folder, and exporting takes it and the store.
+    final library = '${temp.path}/library/story_models/${book.id}';
+    final runs = Directory('$library.runs').listSync().whereType<Directory>();
+    final run = runs.single;
+    expect(File('${run.path}/response.json').existsSync(), isTrue);
+    expect(File('${run.path}/run.json').existsSync(), isTrue);
+
+    String? savedName;
+    late Uint8List saved;
+    final exporter = DeviceStoryMapBackend(
+      saveFile: (name, bytes) async {
+        savedName = name;
+        saved = bytes;
+        return Uri.file('/saved.zip');
+      },
+    );
+    expect(await exporter.exportFiles(book), StoryExportOutcome.saved);
+    expect(savedName, startsWith('Synthetic Story Story Map '));
+    expect(savedName, endsWith('.zip'));
+    final names = [
+      for (final file in ZipDecoder().decodeBytes(saved)) file.name,
+    ];
+    expect(names, contains('store/story_model.json'));
+    expect(names.where((name) => name.startsWith('runs/')), isNotEmpty);
+
+    final dialogClosed = DeviceStoryMapBackend(saveFile: (_, _) async => null);
+    expect(await dialogClosed.exportFiles(book), StoryExportOutcome.cancelled);
+
+    // Loading it back replaces the map, with no copy left behind.
+    final file = File('${temp.path}/picked.zip')..writeAsBytesSync(saved);
+    final loader = DeviceStoryMapBackend(pickFile: () async => file.path);
+    expect(await loader.pickStoryFile(), file.path);
+    final staged = await loader.stageImport(book, file.path);
+    expect(staged.viewOnly, isFalse);
+    expect(staged.sectionCount, 1);
+    await loader.commitImport(book, staged);
+    expect((await loader.loadModel(book))!.sections.single.id, 'section-002');
+    expect((await loader.inspect(book)).nextSectionId, 'section-003');
+    expect(Directory('$library.importing').existsSync(), isFalse);
+
+    // A bad one is refused, and backing out of a good one leaves no trace.
+    final notAMap = File('${temp.path}/not_a_map.json')
+      ..writeAsStringSync('[]');
+    await expectLater(
+      loader.stageImport(book, notAMap.path),
+      throwsA(isA<StoryImportError>()),
+    );
+    final again = await loader.stageImport(book, file.path);
+    await loader.discardImport(again);
+    expect(Directory('$library.importing').existsSync(), isFalse);
+    expect((await loader.loadModel(book))!.sections.single.id, 'section-002');
+  });
+
+  test('has nothing to export for a book with no files', () async {
+    final book = Book(
+      id: 'no-files-yet',
+      title: 'Empty',
+      author: null,
+      epubPath: '$goldenDir/story.epub',
+      coverPath: null,
+      importedAt: DateTime.utc(2026),
+    );
+    final backend = DeviceStoryMapBackend(
+      saveFile: (_, _) async => fail('There is nothing to save'),
+    );
+    expect(await backend.exportFiles(book), StoryExportOutcome.nothing);
   });
 }

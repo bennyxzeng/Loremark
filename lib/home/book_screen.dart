@@ -91,14 +91,12 @@ class _BookScreenState extends State<BookScreen> {
                           unawaited(_noteJumps.show(note));
                         },
                       ),
-                      // A built map is stored data, so it stays readable offline.
-                      AiLock(
-                        feature: 'Story Map',
-                        child: StoryMapTab(
-                          book: widget.book,
-                          backend: _storyMapBackend,
-                          active: _selectedTab == _storyMapTab,
-                        ),
+                      // A map is stored data, so looking at one needs neither
+                      // a key nor a connection. Only adding to it does.
+                      StoryMapTab(
+                        book: widget.book,
+                        backend: _storyMapBackend,
+                        active: _selectedTab == _storyMapTab,
                       ),
                     ],
                   ),

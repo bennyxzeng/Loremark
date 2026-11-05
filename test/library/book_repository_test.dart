@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loremark/library/book_repository.dart';
+import 'package:loremark/story_update/story_import.dart';
 import 'package:loremark/story_update/story_updater.dart';
 
 import 'test_epub.dart';
@@ -82,8 +83,14 @@ void main() {
       '${storyStorePath(repository.root.path, book.id)}/story_model.json',
     );
     await storyModel.create(recursive: true);
-    final failure = File(storyFailurePath(storyModel.parent.path));
-    await failure.create();
+    final sideFolders = [
+      for (final path in storySidePaths(storyModel.parent.path))
+        Directory(path),
+    ];
+    expect(sideFolders, isNotEmpty);
+    for (final folder in sideFolders) {
+      await File('${folder.path}/kept.json').create(recursive: true);
+    }
 
     await repository.remove(book);
 
@@ -92,7 +99,9 @@ void main() {
     expect(await File(book.epubPath).exists(), isFalse);
     expect(await File(book.coverPath!).exists(), isFalse);
     expect(await storyModel.parent.exists(), isFalse);
-    expect(await failure.exists(), isFalse);
+    for (final folder in sideFolders) {
+      expect(await folder.exists(), isFalse, reason: folder.path);
+    }
   });
 
   test('rejects a file that is not an EPUB', () async {

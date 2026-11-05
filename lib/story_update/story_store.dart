@@ -83,11 +83,30 @@ String inputRelpath(JsonMap chapter) =>
   );
 }
 
+/// Where the store at [storePath] waits while another takes its place.
+String replacedStorePath(String storePath) => '$storePath.replaced';
+
+/// Finishes replacing the store at [storePath], if the app stopped partway: the
+/// new store is either fully in place, or the old one goes back.
+void recoverReplacedStore(String storePath) {
+  final replaced = Directory(replacedStorePath(storePath));
+  if (!replaced.existsSync()) return;
+  if (File('$storePath/$_latestFile').existsSync()) {
+    replaced.deleteSync(recursive: true);
+  } else {
+    final store = Directory(storePath);
+    if (store.existsSync()) store.deleteSync(recursive: true);
+    replaced.renameSync(storePath);
+  }
+}
+
 /// What an update builds on.
 class StoryStoreState {
   const StoryStoreState({
     required this.model,
     required this.inputs,
+    this.latestBytes,
+    this.inputFiles = const {},
     this.latestSha256,
     this.snapshotPath,
   });
@@ -96,6 +115,11 @@ class StoryStoreState {
 
   /// Every processed section's saved text, by section ID.
   final Map<String, JsonMap> inputs;
+
+  /// [model] and [inputs] as stored, the inputs by store-relative path. A run
+  /// keeps these exact bytes, since the model records their hashes.
+  final Uint8List? latestBytes;
+  final Map<String, Uint8List> inputFiles;
 
   /// Null while an update creates the store: its base is an empty revision 0
   /// that is not on disk.
@@ -124,6 +148,12 @@ class StoryStore {
   File get _latest => File('${root.path}/$_latestFile');
 
   bool get exists => _latest.existsSync();
+
+  /// Whether [model], read from this store, has its snapshot. Only a store built
+  /// up revision by revision does, and only such a store can be continued: one
+  /// loaded from a single `story_model.json` can only be looked at.
+  bool hasSnapshotOf(JsonMap model) =>
+      _file(snapshotRelpath(model['revision'] as JsonMap)).existsSync();
 
   /// The path of a store-relative [relpath], refusing anything outside it.
   File _file(String relpath) {
@@ -178,6 +208,7 @@ class StoryStore {
       }
 
       final inputs = <String, JsonMap>{};
+      final inputFiles = <String, Uint8List>{};
       for (final raw in model['processed_sections'] as List) {
         final section = raw as JsonMap;
         final relpath = section['input_relative_path'] as String;
@@ -187,6 +218,7 @@ class StoryStore {
         }
         inputs[section['section_id'] as String] =
             jsonDecode(utf8.decode(data)) as JsonMap;
+        inputFiles[relpath] = data;
       }
 
       _verifyManifests();
@@ -201,6 +233,8 @@ class StoryStore {
       return StoryStoreState(
         model: model,
         inputs: inputs,
+        latestBytes: latest,
+        inputFiles: inputFiles,
         latestSha256: sha256OfBytes(latest),
         snapshotPath: snapshot,
       );

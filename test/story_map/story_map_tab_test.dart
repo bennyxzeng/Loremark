@@ -13,6 +13,7 @@ import 'package:loremark/story_map/story_map_tab.dart';
 import 'package:loremark/story_map/story_update_bar.dart';
 import 'package:loremark/story_model/story_model.dart';
 import 'package:loremark/story_update/delta_schema.dart';
+import 'package:loremark/story_update/story_import.dart';
 import 'package:loremark/story_update/story_model_choice.dart';
 import 'package:loremark/story_update/story_updater.dart';
 
@@ -88,6 +89,59 @@ class _FakeBackend implements StoryMapBackend {
     await hold?.future;
     return answer();
   }
+
+  StoryExportOutcome Function() exportAnswer = () => StoryExportOutcome.saved;
+  Completer<void>? holdFiles;
+  var exports = 0;
+
+  /// The file the reader picks, or null if they back out.
+  String? picked = '/picked.zip';
+  Object? stageError;
+  StagedStoryImport staged = const StagedStoryImport(
+    path: '/staging',
+    revision: 2,
+    sectionCount: 2,
+    viewOnly: false,
+  );
+
+  /// The map that committing puts in place.
+  StoryModel? imported;
+  final stagedPaths = <String>[];
+  var commits = 0;
+  var discards = 0;
+
+  @override
+  Future<StoryExportOutcome> exportFiles(Book book) async {
+    exports++;
+    await holdFiles?.future;
+    return exportAnswer();
+  }
+
+  @override
+  Future<String?> pickStoryFile() async => picked;
+
+  @override
+  Future<StagedStoryImport> stageImport(Book book, String path) async {
+    stagedPaths.add(path);
+    await holdFiles?.future;
+    if (stageError != null) throw stageError!;
+    return staged;
+  }
+
+  @override
+  Future<void> commitImport(Book book, StagedStoryImport staged) async {
+    commits++;
+    model = imported ?? model;
+  }
+
+  @override
+  Future<void> discardImport(StagedStoryImport staged) async => discards++;
+}
+
+/// A map whose store can't be read.
+class _BrokenMapBackend extends _FakeBackend {
+  @override
+  Future<StoryModel?> loadModel(Book book) async => throw StateError('Damaged');
 }
 
 void main() {
@@ -98,12 +152,12 @@ void main() {
     _FakeBackend backend, {
     bool online = true,
     bool active = true,
+    bool hasKey = true,
   }) async {
     settings = AiSettings(
       MemorySecretStore({
         'ai_onboarding_seen': 'true',
-        'ai_provider': 'deepseek',
-        'ai_api_key': 'sk-test',
+        if (hasKey) ...{'ai_provider': 'deepseek', 'ai_api_key': 'sk-test'},
       }),
     );
     await settings.load();
@@ -654,8 +708,11 @@ void main() {
             body: StoryUpdateBar(
               status: const StoryUpdateStatus.ready('s', 'Chapter 3'),
               online: true,
+              hasKey: true,
               onUpdate: () {},
               onChoose: () {},
+              onLoad: () {},
+              onExport: () {},
               updateStartedAt: started,
               now: () => now,
             ),
@@ -808,6 +865,388 @@ void main() {
       await pressUpdate(tester);
       expect(find.textContaining('it must come from'), findsOne);
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('the files menu', () {
+    Future<void> openMenu(WidgetTester tester) async {
+      await tester.tap(find.byTooltip('Story Map files'));
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> pick(WidgetTester tester, String item) async {
+      await openMenu(tester);
+      await tester.tap(find.text(item));
+      await tester.pumpAndSettle();
+    }
+
+    bool menuEnabled(WidgetTester tester) => tester
+        .widget<PopupMenuButton<VoidCallback>>(
+          find.byType(PopupMenuButton<VoidCallback>),
+        )
+        .enabled;
+
+    testWidgets('offers loading and exporting', (tester) async {
+      await pumpTab(tester, _FakeBackend(model: storyModelFixture()));
+      await openMenu(tester);
+      expect(find.text('Load from file…'), findsOne);
+      expect(find.text('Export files…'), findsOne);
+    });
+
+    testWidgets('is there with no map', (tester) async {
+      await pumpTab(tester, _FakeBackend(status: _newStore));
+      expect(menuEnabled(tester), isTrue);
+    });
+
+    testWidgets('is there when every section is in the map', (tester) async {
+      await pumpTab(
+        tester,
+        _FakeBackend(
+          model: storyModelFixture(),
+          status: const StoryUpdateStatus.finished(),
+        ),
+      );
+      expect(find.text('Update'), findsNothing);
+      expect(menuEnabled(tester), isTrue);
+    });
+
+    testWidgets('waits for an update, which it can’t overlap', (tester) async {
+      final backend = _FakeBackend(model: storyModelFixture())
+        ..hold = Completer<void>();
+      await pumpTab(tester, backend);
+      await tester.tap(find.widgetWithText(FilledButton, 'Update'));
+      await tester.pump();
+      await tester.pump();
+      expect(menuEnabled(tester), isFalse);
+
+      backend.hold!.complete();
+      await tester.pumpAndSettle();
+      expect(menuEnabled(tester), isTrue);
+    });
+
+    group('exporting', () {
+      testWidgets('says when it’s done', (tester) async {
+        final backend = _FakeBackend(model: storyModelFixture());
+        await pumpTab(tester, backend);
+        await pick(tester, 'Export files…');
+        expect(backend.exports, 1);
+        expect(find.text('Exported.'), findsOne);
+      });
+
+      testWidgets('says nothing if the reader backs out', (tester) async {
+        final backend = _FakeBackend(model: storyModelFixture())
+          ..exportAnswer = () => StoryExportOutcome.cancelled;
+        await pumpTab(tester, backend);
+        await pick(tester, 'Export files…');
+        expect(find.text('Exported.'), findsNothing);
+        expect(find.textContaining('Preparing'), findsNothing);
+      });
+
+      testWidgets('says when there’s nothing yet', (tester) async {
+        final backend = _FakeBackend(status: _newStore)
+          ..exportAnswer = () => StoryExportOutcome.nothing;
+        await pumpTab(tester, backend);
+        await pick(tester, 'Export files…');
+        expect(find.text('Nothing to export yet.'), findsOne);
+      });
+
+      testWidgets('says if it fails', (tester) async {
+        final backend = _FakeBackend(model: storyModelFixture())
+          ..exportAnswer = () => throw StateError('No room');
+        await pumpTab(tester, backend);
+        await pick(tester, 'Export files…');
+        expect(find.text('Couldn’t export the files.'), findsOne);
+        expect(menuEnabled(tester), isTrue);
+      });
+
+      testWidgets('holds off updating until it’s done', (tester) async {
+        final backend = _FakeBackend(model: storyModelFixture())
+          ..holdFiles = Completer<void>();
+        await pumpTab(tester, backend);
+        await pick(tester, 'Export files…');
+        expect(updateButton(tester).onPressed, isNull);
+        expect(menuEnabled(tester), isFalse);
+        expect(find.text('Preparing your files…'), findsOne);
+
+        backend.holdFiles!.complete();
+        await tester.pumpAndSettle();
+        expect(updateButton(tester).onPressed, isNotNull);
+        expect(menuEnabled(tester), isTrue);
+      });
+    });
+
+    group('loading', () {
+      testWidgets('does nothing if the reader backs out', (tester) async {
+        final backend = _FakeBackend(model: storyModelFixture())..picked = null;
+        await pumpTab(tester, backend);
+        await pick(tester, 'Load from file…');
+        expect(backend.stagedPaths, isEmpty);
+        expect(backend.commits, 0);
+      });
+
+      testWidgets('shows a first map without asking', (tester) async {
+        final backend = _FakeBackend(status: _newStore)
+          ..imported = storyModelFixture();
+        await pumpTab(tester, backend);
+        expect(find.byType(StoryMapScreen), findsNothing);
+
+        await pick(tester, 'Load from file…');
+        expect(backend.stagedPaths, ['/picked.zip']);
+        expect(find.text('Replace this Story Map?'), findsNothing);
+        expect(backend.commits, 1);
+        expect(find.byType(StoryMapScreen), findsOne);
+        // The reader hasn't read any of it, and the slider asks before showing it.
+        expect(
+          find.text('Loaded 2 sections. Drag the slider to see them.'),
+          findsOne,
+        );
+        expect(
+          tester
+              .widget<StoryMapScreen>(find.byType(StoryMapScreen))
+              .finishedSections,
+          0,
+        );
+      });
+
+      testWidgets('asks before replacing a map', (tester) async {
+        final model = storyModelFixture();
+        final backend = _FakeBackend(model: model)
+          ..staged = const StagedStoryImport(
+            path: '/staging',
+            revision: 1,
+            sectionCount: 1,
+            viewOnly: false,
+          );
+        await pumpTab(tester, backend);
+        await pick(tester, 'Load from file…');
+
+        expect(find.text('Replace this Story Map?'), findsOne);
+        expect(
+          find.textContaining(
+            'The map here has ${model.sections.length} sections. '
+            'The file has 1 section.',
+          ),
+          findsOne,
+        );
+        expect(find.textContaining('Export first'), findsOne);
+        expect(find.textContaining('only be viewed'), findsNothing);
+        expect(backend.commits, 0);
+      });
+
+      testWidgets('backing out of replacing changes nothing', (tester) async {
+        final backend = _FakeBackend(model: storyModelFixture());
+        await pumpTab(tester, backend);
+        await pick(tester, 'Load from file…');
+        await tester.tap(find.text('Cancel'));
+        await tester.pumpAndSettle();
+
+        expect(backend.commits, 0);
+        expect(backend.discards, 1);
+        expect(find.textContaining('Loaded'), findsNothing);
+        expect(menuEnabled(tester), isTrue);
+      });
+
+      testWidgets('replacing starts the slider afresh', (tester) async {
+        final backend = _FakeBackend(model: storyModelFixture(), finished: 1)
+          ..imported = storyModelFixture();
+        await pumpTab(tester, backend);
+        final before = tester.state(find.byType(StoryMapScreen));
+
+        await pick(tester, 'Load from file…');
+        await tester.tap(find.text('Replace'));
+        await tester.pumpAndSettle();
+
+        expect(backend.commits, 1);
+        expect(backend.discards, 0);
+        expect(tester.state(find.byType(StoryMapScreen)), isNot(before));
+        expect(find.textContaining('Loaded 2 sections.'), findsOne);
+      });
+
+      testWidgets('asks before replacing a map that can’t be read', (
+        tester,
+      ) async {
+        final backend = _BrokenMapBackend();
+        await pumpTab(tester, backend);
+        expect(find.textContaining('Could not load'), findsOne);
+
+        await pick(tester, 'Load from file…');
+        expect(find.text('Replace this Story Map?'), findsOne);
+        expect(find.textContaining('The map here has'), findsNothing);
+      });
+
+      testWidgets('says that a lone model file can only be viewed', (
+        tester,
+      ) async {
+        final backend = _FakeBackend(model: storyModelFixture())
+          ..staged = const StagedStoryImport(
+            path: '/staging',
+            revision: 2,
+            sectionCount: 2,
+            viewOnly: true,
+          );
+        await pumpTab(tester, backend);
+        await pick(tester, 'Load from file…');
+        expect(find.textContaining('can only be viewed'), findsOne);
+
+        backend.status = const StoryUpdateStatus.blocked(storyViewOnlyReason);
+        await tester.tap(find.text('Replace'));
+        await tester.pumpAndSettle();
+        expect(find.text(storyViewOnlyReason), findsOne);
+        expect(updateButton(tester).onPressed, isNull);
+      });
+
+      testWidgets('says why a file won’t do', (tester) async {
+        final backend = _FakeBackend(model: storyModelFixture())
+          ..stageError = const StoryImportError('That file isn’t a Story Map.');
+        await pumpTab(tester, backend);
+        await pick(tester, 'Load from file…');
+        expect(find.text('That file isn’t a Story Map.'), findsOne);
+        expect(backend.commits, 0);
+        expect(menuEnabled(tester), isTrue);
+      });
+
+      testWidgets('says if something else goes wrong', (tester) async {
+        final backend = _FakeBackend(model: storyModelFixture())
+          ..stageError = StateError('Disk on fire');
+        await pumpTab(tester, backend);
+        await pick(tester, 'Load from file…');
+        expect(find.text('Couldn’t load that file.'), findsOne);
+        expect(find.textContaining('Disk on fire'), findsNothing);
+      });
+
+      testWidgets('holds off updating until it’s done', (tester) async {
+        final backend = _FakeBackend(status: _newStore)
+          ..holdFiles = Completer<void>();
+        await pumpTab(tester, backend);
+        await pick(tester, 'Load from file…');
+        expect(updateButton(tester).onPressed, isNull);
+        expect(find.text('Checking that file…'), findsOne);
+
+        backend.holdFiles!.complete();
+        await tester.pumpAndSettle();
+        expect(updateButton(tester).onPressed, isNotNull);
+      });
+    });
+
+    group('on a small phone', () {
+      void useSmallPhone(WidgetTester tester) {
+        tester.view.physicalSize = const Size(320, 568);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+      }
+
+      testWidgets('the bar fits every button', (tester) async {
+        useSmallPhone(tester);
+        await pumpTab(
+          tester,
+          _FakeBackend(
+            model: storyModelFixture(),
+            status: const StoryUpdateStatus.ready(
+              's',
+              'A very long section title that goes on and on',
+              choices: [
+                StorySectionChoice('s', 'One', 3),
+                StorySectionChoice('t', 'Two', 3),
+              ],
+            ),
+          ),
+        );
+        expect(find.text('Choose'), findsOne);
+        expect(find.byTooltip('Story Map files'), findsOne);
+        expect(tester.takeException(), isNull);
+        // The title isn't squeezed out, even in the test font, whose letters are
+        // all as wide as they are tall. Real text leaves it a good deal more.
+        expect(
+          tester.getSize(find.textContaining('A very long')).width,
+          greaterThan(0),
+        );
+      });
+
+      testWidgets('the replacing dialog fits', (tester) async {
+        useSmallPhone(tester);
+        final backend = _FakeBackend(model: storyModelFixture())
+          ..staged = const StagedStoryImport(
+            path: '/staging',
+            revision: 2,
+            sectionCount: 2,
+            viewOnly: true,
+          );
+        await pumpTab(tester, backend);
+        await pick(tester, 'Load from file…');
+        expect(find.text('Replace this Story Map?'), findsOne);
+        expect(tester.takeException(), isNull);
+      });
+    });
+  });
+
+  group('without an API key', () {
+    testWidgets('a map can be looked at, but not updated', (tester) async {
+      final backend = _FakeBackend(model: storyModelFixture());
+      await pumpTab(tester, backend, hasKey: false);
+      expect(find.byType(StoryMapScreen), findsOne);
+      expect(updateButton(tester).onPressed, isNull);
+      expect(find.text('Add an API key in Settings to update.'), findsOne);
+    });
+
+    testWidgets('that comes before being offline', (tester) async {
+      await pumpTab(
+        tester,
+        _FakeBackend(model: storyModelFixture()),
+        hasKey: false,
+        online: false,
+      );
+      expect(find.text('Add an API key in Settings to update.'), findsOne);
+      expect(find.textContaining('You’re offline'), findsNothing);
+    });
+
+    testWidgets('a section can’t be chosen', (tester) async {
+      await pumpTab(
+        tester,
+        _FakeBackend(
+          model: storyModelFixture(),
+          status: const StoryUpdateStatus.ready(
+            's',
+            'One',
+            choices: [
+              StorySectionChoice('s', 'One', 3),
+              StorySectionChoice('t', 'Two', 3),
+            ],
+          ),
+        ),
+        hasKey: false,
+      );
+      expect(
+        tester
+            .widget<TextButton>(find.widgetWithText(TextButton, 'Choose'))
+            .onPressed,
+        isNull,
+      );
+    });
+
+    testWidgets('with no map, it suggests a key or a file', (tester) async {
+      await pumpTab(tester, _FakeBackend(status: _newStore), hasKey: false);
+      expect(find.textContaining('Add an API key to build'), findsOne);
+      expect(find.textContaining('load one'), findsOne);
+      expect(find.textContaining('Press Update'), findsNothing);
+    });
+
+    testWidgets('a map can still be loaded and exported', (tester) async {
+      final backend = _FakeBackend(status: _newStore)
+        ..imported = storyModelFixture();
+      await pumpTab(tester, backend, hasKey: false);
+
+      await tester.tap(find.byTooltip('Story Map files'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Load from file…'));
+      await tester.pumpAndSettle();
+      expect(backend.commits, 1);
+      expect(find.byType(StoryMapScreen), findsOne);
+
+      await tester.tap(find.byTooltip('Story Map files'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Export files…'));
+      await tester.pumpAndSettle();
+      expect(backend.exports, 1);
     });
   });
 

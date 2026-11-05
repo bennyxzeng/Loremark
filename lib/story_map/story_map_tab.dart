@@ -4,6 +4,7 @@ import '../library/book.dart';
 import '../settings/ai_settings.dart';
 import '../settings/connection_status.dart';
 import '../story_model/story_model.dart';
+import '../story_update/story_import.dart';
 import '../story_update/story_updater.dart';
 import 'story_map_backend.dart';
 import 'story_map_screen.dart';
@@ -46,6 +47,13 @@ class _StoryMapTabState extends State<StoryMapTab> {
   String? _updateSectionId;
   String? _notice;
   String? _failure;
+
+  /// Whether files are being exported or loaded.
+  bool _filesBusy = false;
+
+  /// Counts the maps loaded from a file. What the slider remembers belongs to the
+  /// map it was on, so a different map starts it afresh.
+  int _mapsLoaded = 0;
 
   StoryMapBackend get _backend => widget.backend;
 
@@ -163,6 +171,88 @@ class _StoryMapTabState extends State<StoryMapTab> {
     );
   }
 
+  Future<void> _pressExport() async {
+    setState(() {
+      _filesBusy = true;
+      _notice = 'Preparing your files…';
+      _failure = null;
+    });
+    String? notice;
+    String? failure;
+    try {
+      notice = switch (await _backend.exportFiles(widget.book)) {
+        StoryExportOutcome.saved => 'Exported.',
+        StoryExportOutcome.nothing => 'Nothing to export yet.',
+        StoryExportOutcome.cancelled => null,
+      };
+    } on Object {
+      failure = 'Couldn’t export the files.';
+    }
+    if (!mounted) return;
+    setState(() {
+      _filesBusy = false;
+      _notice = notice;
+      _failure = failure;
+    });
+  }
+
+  Future<void> _pressLoad() async {
+    final path = await _backend.pickStoryFile();
+    if (path == null || !mounted) return;
+    setState(() {
+      _filesBusy = true;
+      _notice = 'Checking that file…';
+      _failure = null;
+    });
+    String? notice;
+    String? failure;
+    try {
+      notice = await _loadFile(path);
+    } on StoryImportError catch (error) {
+      failure = error.message;
+    } on Object {
+      failure = 'Couldn’t load that file.';
+    }
+    if (!mounted) return;
+    setState(() {
+      _filesBusy = false;
+      _notice = notice;
+      _failure = failure;
+    });
+  }
+
+  /// Loads the file at [path], asking first if that replaces a map. Returns how
+  /// it went, or null if the reader backed out.
+  Future<String?> _loadFile(String path) async {
+    final staged = await _backend.stageImport(widget.book, path);
+    final hasMap = _model != null || _loadError != null;
+    if (hasMap) {
+      final confirmed =
+          mounted &&
+          await showStoryReplaceDialog(
+            context,
+            currentSections: _model?.sections.length,
+            staged: staged,
+          );
+      if (!confirmed) {
+        await _backend.discardImport(staged);
+        return null;
+      }
+    }
+    await _backend.commitImport(widget.book, staged);
+    if (!mounted) return null;
+    _mapsLoaded++;
+    await _load();
+    await _inspect();
+    final count = staged.sectionCount;
+    return [
+      count == 1 ? 'Loaded 1 section.' : 'Loaded $count sections.',
+      // Never jump past the reader: the slider asks first.
+      if (_finishedSections < count)
+        'Drag the slider to see ${count == 1 ? 'it' : 'them'}.',
+    ].join(' ');
+  }
+
   /// Waits for an update, then shows how it went. If the reader has left, it
   /// still finishes and is found on the store next time.
   Future<void> _awaitOutcome(Future<StoryUpdateOutcome> update) async {
@@ -197,6 +287,7 @@ class _StoryMapTabState extends State<StoryMapTab> {
   @override
   Widget build(BuildContext context) {
     final model = _model;
+    final hasKey = AiSettingsScope.of(context).hasKey;
     final Widget body;
     if (_loadError != null) {
       body = Center(
@@ -210,18 +301,25 @@ class _StoryMapTabState extends State<StoryMapTab> {
       // widget tests from settling.
       body = const Center(child: Text('Loading Story Map…'));
     } else if (model == null) {
-      body = const Center(
+      body = Center(
         child: Padding(
-          padding: EdgeInsets.all(24),
+          padding: const EdgeInsets.all(24),
           child: Text(
-            'Press Update to start this book’s Story Map, one section at a '
-            'time.',
+            hasKey
+                ? 'Press Update to start this book’s Story Map, one section at '
+                      'a time, or load one from a file with the ⋯ menu.'
+                : 'Add an API key to build this book’s Story Map, or load one '
+                      'from a file with the ⋯ menu.',
             textAlign: TextAlign.center,
           ),
         ),
       );
     } else {
-      body = StoryMapScreen(model: model, finishedSections: _finishedSections);
+      body = StoryMapScreen(
+        key: ValueKey(_mapsLoaded),
+        model: model,
+        finishedSections: _finishedSections,
+      );
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -231,10 +329,14 @@ class _StoryMapTabState extends State<StoryMapTab> {
           updateStartedAt: _updateStartedAt,
           updateSectionId: _updateSectionId,
           online: ConnectionScope.of(context).isOnline,
+          hasKey: hasKey,
+          filesBusy: _filesBusy,
           notice: _notice,
           failure: _failure,
           onUpdate: _pressUpdate,
           onChoose: _pressChoose,
+          onLoad: _pressLoad,
+          onExport: _pressExport,
         ),
         Expanded(child: body),
       ],

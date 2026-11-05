@@ -350,22 +350,6 @@ void main() {
         'quote_not_found',
       );
       expect(treeOf(storePath), before);
-
-      final kept = jsonDecode(
-        File(storyFailurePath(storePath)).readAsStringSync(),
-      ) as JsonMap;
-      expect(kept['status'], 'validation_failed');
-      expect(kept['section_id'], 'section-003');
-      expect(kept['model'], StoryModelChoice.deepseekFlash.id);
-      expect(kept['effort'], 'high');
-      expect(kept['check_quotes'], isTrue);
-      expect(kept['request_id'], 'req_1');
-      final issue = (kept['issues'] as List).cast<JsonMap>().singleWhere(
-        (issue) => issue['severity'] == 'error',
-      );
-      expect(issue['code'], 'quote_not_found');
-      expect(issue['path'], isNotEmpty);
-      expect(jsonDecode(kept['output_text'] as String), withBadQuote());
     });
 
     test(
@@ -384,47 +368,6 @@ void main() {
         expect((sections[1] as JsonMap)['quotes_checked'], isTrue);
       },
     );
-  });
-
-  group('the last failure', () {
-    final badAnswer = {
-      ...emptyDelta,
-      'transitions': [
-        {'nonsense': true},
-      ],
-    };
-
-    test('doesn’t stop a new store from starting', () async {
-      final failed = await update(request(), answering(badAnswer));
-      expect(failed.committed, isFalse);
-      expect(File(storyFailurePath(storePath)).existsSync(), isTrue);
-      expect(treeOf(storePath), isEmpty);
-
-      await buildChapter1();
-      StoryStore(Directory(storePath)).load();
-    });
-
-    test('only keeps the latest, and never the key', () async {
-      await update(request(), answering(badAnswer));
-      await update(
-        request(),
-        (u, h, b) async => const StoryHttpResponse(503, ''),
-      );
-      final text = File(storyFailurePath(storePath)).readAsStringSync();
-      expect((jsonDecode(text) as JsonMap)['category'], 'server_error');
-      expect(text, isNot(contains(_apiKey)));
-    });
-
-    test('that can’t be saved still reports how the update went', () async {
-      Directory(storyFailurePath(storePath)).createSync(recursive: true);
-      final outcome = await update(request(), answering(badAnswer));
-      expect(outcome.status, 'schema_invalid');
-    });
-
-    test('isn’t written for a success', () async {
-      await buildChapter1();
-      expect(File(storyFailurePath(storePath)).existsSync(), isFalse);
-    });
   });
 
   group('a failed update changes nothing:', () {
