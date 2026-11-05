@@ -118,6 +118,8 @@ class BookRepository {
     }
     final storyModel = Directory(storyStorePath(root.path, book.id));
     if (await storyModel.exists()) await storyModel.delete(recursive: true);
+    final failure = File(storyFailurePath(storyModel.path));
+    if (await failure.exists()) await failure.delete();
   }
 
   /// Queues a write, so two saves never share the temporary file. A failed

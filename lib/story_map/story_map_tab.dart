@@ -38,7 +38,12 @@ class _StoryMapTabState extends State<StoryMapTab> {
   bool _loaded = false;
   Object? _loadError;
   StoryUpdateStatus? _status;
-  bool _updating = false;
+
+  /// When the update under way began, if one is.
+  DateTime? _updateStartedAt;
+
+  /// The section asked of the update under way; null for the next one.
+  String? _updateSectionId;
   String? _notice;
   String? _failure;
 
@@ -52,8 +57,9 @@ class _StoryMapTabState extends State<StoryMapTab> {
     });
     final running = _backend.running(widget.book);
     if (running != null) {
-      _updating = true;
-      _awaitOutcome(running);
+      _updateStartedAt = running.startedAt;
+      _updateSectionId = running.sectionId;
+      _awaitOutcome(running.outcome);
     }
   }
 
@@ -114,21 +120,34 @@ class _StoryMapTabState extends State<StoryMapTab> {
   }
 
   Future<void> _pressUpdate() async {
-    final settings = AiSettingsScope.of(context);
-    final credentials = settings.credentials;
+    final credentials = AiSettingsScope.of(context).credentials;
     final status = _status;
     if (credentials == null || status == null) return;
-    String? start;
-    if (status.isNewStore) {
-      start = await showStoryStartDialog(
-        context,
-        status: status,
-        providerLabel: credentials.provider.label,
-      );
-      if (start == null) return;
-    }
+    if (!status.isNewStore) return _startUpdate();
+    final start = await showStoryStartDialog(
+      context,
+      status: status,
+      providerLabel: credentials.provider.label,
+    );
+    if (start != null) await _startUpdate(sectionId: start);
+  }
+
+  Future<void> _pressChoose() async {
+    final status = _status;
+    if (status == null) return;
+    final section = await showStorySectionDialog(context, status: status);
+    if (section != null) await _startUpdate(sectionId: section);
+  }
+
+  Future<void> _startUpdate({String? sectionId}) async {
+    // The reader may have left while a dialog was open.
+    if (!mounted) return;
+    final settings = AiSettingsScope.of(context);
+    final credentials = settings.credentials;
+    if (credentials == null) return;
     setState(() {
-      _updating = true;
+      _updateStartedAt = DateTime.now();
+      _updateSectionId = sectionId;
       _notice = null;
       _failure = null;
     });
@@ -139,7 +158,7 @@ class _StoryMapTabState extends State<StoryMapTab> {
         model: settings.storyModel,
         effort: settings.storyEffort,
         checkQuotes: settings.checkStoryQuotes,
-        startSectionId: start,
+        sectionId: sectionId,
       ),
     );
   }
@@ -149,10 +168,13 @@ class _StoryMapTabState extends State<StoryMapTab> {
   Future<void> _awaitOutcome(Future<StoryUpdateOutcome> update) async {
     final outcome = await update;
     if (!mounted) return;
+    final took = formatStoryElapsed(
+      DateTime.now().difference(_updateStartedAt!),
+    );
     if (!outcome.committed) {
       setState(() {
-        _updating = false;
-        _failure = describeStoryUpdateFailure(outcome);
+        _updateStartedAt = null;
+        _failure = '${describeStoryUpdateFailure(outcome)} Took $took.';
       });
       return;
     }
@@ -161,9 +183,9 @@ class _StoryMapTabState extends State<StoryMapTab> {
     if (!mounted) return;
     final sections = _model?.sections.length ?? 0;
     setState(() {
-      _updating = false;
+      _updateStartedAt = null;
       _notice = [
-        'Added ${outcome.sectionTitle}.',
+        'Added ${outcome.sectionTitle} in $took.',
         // Never jump past the reader: the slider asks first.
         if (_finishedSections < sections) 'Drag the slider to see it.',
         if (outcome.unmatchedQuotes > 0)
@@ -206,11 +228,13 @@ class _StoryMapTabState extends State<StoryMapTab> {
       children: [
         StoryUpdateBar(
           status: _status,
-          updating: _updating,
+          updateStartedAt: _updateStartedAt,
+          updateSectionId: _updateSectionId,
           online: ConnectionScope.of(context).isOnline,
           notice: _notice,
           failure: _failure,
           onUpdate: _pressUpdate,
+          onChoose: _pressChoose,
         ),
         Expanded(child: body),
       ],

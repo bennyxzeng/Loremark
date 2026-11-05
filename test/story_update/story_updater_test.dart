@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loremark/story_update/delta_schema.dart';
 import 'package:loremark/story_update/story_api_client.dart';
@@ -32,6 +34,48 @@ String _responseBody(Object? output, {String status = 'completed'}) =>
       ],
       'usage': {'input_tokens': 10, 'output_tokens': 20},
     });
+
+/// An EPUB of three chapters whose second can't be found: its table of
+/// contents entry points at an anchor that isn't there.
+Uint8List _epubWithBrokenMiddle() {
+  String page(String text) =>
+      '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>t</title></head>'
+      '<body><p>$text</p></body></html>';
+  final files = {
+    'META-INF/container.xml':
+        '<container version="1.0" '
+        'xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles>'
+        '<rootfile full-path="OEBPS/content.opf" '
+        'media-type="application/oebps-package+xml"/></rootfiles></container>',
+    'OEBPS/content.opf':
+        '<package xmlns="http://www.idpf.org/2007/opf" version="3.0">'
+        '<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">'
+        '<dc:title>Stuck</dc:title></metadata><manifest>'
+        '<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" '
+        'properties="nav"/>'
+        '<item id="a" href="a.xhtml" media-type="application/xhtml+xml"/>'
+        '<item id="b" href="b.xhtml" media-type="application/xhtml+xml"/>'
+        '<item id="c" href="c.xhtml" media-type="application/xhtml+xml"/>'
+        '</manifest><spine><itemref idref="a"/><itemref idref="b"/>'
+        '<itemref idref="c"/></spine></package>',
+    'OEBPS/nav.xhtml':
+        '<html xmlns="http://www.w3.org/1999/xhtml" '
+        'xmlns:epub="http://www.idpf.org/2007/ops"><head><title>n</title></head>'
+        '<body><nav epub:type="toc"><ol>'
+        '<li><a href="a.xhtml">Chapter 1</a></li>'
+        '<li><a href="b.xhtml#gone">Chapter 2</a></li>'
+        '<li><a href="c.xhtml">Chapter 3</a></li>'
+        '</ol></nav></body></html>',
+    'OEBPS/a.xhtml': page('First words.'),
+    'OEBPS/b.xhtml': page('Second words.'),
+    'OEBPS/c.xhtml': page('Third words.'),
+  };
+  final archive = Archive();
+  files.forEach((name, text) {
+    archive.addFile(ArchiveFile.string(name, text));
+  });
+  return ZipEncoder().encodeBytes(archive);
+}
 
 void main() {
   final golden = readValidationGolden();
@@ -67,7 +111,7 @@ void main() {
     StoryModelChoice model = StoryModelChoice.deepseekFlash,
     StoryEffort? effort = StoryEffort.high,
     bool checkQuotes = false,
-    String? start = 'section-002',
+    String? section = 'section-002',
   }) => StoryUpdateRequest(
     epubPath: epub,
     storePath: storePath,
@@ -76,7 +120,7 @@ void main() {
     checkQuotes: checkQuotes,
     prompt: prompt,
     schemaText: schemaText,
-    startSectionId: start,
+    sectionId: section,
   );
 
   /// Runs an update the way the app does, against a stand-in provider.
@@ -153,7 +197,7 @@ void main() {
       );
 
       final outcome = await update(
-        request(start: null),
+        request(section: null),
         answering(chapter2Delta),
       );
       expect(outcome.status, 'committed', reason: '${outcome.issues}');
@@ -172,7 +216,7 @@ void main() {
     test('the second request carries the first section\'s knowledge', () async {
       await buildChapter1();
       late String sent;
-      await update(request(start: null), (url, headers, body) async {
+      await update(request(section: null), (url, headers, body) async {
         sent = body;
         return StoryHttpResponse(200, _responseBody(chapter2Delta));
       });
@@ -246,7 +290,12 @@ void main() {
 
       final one = update(request(), slow);
       final two = update(request(), slow);
-      expect(StoryUpdater.running('book'), isNotNull);
+      final running = StoryUpdater.running('book')!;
+      expect(running.sectionId, 'section-002');
+      expect(
+        DateTime.now().difference(running.startedAt).inSeconds,
+        lessThan(30),
+      );
       // Let the first reach the provider, off in its isolate.
       for (var i = 0; requests == 0 && i < 400; i++) {
         await Future<void>.delayed(const Duration(milliseconds: 5));
@@ -272,7 +321,7 @@ void main() {
     test('off, a bad quote is flagged and the update is kept', () async {
       await buildChapter1();
       final outcome = await update(
-        request(start: null),
+        request(section: null),
         answering(withBadQuote()),
       );
       expect(outcome.status, 'committed');
@@ -292,7 +341,7 @@ void main() {
       expect(firstOutcome.status, 'committed');
       final before = treeOf(storePath);
       final outcome = await update(
-        request(start: null, checkQuotes: true),
+        request(section: null, checkQuotes: true),
         answering(withBadQuote()),
       );
       expect(outcome.status, 'validation_failed');
@@ -301,6 +350,22 @@ void main() {
         'quote_not_found',
       );
       expect(treeOf(storePath), before);
+
+      final kept = jsonDecode(
+        File(storyFailurePath(storePath)).readAsStringSync(),
+      ) as JsonMap;
+      expect(kept['status'], 'validation_failed');
+      expect(kept['section_id'], 'section-003');
+      expect(kept['model'], StoryModelChoice.deepseekFlash.id);
+      expect(kept['effort'], 'high');
+      expect(kept['check_quotes'], isTrue);
+      expect(kept['request_id'], 'req_1');
+      final issue = (kept['issues'] as List).cast<JsonMap>().singleWhere(
+        (issue) => issue['severity'] == 'error',
+      );
+      expect(issue['code'], 'quote_not_found');
+      expect(issue['path'], isNotEmpty);
+      expect(jsonDecode(kept['output_text'] as String), withBadQuote());
     });
 
     test(
@@ -308,7 +373,7 @@ void main() {
       () async {
         await buildChapter1();
         final outcome = await update(
-          request(start: null, checkQuotes: true),
+          request(section: null, checkQuotes: true),
           answering(chapter2Delta),
         );
         expect(outcome.status, 'committed');
@@ -319,6 +384,47 @@ void main() {
         expect((sections[1] as JsonMap)['quotes_checked'], isTrue);
       },
     );
+  });
+
+  group('the last failure', () {
+    final badAnswer = {
+      ...emptyDelta,
+      'transitions': [
+        {'nonsense': true},
+      ],
+    };
+
+    test('doesn’t stop a new store from starting', () async {
+      final failed = await update(request(), answering(badAnswer));
+      expect(failed.committed, isFalse);
+      expect(File(storyFailurePath(storePath)).existsSync(), isTrue);
+      expect(treeOf(storePath), isEmpty);
+
+      await buildChapter1();
+      StoryStore(Directory(storePath)).load();
+    });
+
+    test('only keeps the latest, and never the key', () async {
+      await update(request(), answering(badAnswer));
+      await update(
+        request(),
+        (u, h, b) async => const StoryHttpResponse(503, ''),
+      );
+      final text = File(storyFailurePath(storePath)).readAsStringSync();
+      expect((jsonDecode(text) as JsonMap)['category'], 'server_error');
+      expect(text, isNot(contains(_apiKey)));
+    });
+
+    test('that can’t be saved still reports how the update went', () async {
+      Directory(storyFailurePath(storePath)).createSync(recursive: true);
+      final outcome = await update(request(), answering(badAnswer));
+      expect(outcome.status, 'schema_invalid');
+    });
+
+    test('isn’t written for a success', () async {
+      await buildChapter1();
+      expect(File(storyFailurePath(storePath)).existsSync(), isFalse);
+    });
   });
 
   group('a failed update changes nothing:', () {
@@ -442,7 +548,7 @@ void main() {
         final (post, status, category) = failure;
         await buildChapter1();
         final before = treeOf(storePath);
-        final outcome = await update(request(start: null), post);
+        final outcome = await update(request(section: null), post);
         expect(outcome.status, status);
         expect(outcome.category, category);
         expect(outcome.committed, isFalse);
@@ -484,7 +590,7 @@ void main() {
 
     test('a store that changed meanwhile is not overwritten', () async {
       await buildChapter1();
-      final prepared = prepareStoryUpdate(request(start: null))!;
+      final prepared = prepareStoryUpdate(request(section: null))!;
       final latest = File('$storePath/story_model.json');
       latest.writeAsStringSync('${latest.readAsStringSync()}\n');
       final call = StoryCallResult('completed')..candidate = chapter2Delta;
@@ -503,7 +609,7 @@ void main() {
         'Document',
       ]);
       final outcome = await update(
-        request(epub: epub, start: 'section-001'),
+        request(epub: epub, section: 'section-001'),
         answering(emptyDelta),
       );
       expect(outcome.status, 'committed', reason: '${outcome.issues}');
@@ -511,7 +617,7 @@ void main() {
       expect(status.nextSectionId, 'section-003');
 
       final second = await update(
-        request(epub: epub, start: null),
+        request(epub: epub, section: null),
         answering(emptyDelta),
       );
       expect(second.committed, isTrue, reason: '${second.issues}');
@@ -527,7 +633,7 @@ void main() {
       () async {
         const epub = '$goldenDir/blocked_later.epub';
         final first = await update(
-          request(epub: epub, start: 'section-001'),
+          request(epub: epub, section: 'section-001'),
           answering(emptyDelta),
         );
         expect(first.committed, isTrue, reason: '${first.issues}');
@@ -537,7 +643,7 @@ void main() {
           contains('Chapter 2'),
         );
         var requests = 0;
-        final outcome = await update(request(epub: epub, start: null), (
+        final outcome = await update(request(epub: epub, section: null), (
           url,
           headers,
           body,
@@ -556,7 +662,7 @@ void main() {
         storePath,
       );
       expect(status.isNewStore, isTrue);
-      expect(status.startChoices.map((choice) => choice.sectionId), [
+      expect(status.choices.map((choice) => choice.sectionId), [
         'section-007',
         'section-008',
       ]);
@@ -595,6 +701,161 @@ void main() {
         'section-003',
       );
     });
+  });
+
+  group('choosing a later section', () {
+    test('skips ahead, and the map keeps the gap', () async {
+      await buildChapter1();
+      late String sent;
+      final outcome = await update(request(section: 'section-004'), (
+        url,
+        headers,
+        body,
+      ) async {
+        sent = body;
+        return StoryHttpResponse(200, _responseBody(emptyDelta));
+      });
+      expect(outcome.status, 'committed', reason: '${outcome.issues}');
+      expect(outcome.sectionTitle, 'Interlude: The Lamp');
+
+      final user =
+          ((jsonDecode(sent) as JsonMap)['input'] as List)[1] as JsonMap;
+      expect(user['content'], contains('Section ID: section-004'));
+      expect(user['content'], isNot(contains('Section ID: section-003')));
+
+      final model = StoryStore(Directory(storePath)).load().model;
+      expect(
+        [
+          for (final s in model['processed_sections'] as List)
+            (s as JsonMap)['section_id'],
+        ],
+        ['section-002', 'section-004'],
+      );
+      // Carries on from the new place, not from the gap.
+      expect(
+        inspectStoryUpdate(_storyEpub, storePath).nextSectionId,
+        'section-005',
+      );
+    });
+
+    test('lists what each section would leave out', () async {
+      await buildChapter1();
+      final status = inspectStoryUpdate(_storyEpub, storePath);
+      expect(status.canChoose, isTrue);
+      expect(status.choices.map((choice) => choice.sectionId), [
+        'section-003',
+        'section-004',
+        'section-005',
+      ]);
+      expect(status.choices.map((choice) => choice.skips), [
+        isEmpty,
+        ['Chapter 2: The Storm'],
+        ['Chapter 2: The Storm', 'Interlude: The Lamp'],
+      ]);
+      expect(status.titleOf('section-005'), 'Chapter 3: Aftermath');
+      expect(status.titleOf(null), 'Chapter 2: The Storm');
+    });
+
+    for (final (name, section) in const [
+      ('the last one processed', 'section-002'),
+      ('one before the map starts', 'section-001'),
+      ('one that doesn\'t exist', 'section-099'),
+    ]) {
+      test('refuses $name, before paying', () async {
+        await buildChapter1();
+        final before = treeOf(storePath);
+        var requests = 0;
+        final outcome = await update(request(section: section), (
+          url,
+          headers,
+          body,
+        ) async {
+          requests++;
+          return StoryHttpResponse(200, _responseBody(emptyDelta));
+        });
+        expect(outcome.status, 'input_error');
+        expect(requests, 0);
+        expect(treeOf(storePath), before);
+      });
+    }
+
+    test('a section with no text is neither offered nor left out', () async {
+      const epub = '$goldenDir/toc_oddities.epub';
+      await update(
+        request(epub: epub, section: 'section-001'),
+        answering(emptyDelta),
+      );
+      final status = inspectStoryUpdate(epub, storePath);
+      expect(status.choices.map((choice) => choice.sectionId), ['section-003']);
+      expect(status.choices.single.skips, isEmpty);
+      expect(status.canChoose, isFalse);
+
+      var requests = 0;
+      final outcome = await update(
+        request(epub: epub, section: 'section-002'),
+        (url, headers, body) async {
+          requests++;
+          return StoryHttpResponse(200, _responseBody(emptyDelta));
+        },
+      );
+      expect(outcome.status, 'input_error');
+      expect(requests, 0);
+    });
+
+    test('the reader can step past a section that can\'t be read', () async {
+      final epub = '${temp.path}/stuck.epub';
+      File(epub).writeAsBytesSync(_epubWithBrokenMiddle());
+      final first = await update(
+        request(epub: epub, section: 'section-001'),
+        answering(emptyDelta),
+      );
+      expect(first.committed, isTrue, reason: '${first.issues}');
+
+      final status = inspectStoryUpdate(epub, storePath);
+      expect(status.isReady, isFalse);
+      expect(status.blocked, contains('Chapter 2'));
+      expect(status.canChoose, isTrue);
+      expect(status.choices.single.sectionId, 'section-003');
+      expect(status.choices.single.skips, ['Chapter 2']);
+
+      // Left alone, it still stops there rather than stepping past unasked.
+      var requests = 0;
+      final stopped = await update(request(epub: epub, section: null), (
+        url,
+        headers,
+        body,
+      ) async {
+        requests++;
+        return StoryHttpResponse(200, _responseBody(emptyDelta));
+      });
+      expect(stopped.status, 'input_error');
+      expect(requests, 0);
+
+      final skipped = await update(
+        request(epub: epub, section: 'section-003'),
+        answering(emptyDelta),
+      );
+      expect(skipped.committed, isTrue, reason: '${skipped.issues}');
+      StoryStore(Directory(storePath)).load();
+      expect(inspectStoryUpdate(epub, storePath).isFinished, isTrue);
+    });
+
+    test(
+      'a section that can\'t be read is refused when asked for by name',
+      () async {
+        final epub = '${temp.path}/stuck.epub';
+        File(epub).writeAsBytesSync(_epubWithBrokenMiddle());
+        await update(
+          request(epub: epub, section: 'section-001'),
+          answering(emptyDelta),
+        );
+        final outcome = await update(
+          request(epub: epub, section: 'section-002'),
+          answering(emptyDelta),
+        );
+        expect(outcome.status, 'input_error');
+      },
+    );
   });
 
   group('a store', () {

@@ -51,16 +51,17 @@ abstract interface class StoryMapBackend {
   Future<StoryUpdateStatus> inspect(Book book);
 
   /// The update already running for [book], if any.
-  Future<StoryUpdateOutcome>? running(Book book);
+  RunningStoryUpdate? running(Book book);
 
-  /// Adds the next section. Never throws for a failed update: see the outcome.
+  /// Adds the section called [sectionId], or the next one. Never throws for a
+  /// failed update: see the outcome.
   Future<StoryUpdateOutcome> update(
     Book book, {
     required AiCredentials credentials,
     required StoryModelChoice model,
     required StoryEffort effort,
     required bool checkQuotes,
-    String? startSectionId,
+    String? sectionId,
   });
 }
 
@@ -101,8 +102,7 @@ class DeviceStoryMapBackend implements StoryMapBackend {
   }
 
   @override
-  Future<StoryUpdateOutcome>? running(Book book) =>
-      StoryUpdater.running(book.id);
+  RunningStoryUpdate? running(Book book) => StoryUpdater.running(book.id);
 
   @override
   Future<StoryUpdateOutcome> update(
@@ -111,7 +111,7 @@ class DeviceStoryMapBackend implements StoryMapBackend {
     required StoryModelChoice model,
     required StoryEffort effort,
     required bool checkQuotes,
-    String? startSectionId,
+    String? sectionId,
   }) async {
     return StoryUpdater.run(
       StoryUpdateRequest(
@@ -126,7 +126,7 @@ class DeviceStoryMapBackend implements StoryMapBackend {
         schemaText: await rootBundle.loadString(
           'assets/story_update/story_delta.schema.json',
         ),
-        startSectionId: startSectionId,
+        sectionId: sectionId,
       ),
       bookId: book.id,
       apiKey: credentials.apiKey,

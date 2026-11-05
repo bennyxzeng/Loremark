@@ -27,42 +27,64 @@ final _frontMatterTitle = RegExp(
 String storyStorePath(String library, String bookId) =>
     '$library/story_models/$bookId';
 
-/// A section the reader can start a new Story Map from.
-class StoryStartChoice {
-  const StoryStartChoice(this.sectionId, this.title, this.paragraphCount);
+/// Where the last failed update of the store at [storePath] is kept: beside the
+/// store and not in it, since a new store has to start from an empty folder.
+String storyFailurePath(String storePath) => '$storePath.last_failure.json';
+
+/// A section the reader can pick: where a new Story Map starts, or a later one
+/// to add to an existing map.
+class StorySectionChoice {
+  const StorySectionChoice(
+    this.sectionId,
+    this.title,
+    this.paragraphCount, {
+    this.skips = const [],
+  });
 
   final String sectionId;
   final String title;
   final int paragraphCount;
+
+  /// The sections left out for good by adding this one, by title. Only for a
+  /// map that already exists.
+  final List<String> skips;
 }
 
 /// What pressing Update would do for a book right now.
 class StoryUpdateStatus {
   const StoryUpdateStatus._({
-    this.startChoices = const [],
+    this.choices = const [],
     this.suggestedStart,
     this.nextSectionId,
     this.nextTitle,
     this.blocked,
   });
 
-  /// No store yet: the reader picks where it starts, from [startChoices].
+  /// No store yet: the reader picks where it starts, from [choices].
   const StoryUpdateStatus.newStore({
-    required List<StoryStartChoice> choices,
+    required List<StorySectionChoice> choices,
     required String suggested,
-  }) : this._(startChoices: choices, suggestedStart: suggested);
+  }) : this._(choices: choices, suggestedStart: suggested);
 
-  /// [title] is the next section.
-  const StoryUpdateStatus.ready(String sectionId, String title)
-    : this._(nextSectionId: sectionId, nextTitle: title);
+  /// [title] is the next section, and the first of [choices].
+  const StoryUpdateStatus.ready(
+    String sectionId,
+    String title, {
+    List<StorySectionChoice> choices = const [],
+  }) : this._(nextSectionId: sectionId, nextTitle: title, choices: choices);
 
   /// Every section is in the store.
   const StoryUpdateStatus.finished() : this._();
 
-  /// The next section can't be processed, for the reason given.
-  const StoryUpdateStatus.blocked(String reason) : this._(blocked: reason);
+  /// The next section can't be processed, for the reason given. The reader may
+  /// still skip past it to one of [choices].
+  const StoryUpdateStatus.blocked(
+    String reason, {
+    List<StorySectionChoice> choices = const [],
+  }) : this._(blocked: reason, choices: choices);
 
-  final List<StoryStartChoice> startChoices;
+  /// The sections that can be picked, in reading order.
+  final List<StorySectionChoice> choices;
   final String? suggestedStart;
   final String? nextSectionId;
   final String? nextTitle;
@@ -71,6 +93,20 @@ class StoryUpdateStatus {
   bool get isNewStore => suggestedStart != null;
   bool get isReady => nextSectionId != null;
   bool get isFinished => !isNewStore && !isReady && blocked == null;
+
+  /// Whether there is anything to pick besides pressing Update.
+  bool get canChoose {
+    if (isNewStore) return false;
+    return isReady ? choices.length > 1 : choices.isNotEmpty;
+  }
+
+  /// The title of the choice called [sectionId], or else the next section's.
+  String? titleOf(String? sectionId) =>
+      choices
+          .where((choice) => choice.sectionId == sectionId)
+          .firstOrNull
+          ?.title ??
+      nextTitle;
 }
 
 /// What an update needs that doesn't come from the book or its store.
@@ -83,7 +119,7 @@ class StoryUpdateRequest {
     required this.checkQuotes,
     required this.prompt,
     required this.schemaText,
-    this.startSectionId,
+    this.sectionId,
   });
 
   final String epubPath;
@@ -97,8 +133,9 @@ class StoryUpdateRequest {
   final String prompt;
   final String schemaText;
 
-  /// Where a new store starts; ignored once there is one.
-  final String? startSectionId;
+  /// The section to add: where a new store starts, or a later one to skip ahead
+  /// to. Null for an existing store means the next section.
+  final String? sectionId;
 }
 
 /// An update ready to send: everything a finished call is checked against.
@@ -175,9 +212,19 @@ StoryUpdateStatus inspectStoryUpdate(String epubPath, String storePath) {
     final store = StoryStore(Directory(storePath));
     final model = store.readLatest();
     if (model == null) return _newStoreStatus(book);
-    final next = _nextSection(model, book);
-    if (next == null) return const StoryUpdateStatus.finished();
-    return StoryUpdateStatus.ready(next.$1.sectionId, next.$1.title);
+    _checkContinues(model, book);
+    final choices = _laterChoices(model, book);
+    try {
+      final next = _nextSection(model, book);
+      if (next == null) return const StoryUpdateStatus.finished();
+      return StoryUpdateStatus.ready(
+        next.$1.sectionId,
+        next.$1.title,
+        choices: choices,
+      );
+    } on StoryEpubError catch (error) {
+      return StoryUpdateStatus.blocked(error.message, choices: choices);
+    }
   } on StoryEpubError catch (error) {
     return StoryUpdateStatus.blocked(error.message);
   } on StoryStoreError catch (error) {
@@ -188,13 +235,13 @@ StoryUpdateStatus inspectStoryUpdate(String epubPath, String storePath) {
 }
 
 StoryUpdateStatus _newStoreStatus(StoryBook book) {
-  final choices = <StoryStartChoice>[];
+  final choices = <StorySectionChoice>[];
   for (final section in book.sections) {
     if (section.problem != null) continue;
     try {
       final paragraphs = book.extract(section)['paragraphs'] as List;
       choices.add(
-        StoryStartChoice(section.sectionId, section.title, paragraphs.length),
+        StorySectionChoice(section.sectionId, section.title, paragraphs.length),
       );
     } on StoryEpubError {
       // Nothing to start from here: no text, or no reliable end.
@@ -220,12 +267,8 @@ StoryUpdateStatus _newStoreStatus(StoryBook book) {
   );
 }
 
-/// The section to add after [model]'s last, with its text; null when none is
-/// left. Sections with no text, such as a full-page illustration, are stepped
-/// over: they hold nothing to learn, and stopping at one would end the map
-/// there for good. A section that can't be cut reliably does stop it, since
-/// stepping over that could lose text.
-(StoryBookSection, JsonMap)? _nextSection(JsonMap model, StoryBook book) {
+/// Checks that [model] was built from [book], so sections still mean the same.
+void _checkContinues(JsonMap model, StoryBook book) {
   final bookRef = model['book'] as JsonMap;
   if (book.sha256Hash != bookRef['epub_sha256']) {
     throw const StoryEpubError(
@@ -247,7 +290,19 @@ StoryUpdateStatus _newStoreStatus(StoryBook book) {
       );
     }
   }
-  final last = processed.last['section_order'] as int;
+}
+
+int _lastProcessedOrder(JsonMap model) =>
+    (model['processed_sections'] as List).cast<JsonMap>().last['section_order']
+        as int;
+
+/// The section to add after [model]'s last, with its text; null when none is
+/// left. Sections with no text, such as a full-page illustration, are stepped
+/// over: they hold nothing to learn, and stopping at one would end the map
+/// there for good. A section that can't be cut reliably does stop it, since
+/// stepping over that unasked could lose text. The reader can choose to.
+(StoryBookSection, JsonMap)? _nextSection(JsonMap model, StoryBook book) {
+  final last = _lastProcessedOrder(model);
   for (final section in book.sections.where((s) => s.order > last)) {
     if (section.problem != null) {
       throw StoryEpubError(
@@ -262,6 +317,58 @@ StoryUpdateStatus _newStoreStatus(StoryBook book) {
     }
   }
   return null;
+}
+
+/// The sections that can be added after [model]'s last, in reading order, each
+/// with what adding it would leave out. A section with no text isn't left out,
+/// having nothing to lose. One that can't be read can't be picked, but is.
+List<StorySectionChoice> _laterChoices(JsonMap model, StoryBook book) {
+  final last = _lastProcessedOrder(model);
+  final choices = <StorySectionChoice>[];
+  final skips = <String>[];
+  for (final section in book.sections.where((s) => s.order > last)) {
+    try {
+      if (section.problem != null) throw StoryEpubError(section.problem!);
+      final paragraphs = book.extract(section)['paragraphs'] as List;
+      choices.add(
+        StorySectionChoice(
+          section.sectionId,
+          section.title,
+          paragraphs.length,
+          skips: [...skips],
+        ),
+      );
+    } on StorySectionEmptyError {
+      continue;
+    } on StoryEpubError {
+      // Can't be picked, so falls through to being left out.
+    }
+    skips.add(section.title);
+  }
+  return choices;
+}
+
+/// The section called [sectionId], with its text, if it can be added to [model].
+/// Sections only go in reading order, since each is built on those before it, so
+/// nothing at or before the last processed one can be added.
+(StoryBookSection, JsonMap) _chosenSection(
+  JsonMap model,
+  StoryBook book,
+  String sectionId,
+) {
+  final section = book.sections
+      .where((section) => section.sectionId == sectionId)
+      .firstOrNull;
+  if (section == null) {
+    throw StoryEpubError('This book has no section "$sectionId".');
+  }
+  if (section.order <= _lastProcessedOrder(model)) {
+    throw StoryEpubError(
+      '${section.title} comes before the end of the Story Map, and sections '
+      'can only be added in reading order.',
+    );
+  }
+  return (section, book.extract(section));
 }
 
 JsonMap _emptyModel(StoryBook book, StoryBookSection start) => {
@@ -324,14 +431,17 @@ PreparedStoryUpdate? prepareStoryUpdate(StoryUpdateRequest request) {
   final int sectionOrder;
   if (store.exists) {
     state = store.load();
-    final next = _nextSection(state.model, book);
+    _checkContinues(state.model, book);
+    final next = request.sectionId == null
+        ? _nextSection(state.model, book)
+        : _chosenSection(state.model, book, request.sectionId!);
     if (next == null) return null;
     chapter = next.$2;
     sectionOrder = next.$1.order;
   } else {
     store.ensureNew();
     final start = book.sections
-        .where((section) => section.sectionId == request.startSectionId)
+        .where((section) => section.sectionId == request.sectionId)
         .firstOrNull;
     if (start == null) {
       throw const StoryStoreError(
@@ -471,6 +581,46 @@ StoryUpdateOutcome finishStoryUpdate(
   );
 }
 
+/// Keeps what came back from a failed update, for diagnosing it: the answer was
+/// paid for, and asking again gets a different one. Only the last is kept, so
+/// failures can't fill the device.
+void _saveFailure(PreparedStoryUpdate prepared, StoryUpdateOutcome outcome) {
+  final request = prepared.request;
+  try {
+    final file = File(storyFailurePath(request.storePath));
+    file.parent.createSync(recursive: true);
+    file.writeAsStringSync(
+      const JsonEncoder.withIndent('  ').convert({
+        'run_id': prepared.runId,
+        'section_id': prepared.chapter['section_id'],
+        'section_title': outcome.sectionTitle,
+        'model': request.model.id,
+        'effort': request.effort?.name,
+        'check_quotes': request.checkQuotes,
+        'status': outcome.status,
+        'category': outcome.category,
+        'message': outcome.message,
+        'request_id': outcome.requestId,
+        'usage': outcome.usage,
+        'hashes': prepared.hashes,
+        'issues': [
+          for (final issue in outcome.issues)
+            {
+              'severity': issue.severity,
+              'code': issue.code,
+              'path': issue.path,
+              'message': issue.message,
+              'record_id': issue.recordId,
+            },
+        ],
+        'output_text': outcome.outputText,
+      }),
+    );
+  } on FileSystemException {
+    // It's only for diagnosing, so it mustn't change how the update ended.
+  }
+}
+
 /// What the store keeps about an update: the delta, ID map and base it was
 /// applied to, under `provenance/<run id>/`.
 Map<String, List<int>> _provenanceFiles(
@@ -517,6 +667,17 @@ Map<String, List<int>> _provenanceFiles(
   };
 }
 
+/// An update on its way, for finding it again after leaving the book.
+class RunningStoryUpdate {
+  const RunningStoryUpdate(this.outcome, this.startedAt, this.sectionId);
+
+  final Future<StoryUpdateOutcome> outcome;
+  final DateTime startedAt;
+
+  /// The section asked for, or null for the next one.
+  final String? sectionId;
+}
+
 /// Runs updates, one at a time per book.
 ///
 /// The reader may leave the book while one runs. It is already paid for, so it
@@ -524,13 +685,13 @@ Map<String, List<int>> _provenanceFiles(
 class StoryUpdater {
   StoryUpdater._();
 
-  static final _running = <String, Future<StoryUpdateOutcome>>{};
+  static final _running = <String, RunningStoryUpdate>{};
 
   /// The update running for the book [bookId], if any.
-  static Future<StoryUpdateOutcome>? running(String bookId) => _running[bookId];
+  static RunningStoryUpdate? running(String bookId) => _running[bookId];
 
-  /// Adds the next section. Never throws: every way of failing is an outcome,
-  /// and none of them changes the store.
+  /// Adds the section asked for, or the next one. Never throws: every way of
+  /// failing is an outcome, and none of them changes the store.
   static Future<StoryUpdateOutcome> run(
     StoryUpdateRequest request, {
     required String bookId,
@@ -538,12 +699,18 @@ class StoryUpdater {
     StoryHttpPost post = postStoryRequest,
   }) {
     final existing = _running[bookId];
-    if (existing != null) return existing;
-    return _running[bookId] = _run(request, apiKey, post).whenComplete(() {
-      // In a block, so as not to return the removed future: `whenComplete`
-      // would wait for it, and it is the one being completed.
+    if (existing != null) return existing.outcome;
+    final outcome = _run(request, apiKey, post).whenComplete(() {
+      // In a block, so as not to return the removed update: `whenComplete`
+      // would wait for a future it got back, and this is that future.
       _running.remove(bookId);
     });
+    _running[bookId] = RunningStoryUpdate(
+      outcome,
+      DateTime.now(),
+      request.sectionId,
+    );
+    return outcome;
   }
 
   static Future<StoryUpdateOutcome> _run(
@@ -565,7 +732,11 @@ class StoryUpdater {
         body: prepared.body,
         post: post,
       );
-      return await Isolate.run(() => finishStoryUpdate(prepared, call));
+      return await Isolate.run(() {
+        final outcome = finishStoryUpdate(prepared, call);
+        if (!outcome.committed) _saveFailure(prepared, outcome);
+        return outcome;
+      });
     } on StoryEpubError catch (error) {
       return StoryUpdateOutcome('input_error', message: error.message);
     } on StoryStoreError catch (error) {

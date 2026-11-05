@@ -13,9 +13,10 @@ import 'package:loremark/story_update/story_updater.dart';
 ///     --section=section-004 --model=deepseek-flash --effort=high \
 ///     --out=some/run/folder --dry-run
 ///
-/// `--section` is only for a new store. `--dry-run` writes the request to
-/// `--out` and sends nothing. Otherwise the provider's key comes from
-/// DEEPSEEK_API_KEY or OPENAI_API_KEY, and is never printed or saved.
+/// `--section` is where a new store starts, or a later section to skip ahead to
+/// (without it, the next section). `--dry-run` writes the request to `--out` and
+/// sends nothing. Otherwise the provider's key comes from DEEPSEEK_API_KEY or
+/// OPENAI_API_KEY, and is never printed or saved.
 ///
 /// `--ledger=<file>` limits what a run may spend: it counts requests, and
 /// refuses to send once `--max-successes` updates have succeeded or
@@ -42,7 +43,7 @@ Future<void> main(List<String> args) async {
     prompt: File('assets/story_update/$updatePromptName').readAsStringSync(),
     schemaText: File('assets/story_update/story_delta.schema.json')
         .readAsStringSync(),
-    startSectionId: option('section'),
+    sectionId: option('section'),
   );
   final out = option('out');
 

@@ -82,6 +82,8 @@ void main() {
       '${storyStorePath(repository.root.path, book.id)}/story_model.json',
     );
     await storyModel.create(recursive: true);
+    final failure = File(storyFailurePath(storyModel.parent.path));
+    await failure.create();
 
     await repository.remove(book);
 
@@ -90,6 +92,7 @@ void main() {
     expect(await File(book.epubPath).exists(), isFalse);
     expect(await File(book.coverPath!).exists(), isFalse);
     expect(await storyModel.parent.exists(), isFalse);
+    expect(await failure.exists(), isFalse);
   });
 
   test('rejects a file that is not an EPUB', () async {

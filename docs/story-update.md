@@ -28,7 +28,21 @@ A book's store is at `<app support>/library/story_models/<book id>/`, and goes w
 
 - **One press, one section, one paid request.** Nothing retries by itself. A retry is another
   paid request, so it is the reader's call.
+- **Update adds the next section; Choose picks a later one.** Sections only go in reading order,
+  because each is built on those before it and an earlier one would mix in later knowledge. So the
+  reader can skip ahead, but not go back: the dialog names what a pick leaves out, for good. The map
+  doesn't mark the gap, and the slider just lists what was processed.
+- **A section that can't be read doesn't end the map.** Update stops there rather than stepping past
+  it unasked, and Choose gets past it. A section with no text is stepped over and not counted.
+- **The bar shows how long an update has been running,** and the result says how long it took. The
+  time is read from the clock and from when the update really began, so it stays right after the
+  system holds the app back, and after leaving the book and coming back.
 - **A failed update changes nothing.** The store only moves when the whole answer passes.
+- **The last failure is kept for diagnosing it.** The bar names the first check that failed. The
+  whole list and the model's answer go in `story_models/<book id>.last_failure.json`, because that
+  answer was paid for and asking again gets a different one. It sits beside the store, since a new
+  store has to start from an empty folder. It stays on the device, holds no key, and is removed with
+  the book.
 - **Updating isn't tied to reading progress.** The reader can update past where they are. The
   slider asks before showing anything past their position instead (`StoryMapScreen`). That uses
   `ReaderPosition.current`, because the furthest position isn't stored yet; once it is, pass it to
@@ -46,8 +60,12 @@ A book's store is at `<app support>/library/story_models/<book id>/`, and goes w
 - **Sections with no text are stepped over.** The lab stops at one for good, and a full-page
   illustration is common in light novels. The lab's checks still accept the result, since they
   only need sections in increasing order.
+- **Sections can be skipped on purpose.** The lab's `update` refuses to skip one. It can still read
+  a store with gaps, check it and carry on from it, since its checks only need increasing order.
 - **A 15-minute request timeout, and no automatic retries.** The lab has no timeout, and its
   SDK retries twice.
+- **Only the last failure is kept.** The lab leaves a folder for every run, which `run.dart --out`
+  also does. On a phone, that would grow with every failed update.
 
 ## Staying in step with the lab
 
@@ -80,7 +98,8 @@ dart run tool/story_update/run.dart --epub=book.epub --store=some/folder \
   --section=section-004 --model=deepseek-flash --effort=high --out=some/run --dry-run
 ```
 
-`--section` is only for a new store. `--dry-run` writes the request to `--out` and sends nothing.
+`--section` is where a new store starts, or a later section to skip ahead to; without it, the next
+section. `--dry-run` writes the request to `--out` and sends nothing.
 Without it, the key comes from `DEEPSEEK_API_KEY` or `OPENAI_API_KEY`. `--ledger=<file>` caps
 spending: it refuses to send after `--max-successes` updates (default 4) or `--max-failures`
 failures in a row (default 2).

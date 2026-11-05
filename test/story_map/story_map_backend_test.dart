@@ -77,7 +77,7 @@ void main() {
       model: StoryModelChoice.deepseekFlash,
       effort: StoryEffort.low,
       checkQuotes: false,
-      startSectionId: 'section-002',
+      sectionId: 'section-002',
     );
     expect(outcome.status, 'committed', reason: '${outcome.issues}');
     // The real prompt and schema came out of the app's bundle.

@@ -29,8 +29,8 @@ final _book = Book(
 
 const _newStore = StoryUpdateStatus.newStore(
   choices: [
-    StoryStartChoice('section-001', 'Front Matter', 3),
-    StoryStartChoice('section-002', 'Chapter 1: Arrival', 40),
+    StorySectionChoice('section-001', 'Front Matter', 3),
+    StorySectionChoice('section-002', 'Chapter 1: Arrival', 40),
   ],
   suggested: 'section-002',
 );
@@ -46,7 +46,7 @@ class _FakeBackend implements StoryMapBackend {
   StoryModel? model;
   int finished;
   StoryUpdateStatus status;
-  Future<StoryUpdateOutcome>? runningUpdate;
+  RunningStoryUpdate? runningUpdate;
 
   final updates = <Map<String, Object?>>[];
   StoryUpdateOutcome Function() answer = () => const StoryUpdateOutcome(
@@ -67,7 +67,7 @@ class _FakeBackend implements StoryMapBackend {
   Future<StoryUpdateStatus> inspect(Book book) async => status;
 
   @override
-  Future<StoryUpdateOutcome>? running(Book book) => runningUpdate;
+  RunningStoryUpdate? running(Book book) => runningUpdate;
 
   @override
   Future<StoryUpdateOutcome> update(
@@ -76,14 +76,14 @@ class _FakeBackend implements StoryMapBackend {
     required StoryModelChoice model,
     required StoryEffort effort,
     required bool checkQuotes,
-    String? startSectionId,
+    String? sectionId,
   }) async {
     updates.add({
       'key': credentials.apiKey,
       'model': model,
       'effort': effort,
       'checkQuotes': checkQuotes,
-      'start': startSectionId,
+      'section': sectionId,
     });
     await hold?.future;
     return answer();
@@ -152,7 +152,7 @@ void main() {
 
       await tester.tap(find.text('Start'));
       await tester.pumpAndSettle();
-      expect(backend.updates.single['start'], 'section-002');
+      expect(backend.updates.single['section'], 'section-002');
     });
 
     testWidgets('can start from another section', (tester) async {
@@ -165,7 +165,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Start'));
       await tester.pumpAndSettle();
-      expect(backend.updates.single['start'], 'section-001');
+      expect(backend.updates.single['section'], 'section-001');
     });
 
     testWidgets('cancelling sends nothing', (tester) async {
@@ -204,7 +204,7 @@ void main() {
         'model': StoryModelChoice.deepseekFlash,
         'effort': StoryEffort.max,
         'checkQuotes': true,
-        'start': null,
+        'section': null,
       });
     });
 
@@ -270,7 +270,11 @@ void main() {
     testWidgets('picks up an update already running', (tester) async {
       final finish = Completer<StoryUpdateOutcome>();
       final backend = _FakeBackend(model: storyModelFixture())
-        ..runningUpdate = finish.future;
+        ..runningUpdate = RunningStoryUpdate(
+          finish.future,
+          DateTime.now(),
+          null,
+        );
       await pumpTab(tester, backend);
       expect(find.text('Adding Chapter 3…'), findsOne);
       expect(backend.updates, isEmpty);
@@ -279,7 +283,7 @@ void main() {
         const StoryUpdateOutcome('committed', sectionTitle: 'Chapter 3'),
       );
       await tester.pumpAndSettle();
-      expect(find.textContaining('Added Chapter 3.'), findsOne);
+      expect(find.textContaining('Added Chapter 3 in '), findsOne);
     });
 
     testWidgets('survives the reader leaving mid-update', (tester) async {
@@ -301,17 +305,15 @@ void main() {
       final backend = _FakeBackend(model: storyModelFixture(), finished: 2);
       await pumpTab(tester, backend);
       await pressUpdate(tester);
-      expect(find.text('Added Chapter 3.'), findsOne);
+      expect(find.textContaining('Added Chapter 3 in '), findsOne);
+      expect(find.textContaining('Drag the slider'), findsNothing);
     });
 
     testWidgets('doesn\'t jump past where the reader is', (tester) async {
       final backend = _FakeBackend(model: storyModelFixture(), finished: 1);
       await pumpTab(tester, backend);
       await pressUpdate(tester);
-      expect(
-        find.text('Added Chapter 3. Drag the slider to see it.'),
-        findsOne,
-      );
+      expect(find.textContaining('Drag the slider to see it.'), findsOne);
       expect(find.textContaining('Known by the end of Chapter 1'), findsOne);
     });
 
@@ -349,7 +351,7 @@ void main() {
           const StoryUpdateOutcome('committed', sectionTitle: 'Chapter 3');
       await pressUpdate(tester);
       expect(find.textContaining('limiting requests'), findsNothing);
-      expect(find.textContaining('Added Chapter 3.'), findsOne);
+      expect(find.textContaining('Added Chapter 3 in '), findsOne);
     });
 
     test('is described honestly, whatever went wrong', () {
@@ -392,14 +394,357 @@ void main() {
       expect(
         describe(
           'validation_failed',
-          issues: const [StoryIssue('error', 'narrative_order', 'a', 'b')],
+          issues: const [
+            StoryIssue('error', 'narrative_order', 'a', '3 is repeated'),
+          ],
         ),
-        contains('failed 1 check'),
+        allOf(
+          contains('failed 1 check: 3 is repeated.'),
+          contains('may still charge'),
+          contains('Update again'),
+        ),
+      );
+      expect(
+        describe(
+          'validation_failed',
+          issues: const [
+            StoryIssue('warning', 'empty_delta', 'a', 'not this one'),
+            StoryIssue('error', 'narrative_order', 'a', '3 is repeated'),
+            StoryIssue('error', 'dangling_reference', 'b', 'not this one'),
+          ],
+        ),
+        contains('failed 2 checks. The first: 3 is repeated.'),
       );
       expect(
         describe('input_error', message: 'Bad book.'),
         contains('Bad book.'),
       );
+    });
+  });
+
+  group('choosing a section', () {
+    const severalChoices = StoryUpdateStatus.ready(
+      'section-003',
+      'Chapter 3',
+      choices: [
+        StorySectionChoice('section-003', 'Chapter 3', 40),
+        StorySectionChoice(
+          'section-004',
+          'Interlude',
+          10,
+          skips: ['Chapter 3'],
+        ),
+        StorySectionChoice(
+          'section-005',
+          'Chapter 4',
+          40,
+          skips: ['Chapter 3', 'Interlude'],
+        ),
+      ],
+    );
+    const dialogTitle = 'Choose a section';
+    final chooseButton = find.widgetWithText(TextButton, 'Choose');
+
+    _FakeBackend backendWithChoices() =>
+        _FakeBackend(model: storyModelFixture(), status: severalChoices);
+
+    TextButton choose(WidgetTester tester) =>
+        tester.widget<TextButton>(chooseButton);
+
+    Future<void> pressChoose(WidgetTester tester) async {
+      await tester.tap(chooseButton);
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> pick(WidgetTester tester, String title) async {
+      await tester.tap(find.byType(DropdownButton<StorySectionChoice>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(title).last);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('isn\'t offered with nothing to choose from', (tester) async {
+      await pumpTab(tester, _FakeBackend(model: storyModelFixture()));
+      expect(chooseButton, findsNothing);
+    });
+
+    testWidgets('isn\'t offered for a new map, which asks anyway', (
+      tester,
+    ) async {
+      await pumpTab(tester, _FakeBackend(status: _newStore));
+      expect(chooseButton, findsNothing);
+    });
+
+    testWidgets('leaves Update one press, with no dialog', (tester) async {
+      final backend = backendWithChoices();
+      await pumpTab(tester, backend);
+      expect(chooseButton, findsOne);
+      await pressUpdate(tester);
+      expect(find.text(dialogTitle), findsNothing);
+      expect(backend.updates.single['section'], isNull);
+    });
+
+    testWidgets('starts at the next section and warns of nothing', (
+      tester,
+    ) async {
+      final backend = backendWithChoices();
+      await pumpTab(tester, backend);
+      await pressChoose(tester);
+      expect(find.text(dialogTitle), findsOne);
+      expect(find.textContaining('This skips'), findsNothing);
+      await tester.tap(find.text('Add section'));
+      await tester.pumpAndSettle();
+      expect(backend.updates.single['section'], 'section-003');
+    });
+
+    testWidgets('says what a later section leaves out, then adds it', (
+      tester,
+    ) async {
+      final backend = backendWithChoices();
+      await pumpTab(tester, backend);
+      await pressChoose(tester);
+
+      await pick(tester, 'Interlude');
+      expect(
+        find.text('This skips 1 section: Chapter 3. It can’t be added later.'),
+        findsOne,
+      );
+      await pick(tester, 'Chapter 4');
+      expect(
+        find.text(
+          'This skips 2 sections: Chapter 3, Interlude. They can’t be added '
+          'later.',
+        ),
+        findsOne,
+      );
+
+      await tester.tap(find.text('Add section'));
+      await tester.pumpAndSettle();
+      expect(backend.updates.single['section'], 'section-005');
+    });
+
+    testWidgets('cancelling sends nothing', (tester) async {
+      final backend = backendWithChoices();
+      await pumpTab(tester, backend);
+      await pressChoose(tester);
+      await pick(tester, 'Chapter 4');
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(backend.updates, isEmpty);
+      expect(find.text('Next: Chapter 3'), findsOne);
+    });
+
+    testWidgets('names the chosen section while it runs', (tester) async {
+      final backend = backendWithChoices()..hold = Completer<void>();
+      await pumpTab(tester, backend);
+      await pressChoose(tester);
+      await pick(tester, 'Chapter 4');
+      await tester.tap(find.text('Add section'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Adding Chapter 4…'), findsOne);
+      expect(choose(tester).onPressed, isNull);
+      expect(updateButton(tester).onPressed, isNull);
+
+      backend.hold!.complete();
+      await tester.pumpAndSettle();
+      expect(choose(tester).onPressed, isNotNull);
+    });
+
+    testWidgets('finds the chosen section again on coming back', (
+      tester,
+    ) async {
+      final finish = Completer<StoryUpdateOutcome>();
+      final backend = backendWithChoices()
+        ..runningUpdate = RunningStoryUpdate(
+          finish.future,
+          DateTime.now(),
+          'section-005',
+        );
+      await pumpTab(tester, backend);
+      expect(find.text('Adding Chapter 4…'), findsOne);
+      finish.complete(const StoryUpdateOutcome('input_error'));
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('is off while offline', (tester) async {
+      await pumpTab(tester, backendWithChoices(), online: false);
+      expect(choose(tester).onPressed, isNull);
+    });
+
+    testWidgets('gets past a section that can\'t be read', (tester) async {
+      final backend = _FakeBackend(
+        model: storyModelFixture(),
+        status: const StoryUpdateStatus.blocked(
+          'Chapter 3 cannot be read reliably.',
+          choices: [
+            StorySectionChoice(
+              'section-004',
+              'Chapter 4',
+              40,
+              skips: ['Chapter 3'],
+            ),
+          ],
+        ),
+      );
+      await pumpTab(tester, backend);
+      expect(find.text('Chapter 3 cannot be read reliably.'), findsOne);
+      expect(updateButton(tester).onPressed, isNull);
+      expect(choose(tester).onPressed, isNotNull);
+
+      await pressChoose(tester);
+      expect(find.textContaining('This skips 1 section: Chapter 3'), findsOne);
+      await tester.tap(find.text('Add section'));
+      await tester.pumpAndSettle();
+      expect(backend.updates.single['section'], 'section-004');
+    });
+
+    testWidgets('fits a small phone', (tester) async {
+      tester.view.physicalSize = const Size(320, 568);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      const long =
+          'Chapter 3: To Your Gallant Visage at the Underworld’s Edge, Where '
+          'Nobody Has Ever Been';
+      await pumpTab(
+        tester,
+        _FakeBackend(
+          model: storyModelFixture(),
+          status: StoryUpdateStatus.ready(
+            'section-003',
+            long,
+            choices: [
+              const StorySectionChoice('section-003', long, 40),
+              StorySectionChoice(
+                'section-009',
+                'Chapter 9',
+                40,
+                skips: [for (var i = 0; i < 6; i++) long],
+              ),
+            ],
+          ),
+        ),
+      );
+      expect(tester.takeException(), isNull);
+      await pressChoose(tester);
+      expect(tester.takeException(), isNull);
+      await pick(tester, 'Chapter 9');
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('the timer', () {
+    test('reads as minutes and seconds', () {
+      String format(int seconds) =>
+          formatStoryElapsed(Duration(seconds: seconds));
+      expect(format(0), '0:00');
+      expect(format(9), '0:09');
+      expect(format(65), '1:05');
+      expect(format(171), '2:51');
+      expect(format(900), '15:00');
+      expect(formatStoryElapsed(const Duration(seconds: -5)), '0:00');
+    });
+
+    testWidgets('counts up by the clock while updating', (tester) async {
+      final started = DateTime.utc(2026);
+      var now = started;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StoryUpdateBar(
+              status: const StoryUpdateStatus.ready('s', 'Chapter 3'),
+              online: true,
+              onUpdate: () {},
+              onChoose: () {},
+              updateStartedAt: started,
+              now: () => now,
+            ),
+          ),
+        ),
+      );
+      expect(find.textContaining('0:00 elapsed.'), findsOne);
+
+      now = started.add(const Duration(seconds: 1));
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.textContaining('0:01 elapsed.'), findsOne);
+
+      // Held back for a while, it shows the real time rather than one more tick.
+      now = started.add(const Duration(seconds: 171));
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.textContaining('2:51 elapsed.'), findsOne);
+    });
+
+    testWidgets('shows real time on coming back to a running update', (
+      tester,
+    ) async {
+      final finish = Completer<StoryUpdateOutcome>();
+      final backend = _FakeBackend(model: storyModelFixture())
+        ..runningUpdate = RunningStoryUpdate(
+          finish.future,
+          DateTime.now().subtract(const Duration(seconds: 125)),
+          null,
+        );
+      await pumpTab(tester, backend);
+      expect(find.textContaining(RegExp(r'^2:0[5-9] elapsed\.')), findsOne);
+
+      finish.complete(
+        const StoryUpdateOutcome('committed', sectionTitle: 'Chapter 3'),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining(RegExp(r'^Added Chapter 3 in 2:0[5-9]\.')),
+        findsOne,
+      );
+    });
+
+    testWidgets('stops once the update is done', (tester) async {
+      final backend = _FakeBackend(model: storyModelFixture())
+        ..hold = Completer<void>();
+      await pumpTab(tester, backend);
+      await pressUpdate(tester);
+      expect(find.textContaining('elapsed.'), findsOne);
+      expect(find.textContaining('Keep Loremark open'), findsOne);
+
+      backend.hold!.complete();
+      await tester.pumpAndSettle();
+      expect(find.textContaining('elapsed.'), findsNothing);
+      // Nothing keeps ticking: this settles, and no timer is left pending.
+      await tester.pump(const Duration(seconds: 5));
+      expect(tester.binding.hasScheduledFrame, isFalse);
+    });
+
+    testWidgets('a failure says how long it took too', (tester) async {
+      final backend = _FakeBackend(model: storyModelFixture())
+        ..answer = () =>
+            const StoryUpdateOutcome('api_error', category: 'timeout');
+      await pumpTab(tester, backend);
+      await pressUpdate(tester);
+      expect(
+        find.textContaining(RegExp(r'may still charge for it\. Took 0:0\d\.')),
+        findsOne,
+      );
+    });
+
+    testWidgets('fits a small phone with both buttons', (tester) async {
+      tester.view.physicalSize = const Size(320, 568);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final backend = _FakeBackend(
+        model: storyModelFixture(),
+        status: const StoryUpdateStatus.ready(
+          's3',
+          'A Very Long Chapter Title That Goes On And On And On',
+          choices: [
+            StorySectionChoice('s3', 'A', 1),
+            StorySectionChoice('s4', 'B', 1),
+          ],
+        ),
+      )..hold = Completer<void>();
+      await pumpTab(tester, backend);
+      await pressUpdate(tester);
+      expect(tester.takeException(), isNull);
+      backend.hold!.complete();
+      await tester.pumpAndSettle();
     });
   });
 
@@ -433,7 +778,7 @@ void main() {
         tester,
         _FakeBackend(
           status: const StoryUpdateStatus.newStore(
-            choices: [StoryStartChoice('section-001', longTitle, 40)],
+            choices: [StorySectionChoice('section-001', longTitle, 40)],
             suggested: 'section-001',
           ),
         ),
@@ -448,10 +793,20 @@ void main() {
       final backend = _FakeBackend(model: storyModelFixture())
         ..answer = () => const StoryUpdateOutcome(
           'validation_failed',
-          issues: [StoryIssue('error', 'narrative_order', 'a', 'b')],
+          issues: [
+            StoryIssue(
+              'error',
+              'evidence_outside_section',
+              'a',
+              'Evidence cites "section-003"; it must come from section-004, '
+                  'the section this item was learned in',
+            ),
+            StoryIssue('error', 'narrative_order', 'a', 'b'),
+          ],
         );
       await pumpTab(tester, backend);
       await pressUpdate(tester);
+      expect(find.textContaining('it must come from'), findsOne);
       expect(tester.takeException(), isNull);
     });
   });
