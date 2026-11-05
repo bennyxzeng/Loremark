@@ -53,12 +53,12 @@ class Effort(StrEnum):
 # ---- Settings --------------------------------------------------------------------------------
 # Relative paths are from the repository root. None or False leaves an option out.
 
-COMMAND = Command.SHOW
+COMMAND = Command.UPDATE
 
 # chapters, update, commit
 EPUB = "sample_epub/86v1_chapters.epub"
 # update, show; a missing or empty directory is created by the first update
-STORE = "tools/story_model_lab/stores/86v1"
+STORE = "tools/story_model_lab/stores/86v1-terra"
 
 # update: CHAPTER and SECTION both None = the next section of the store. A new store needs
 # one of them: its starting section (earlier sections are never covered).
