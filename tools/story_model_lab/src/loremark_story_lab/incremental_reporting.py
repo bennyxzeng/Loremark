@@ -241,6 +241,12 @@ def _coverage(model: CumulativeStoryModel, view: _View) -> list[str]:
             lines.append(
                 f"  - revision {item.revision} {target}`{item.path}`：{change}（{md(item.reason)}）"
             )
+    unchecked = [s.section_id for s in model.processed_sections if not s.quotes_checked]
+    if unchecked:
+        lines.append(
+            f"- ⚠️ {'、'.join(f'`{sid}`' for sid in unchecked)} 提交时关闭了引用校验，"
+            "这些节的引用可能和所标段落对不上。"
+        )
     lines += [
         f"- 统计：实体 {len(model.entities)}（人物 {counts['character']}、地点 "
         f"{counts['location']}、组织 {counts['organization']}）；有效记录 {len(view.active)} / "
@@ -543,16 +549,27 @@ def render_update_review(
     return "\n".join(lines).rstrip() + "\n"
 
 
+def _quote_check_off_note(validation: UpdateValidation | None) -> str:
+    """The review's warning for a run with the quote check off, with a count once merged."""
+    note = "本次运行关闭了引用校验：引用和所标段落对不上时只算警告，不阻止提交"
+    if validation is not None and validation.after is not None:
+        count = sum(issue.code == "quote_not_found" for issue in validation.warnings)
+        note += f"；本次有 {count} 条对不上"
+    return f"> ⚠️ **{note}。**"
+
+
 def _update_status(
     run: dict[str, Any], validation: UpdateValidation | None, failure: dict[str, Any] | None
 ) -> list[str]:
     commit = run.get("commit_status")
     status = run.get("status")
     committed = run.get("committed_revision") or {}
+    quotes_off = run.get("quotes_checked") is False
     if commit == "committed":
+        checks = "结构、ID、历史不变量" if quotes_off else "结构、ID、引用存在性、历史不变量"
         headline = (
-            f"已提交为 revision {committed.get('number')}；通过自动校验（结构、ID、引用存在性、"
-            "历史不变量），内容是否正确仍需人工审阅"
+            f"已提交为 revision {committed.get('number')}；通过自动校验（{checks}），"
+            "内容是否正确仍需人工审阅"
         )
     elif status == "stale_base":
         headline = "未提交：store 已被其他更新改变（stale_base），本次增量没有写入"
@@ -568,6 +585,8 @@ def _update_status(
         headline = f"未提交（{status}）"
     marker = "✅" if commit == "committed" else "❌"
     lines = [f"> {marker} **状态：{headline}**", ""]
+    if quotes_off:
+        lines += [_quote_check_off_note(validation), ""]
     corrections = run.get("manual_corrections") or []
     if corrections:
         lines += [

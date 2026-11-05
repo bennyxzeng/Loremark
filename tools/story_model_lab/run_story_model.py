@@ -73,6 +73,7 @@ MAX_OUTPUT_TOKENS: int | None = None  # None = no cap; the provider's limit appl
 TIMEOUT: float | None = None  # seconds per request; None = wait indefinitely
 PROMPT_FILE: str | None = None  # None = built-in prompt
 DRY_RUN = False  # True = write the request files without calling the API
+CHECK_QUOTES = False  # False = a quote not found in its paragraph is a warning, not a failure
 
 # commit, validate: an update run directory
 RUN: str | None = None
@@ -117,6 +118,7 @@ def _update_options() -> dict[str, object]:
         "--timeout": TIMEOUT,
         "--reasoning-effort": EFFORT,
         "--dry-run": DRY_RUN,
+        "--no-quote-check": not CHECK_QUOTES,
     }
 
 

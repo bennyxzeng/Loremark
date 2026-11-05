@@ -305,6 +305,7 @@ def run_update(
     echo: Echo,
     client_factory: ClientFactory = default_client_factory,
     env: Mapping[str, str] | None = None,
+    check_quotes: bool = True,
 ) -> Outcome:
     started_clock = time.monotonic()
     book = open_epub(epub_path)
@@ -323,7 +324,10 @@ def run_update(
     base = state.model
     number = base.revision.number + 1
     section, input_relpath, input_data = section_source(
-        chapter_input, section_order=plan.section.order, revision=number
+        chapter_input,
+        section_order=plan.section.order,
+        revision=number,
+        quotes_checked=check_quotes,
     )
 
     run_dir = prepare_output_dir(out)
@@ -362,8 +366,11 @@ def run_update(
         committed_revision=None,
         commit_status="not_attempted",
         report_status=None,
+        quotes_checked=check_quotes,
     )
     warnings = [*book.warnings, *chapter_input.extraction_notes]
+    if not check_quotes:
+        echo("Quote check: off (a quote not found in its paragraph is only a warning)")
 
     if config.dry_run:
         _finish(run, "dry_run", started_clock)
@@ -726,7 +733,10 @@ def run_commit_corrected(*, run_dir: Path, epub_path: Path, echo: Echo) -> Outco
     base = state.model
     number = base.revision.number + 1
     section, input_relpath, input_data = section_source(
-        saved, section_order=plan.section.order, revision=number
+        saved,
+        section_order=plan.section.order,
+        revision=number,
+        quotes_checked=run.get("quotes_checked", True),
     )
     revision = RevisionInfo(
         number=number,
@@ -829,7 +839,10 @@ def validate_update_run(run_dir: Path, echo: Echo) -> Outcome:
         )
     )
     section, _, _ = section_source(
-        chapter, section_order=run["source"]["section_order"], revision=number
+        chapter,
+        section_order=run["source"]["section_order"],
+        revision=number,
+        quotes_checked=run.get("quotes_checked", True),
     )
     validation = validate_update(
         base,

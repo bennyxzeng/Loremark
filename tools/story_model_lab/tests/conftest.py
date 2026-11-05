@@ -303,6 +303,7 @@ def update_store(
     max_output_tokens: int | None = None,
     reasoning_effort: str | None = None,
     echo: Echo = lambda _: None,
+    check_quotes: bool = True,
 ) -> Outcome:
     """`update` through the real SDK and a mock API; without a selection, the next section."""
     env = DEEPSEEK_ENV if env is None else env
@@ -326,6 +327,7 @@ def update_store(
         echo=echo,
         client_factory=api,
         env=env,
+        check_quotes=check_quotes,
     )
 
 

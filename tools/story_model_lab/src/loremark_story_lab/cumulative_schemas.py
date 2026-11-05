@@ -153,6 +153,8 @@ class SectionSource(_Strict):
     input_relative_path: str
     input_file_sha256: str
     introduced_revision: int
+    # False: this section was committed with the quote check off (`update --no-quote-check`).
+    quotes_checked: bool = True
 
 
 class BookRef(_Strict):

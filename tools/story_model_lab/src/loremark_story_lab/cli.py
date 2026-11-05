@@ -63,6 +63,12 @@ def build_parser() -> argparse.ArgumentParser:
     group.add_argument("--chapter", type=int, help="chapter number recognized from its title")
     group.add_argument("--section", help="section ID shown by `story-model chapters`")
     update.add_argument("--out", type=Path, help="run directory (must be new or empty)")
+    update.add_argument(
+        "--no-quote-check",
+        action="store_true",
+        help="commit even if a quote is not found in its paragraph (reported as a warning); "
+        "the store remembers this for the section",
+    )
     _add_model_options(update)
 
     commit = commands.add_parser(
@@ -174,6 +180,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 out=args.out,
                 prompt_file=args.prompt_file,
                 echo=_echo,
+                check_quotes=not args.no_quote_check,
             )
         elif args.command == "commit":
             outcome = run_commit_corrected(run_dir=args.run, epub_path=args.epub, echo=_echo)

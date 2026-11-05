@@ -152,6 +152,9 @@ class _Checker:
         self.evidence: list[EvidenceCheckV2] = []
         self.paragraphs: dict[str, dict[str, str]] = {}
         self.section_revisions: dict[str, int] = {}
+        self.unchecked_sections = {
+            s.section_id for s in model.processed_sections if not s.quotes_checked
+        }
         self.entities = {}
         self.records: dict[str, tuple[str, Record[Any]]] = {}
         self.active: set[str] = set()
@@ -307,7 +310,15 @@ class _Checker:
                 )
             else:
                 spans = find_spans(text, item.quote)
-                if not spans:
+                if not spans and item.section_id in self.unchecked_sections:
+                    self._warn(
+                        "quote_not_found",
+                        item_path,
+                        self._not_found(item),
+                        record_id,
+                        self.section_revisions[item.section_id],
+                    )
+                elif not spans:
                     self._error("quote_not_found", item_path, self._not_found(item), record_id)
             self.evidence.append(
                 EvidenceCheckV2(

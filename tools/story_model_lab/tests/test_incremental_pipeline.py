@@ -422,6 +422,97 @@ def test_validate_rechecks_an_update_run_without_touching_the_store(
     assert load_store(store).model.revision.number == 2
 
 
+def test_quote_check_off_commits_and_the_store_remembers_it(
+    tmp_path: Path, story_epub: Path, ch1_delta, ch2_delta
+) -> None:
+    root = tmp_path / "new"
+    bad_quote = ch1_delta["new_records"]["names"][0]["evidence"][0]
+    bad_quote["quote"] = "invented"
+    outcome = update_store(
+        root,
+        story_epub,
+        delta_api(ch1_delta),
+        tmp_path / "off",
+        section="section-002",
+        check_quotes=False,
+    )
+    assert (outcome.status, outcome.exit_code) == ("committed", 0)
+    run_dir = outcome.run_dir
+    assert read_json(run_dir / "run.json")["quotes_checked"] is False
+    issues = read_json(run_dir / "validation.json")["issues"]
+    assert [(i["severity"], i["code"]) for i in issues] == [("warning", "quote_not_found")]
+    review = (run_dir / "review.md").read_text(encoding="utf-8")
+    assert "关闭了引用校验" in review and "本次有 1 条对不上" in review
+    assert "引用存在性" not in review
+
+    # Later commands read the setting from the store and the run, not from a flag.
+    assert not load_store(root).model.processed_sections[0].quotes_checked
+    assert "`section-002` 提交时关闭了引用校验" in show(root)
+    assert validate_update_run(run_dir, lambda _: None).status == "passed"
+
+    # With the check on again, the old quote stays accepted and a new one is checked.
+    outcome = update(root, story_epub, delta_api(ch2_delta), tmp_path / "good")
+    assert outcome.status == "committed"
+    assert [s.quotes_checked for s in load_store(root).model.processed_sections] == [False, True]
+    issues = read_json(outcome.run_dir / "validation.json")["issues"]
+    assert "quote_not_found" not in {i["code"] for i in issues}
+    review = (outcome.run_dir / "review.md").read_text(encoding="utf-8")
+    assert "引用存在性" in review and "关闭了引用校验" not in review
+
+
+def test_quote_check_off_reports_zero_when_every_quote_matches(
+    tmp_path: Path, story_epub: Path, ch1_delta
+) -> None:
+    outcome = update_store(
+        tmp_path / "new",
+        story_epub,
+        delta_api(ch1_delta),
+        tmp_path / "off",
+        section="section-002",
+        check_quotes=False,
+    )
+    assert outcome.status == "committed"
+    assert "本次有 0 条对不上" in (outcome.run_dir / "review.md").read_text(encoding="utf-8")
+
+
+def test_quote_check_on_still_fails_a_new_section_of_a_store_that_had_it_off(
+    tmp_path: Path, story_epub: Path, ch1_delta, ch2_delta
+) -> None:
+    root = tmp_path / "new"
+    ch1_delta["new_records"]["names"][0]["evidence"][0]["quote"] = "invented"
+    update_store(
+        root,
+        story_epub,
+        delta_api(ch1_delta),
+        tmp_path / "off",
+        section="section-002",
+        check_quotes=False,
+    )
+    before = tree_hashes(root)
+
+    ch2_delta["new_records"]["names"][0]["evidence"][0]["quote"] = "invented"
+    outcome = update(root, story_epub, delta_api(ch2_delta), tmp_path / "on")
+    assert (outcome.status, outcome.exit_code) == ("validation_failed", 4)
+    assert tree_hashes(root) == before
+
+
+def test_quote_check_off_only_covers_quotes_not_found(
+    tmp_path: Path, story_epub: Path, ch1_delta
+) -> None:
+    root = tmp_path / "new"
+    ch1_delta["new_records"]["names"][0]["evidence"][0]["paragraph_id"] = "p9999"
+    outcome = update_store(
+        root,
+        story_epub,
+        delta_api(ch1_delta),
+        tmp_path / "off",
+        section="section-002",
+        check_quotes=False,
+    )
+    assert (outcome.status, outcome.exit_code) == ("validation_failed", 4)
+    assert not (root / "story_model.json").exists()
+
+
 def test_show_reads_only_committed_revisions(
     tmp_path: Path, store: Path, story_epub: Path, ch2_delta
 ) -> None:

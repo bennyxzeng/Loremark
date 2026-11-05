@@ -71,6 +71,7 @@ repository root.
 | `CHAPTER` / `SECTION` | which section to add. Both `None` = the next one. Only a new store needs one: its starting section |
 | `MODEL`, `EFFORT` | `Model.DEEPSEEK_FLASH` or `Model.GPT_6_1_TERRA`; reasoning effort such as `Effort.HIGH`, or `None` for the model's default |
 | `DRY_RUN` | `True` = only write what would be sent, no API call, store unchanged |
+| `CHECK_QUOTES` | `False` = a quote not found in its paragraph is a warning and the update still commits (see [Turning the quote check off](#turning-the-quote-check-off)) |
 | `RUN` | a run folder, for `Command.COMMIT` / `Command.VALIDATE` |
 | `REVISION`, `SHOW_JSON` | for `Command.SHOW`: an earlier revision (`None` = latest); `True` = full JSON instead of Markdown |
 
@@ -177,6 +178,9 @@ lists every problem at the top.
   ```
 
   `Command.VALIDATE` with the same `RUN` re-checks a run offline without committing it.
+
+  To skip the fixes, set `CHECK_QUOTES = False` and run the update again (see
+  [Turning the quote check off](#turning-the-quote-check-off)).
 - **Anything else** (wrong facts, API errors, `incomplete`): run the same update again.
 
 ### Results and troubleshooting
@@ -263,6 +267,7 @@ as `story-model ...`.
 | `--timeout` | none | Optional seconds per HTTP attempt. Without it, the client waits for the response indefinitely |
 | `--out` | `tools/story_model_lab/runs/<UTC time>-<random>` | Run directory; must not exist or must be empty |
 | `--dry-run` | off | Write the input, prompt, schema, and request; no key needed, nothing sent, store unchanged (or not created) |
+| `--no-quote-check` | off | A quote not found in its paragraph is a warning and the update still commits (see [Turning the quote check off](#turning-the-quote-check-off)) |
 
 The SDK retries network errors, 429, and 5xx at most twice (`max_retries=2`). There is no
 other retry: the tool never switches models, shortens the text, adds other sections, or asks
@@ -417,7 +422,8 @@ tools/story_model_lab/stores/<name>/
 Every command that reads a store checks it first: the latest file must equal its snapshot,
 every saved input must match its SHA-256, every revision must have its provenance manifest
 and every manifest must match, the parent chain of snapshots must be intact back to
-revision 1, and the model must pass full validation.
+revision 1, and the model must pass full validation (in a section with `quotes_checked:
+false`, a quote not found is only a warning).
 
 A successful `update` commits automatically: it writes the new input, provenance, and
 snapshot, then, holding the lock and after checking that `story_model.json` still has the
@@ -472,6 +478,27 @@ story-model commit --run tools/story_model_lab/runs/<update-run-id> \
   correction is listed in the model's `provenance.manual_corrections`, so `show` and
   `review.md` mark that revision as not the model's unmodified output.
 
+### Turning the quote check off
+
+The quote check is on by default. Turn it off with `CHECK_QUOTES = False` in
+`run_story_model.py`, or `--no-quote-check` on `update`. `run_story_model.py` in the repository
+currently sets it to `False`.
+
+- **It only covers `quote_not_found`:** a wrong paragraph ID, or quote text that differs from
+  the book. Other checks still fail the run: an unknown paragraph, an empty or too long
+  quote, or evidence from another section.
+- **Problems stay visible:** a quote not found is a warning in `validation.json` and
+  `review.md`. It does not block the commit, and it is not corrected.
+- **The store remembers it:** the section gets `processed_sections[].quotes_checked: false`,
+  and `run.json` records it too. `show` and `review.md` flag it, and later `show`, `update`,
+  `validate`, and `commit` commands do not need the switch.
+- **Turning it back on only affects later sections:** committed sections stay accepted, and
+  new sections are checked strictly again.
+- **It does not rescue a failed run:** the switch only applies to `update`, so run the update
+  again, or use [manual corrections](#committing-a-run-after-manual-corrections).
+
+With the check off, the model can keep wrong quotes, and the app shows them as they are.
+
 ## What an update run saves
 
 | File | Content |
@@ -502,8 +529,8 @@ applies the delta to the store.
 
 Automatic validation checks structure, not truth: schema (types, enums, no extra fields),
 IDs and references, evidence on every record with **exact** quotes (no fuzzy matching, at
-most 300 characters; `[start, end)` offsets in code points are computed locally), events in
-narrative order 1, 2, 3, ... within a section, and history. Empty results are allowed but
+most 300 characters; `[start, end)` offsets in code points are computed locally; the match
+itself [can be turned off](#turning-the-quote-check-off)), events in narrative order 1, 2, 3, ... within a section, and history. Empty results are allowed but
 flagged.
 
 **A matched quote only proves the quote exists in that paragraph. It does not prove the

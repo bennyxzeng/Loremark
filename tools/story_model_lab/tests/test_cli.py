@@ -57,6 +57,20 @@ def test_dry_run_of_a_new_store_needs_no_key(
     assert not store.exists()
 
 
+def test_no_quote_check_is_recorded_in_the_run(
+    tmp_path: Path, synthetic_epub: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    store, on, off = tmp_path / "store", tmp_path / "on", tmp_path / "off"
+    args = update_args(store, synthetic_epub, "--chapter", "3", "--dry-run")
+    assert main([*args, "--out", str(on)]) == 0
+    assert read_json(on / "run.json")["quotes_checked"] is True
+    assert "Quote check: off" not in capsys.readouterr().out
+
+    assert main([*args, "--no-quote-check", "--out", str(off)]) == 0
+    assert read_json(off / "run.json")["quotes_checked"] is False
+    assert "Quote check: off" in capsys.readouterr().out
+
+
 @pytest.mark.parametrize(
     ("provider", "variable"), [("openai", "OPENAI_API_KEY"), ("deepseek", "DEEPSEEK_API_KEY")]
 )

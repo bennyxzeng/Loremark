@@ -54,6 +54,7 @@ tools/story_model_lab/.venv/bin/python tools/story_model_lab/run_story_model.py
 | `CHAPTER` / `SECTION` | 要加入哪一节。都为 `None` 表示下一节；只有新 store 需要指定，作为起点 |
 | `MODEL`、`EFFORT` | `Model.DEEPSEEK_FLASH` 或 `Model.GPT_6_1_TERRA`；推理强度例如 `Effort.HIGH`，`None` 表示用模型默认值 |
 | `DRY_RUN` | `True` = 只写出将要发送的内容，不调用 API，store 不变 |
+| `CHECK_QUOTES` | `False` = 引用和所标段落对不上时只算警告，照常提交（见[关闭引用校验](#quote-check)） |
 | `RUN` | 某次运行的文件夹，给 `Command.COMMIT` / `Command.VALIDATE` 用 |
 | `REVISION`、`SHOW_JSON` | 给 `Command.SHOW` 用：查看更早的修订（`None` = 最新）；`True` = 输出完整 JSON 而不是 Markdown |
 
@@ -147,6 +148,8 @@ tools/story_model_lab/.venv/bin/python tools/story_model_lab/run_story_model.py 
   ```
 
   用同一个 `RUN` 设 `Command.VALIDATE`，可以离线复查这次运行，但不提交。
+
+  如果不想逐条修，也可以设 `CHECK_QUOTES = False` 后重新运行 update（见[关闭引用校验](#quote-check)）。
 - **其他问题**（事实错误、API 错误、`incomplete`）：重新运行同一次 update。
 
 ### 结果与常见问题
@@ -218,6 +221,7 @@ story-model update --store tools/story_model_lab/stores/86v1 \
 | `--timeout` | 无 | 每次 HTTP 尝试的超时秒数；未指定时无限等待 |
 | `--out` | `tools/story_model_lab/runs/<UTC时间>-<随机ID>` | 运行目录，必须不存在或为空 |
 | `--dry-run` | 关闭 | 保存输入、prompt、schema 和请求；不要求 key，不发送请求，store 不变（或不创建） |
+| `--no-quote-check` | 关闭 | 引用和所标段落对不上时只算警告，照常提交（见[关闭引用校验](#quote-check)） |
 
 SDK 对网络错误、429 和 5xx 最多重试两次。没有额外业务重试，不会自动换模型、缩短文本、增加其他节或再找模型修复结果。设置 timeout 后，超时请求可能被重试，也可能仍被 provider 计费。
 
@@ -302,7 +306,7 @@ tools/story_model_lab/stores/<name>/
   provenance/<update-run-id>/      增量、ID 映射、commit 信息和 manifest
 ```
 
-读取 store 时先验证：latest 与快照一致；输入哈希一致；每个修订都有自己的 provenance manifest，且所有 manifest 哈希一致；父链完整回到 revision 1；模型本身通过完整校验。
+读取 store 时先验证：latest 与快照一致；输入哈希一致；每个修订都有自己的 provenance manifest，且所有 manifest 哈希一致；父链完整回到 revision 1；模型本身通过完整校验（`quotes_checked` 为 `false` 的节，引用对不上只算警告）。
 
 成功 update 自动提交：保存输入、来源和快照，在锁内重新检查 base 哈希（新 store 则检查文件仍不存在）后，以 fsync + os.replace 原子替换最新文件。API 请求期间不持锁。别人已更新时返回 stale_base，不覆盖。replace 前失败保留旧版本（退出 2，commit_failed）；遗留但不在父链上的文件不算历史。replace 后报告失败仍算已提交，run.json 会明确记录。
 
@@ -330,6 +334,20 @@ story-model commit --run tools/story_model_lab/runs/<update-run-id> \
 - store 必须仍处于该 run 的 base 修订（对原本要创建 store 的 run：store 必须仍不存在），否则退出 5；这一节仍须是下一节。修正后重新完整校验，失败退出 4 且不提交。
 - 原始 delta.candidate.json 与 validation.json 保留，新增 delta.corrected.json、validation.corrected.json。store provenance 保存原增量、修正、修正后增量和原校验；模型的 `provenance.manual_corrections` 记录每项修正，show 和 review 会明确标注不是原样输出。
 
+<a id="quote-check"></a>
+
+### 关闭引用校验
+
+引用校验默认开启。可以在 `run_story_model.py` 里设 `CHECK_QUOTES = False`，或在命令行给 `update` 加 `--no-quote-check` 来关闭。仓库里的 `run_story_model.py` 目前设的是 `False`。
+
+- **只影响 `quote_not_found`：** 也就是段落号标错，或引用文字和原文不一致。段落不存在、引用为空或超长、引用了其他节等其他校验仍会失败。
+- **问题仍会显示：** 对不上的引用会以警告形式写入 `validation.json` 和 `review.md`，但不阻止提交，也不会被修正。
+- **由 store 记住：** 这一节的 `processed_sections[].quotes_checked` 记为 `false`，`run.json` 也会记录。`show` 和 `review.md` 会标注；后续的 `show`、`update`、`validate`、`commit` 不用再传这个开关。
+- **重新开启只影响之后的节：** 已提交的节继续被接受，新的节恢复严格校验。
+- **对已失败的运行不起作用：** 开关只在 `update` 时生效，已经失败的运行要重新跑 update，或者用[人工修正](#manual-corrections)。
+
+关闭后，模型里可能留下错误的引用，App 也会原样显示。
+
 ## 更新运行的产物
 
 | 文件 | 内容 |
@@ -353,7 +371,7 @@ run.json 记录 base_revision（新建 store 时为 `null`）、candidate/commit
 
 ## 如何判断结果
 
-自动校验检查结构而不是真实性：schema（类型、枚举、禁止额外字段）、ID 与引用、每条记录都有证据且 quote 是对应段落的**精确**连续子串（不做模糊匹配，最长 300 字符；`[start, end)` 位置由程序按 Unicode code point 计算）、每节内事件按 1、2、3… 叙述顺序，以及历史约束。空结果允许，但会提示。
+自动校验检查结构而不是真实性：schema（类型、枚举、禁止额外字段）、ID 与引用、每条记录都有证据且 quote 是对应段落的**精确**连续子串（不做模糊匹配，最长 300 字符；`[start, end)` 位置由程序按 Unicode code point 计算；对不上的检查可以[关闭](#quote-check)）、每节内事件按 1、2、3… 叙述顺序，以及历史约束。空结果允许，但会提示。
 
 **引用匹配仅证明这句话存在于该段，不证明它支持对应结论。** 通过校验不等于事实正确；用 `review.md` 和 `diff.md` 对照原文检查，结构化人工评审可用 `evaluation/rubric.md` 和 `evaluation/review_template.json`。
 

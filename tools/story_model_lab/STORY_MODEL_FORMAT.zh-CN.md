@@ -111,7 +111,7 @@ Git 中的示例 JSON 和修订快照可以直接阅读。运行 `show`、`updat
 | `scope` | `"cumulative"`，表示按已处理章节累计的知识。 |
 | `book` | `title` 和 `epub_sha256`：书名与原始 EPUB 文件的指纹。 |
 | `revision` | `number`、`id`、`created_at`、`source_run_id`、`parent_snapshot_path`、`parent_sha256`：当前提交及其上一份快照。首次修订的父快照字段为 `null`。 |
-| `processed_sections` | 各节的 `section_id`、阅读顺序 `section_order`、`chapter_number`、`title`、EPUB 位置 `href`/`fragment`、`text_sha256`、`extraction_version`、`paragraph_count`、保存的输入路径与哈希 `input_relative_path`/`input_file_sha256`，以及 `introduced_revision`。间章等非编号章节的 `chapter_number` 可以为 `null`。 |
+| `processed_sections` | 各节的 `section_id`、阅读顺序 `section_order`、`chapter_number`、`title`、EPUB 位置 `href`/`fragment`、`text_sha256`、`extraction_version`、`paragraph_count`、保存的输入路径与哈希 `input_relative_path`/`input_file_sha256`、`introduced_revision`，以及 `quotes_checked`（`false` 表示这一节提交时关闭了引用校验，引用可能对不上；旧修订里没有这个字段，等同于 `true`）。间章等非编号章节的 `chapter_number` 可以为 `null`。 |
 | `coverage` | `start_section_id` 和 `omitted_prefix_section_ids`：从哪一节开始处理、此前哪些节尚未处理。 |
 | `entities` | 人物、地点、组织的稳定 `id`、类别 `kind` 和首次引入的 `introduced_revision`。名称和具体事实另存于 `records`。 |
 | `records` | 七类知识记录：`names`、`aliases`、`attributes`、`relationships`、`events`、`uncertainties`、`identity_links`。旧记录保留，不被原地修改。 |

@@ -56,7 +56,7 @@ def input_relpath(chapter: ChapterInput) -> str:
 
 
 def section_source(
-    chapter: ChapterInput, *, section_order: int, revision: int
+    chapter: ChapterInput, *, section_order: int, revision: int, quotes_checked: bool = True
 ) -> tuple[SectionSource, str, bytes]:
     """The SectionSource of a processed section, with its input file path and bytes."""
     relpath = input_relpath(chapter)
@@ -74,6 +74,7 @@ def section_source(
         input_relative_path=relpath,
         input_file_sha256=sha256_bytes(data),
         introduced_revision=revision,
+        quotes_checked=quotes_checked,
     )
     return source, relpath, data
 
