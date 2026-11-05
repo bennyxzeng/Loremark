@@ -113,7 +113,7 @@ double? textProgressionOfBlock(
 }) {
   final XmlDocument document;
   try {
-    document = _parseXhtml(xhtml);
+    document = parseXhtml(xhtml);
   } on XmlException {
     return null;
   }
@@ -222,7 +222,7 @@ String _sectionText(EpubPackage package, String path) {
     final xhtml = _markup(package, path);
     if (xhtml == null) return '';
     try {
-      return _walkBody(_parseXhtml(xhtml)).text;
+      return _walkBody(parseXhtml(xhtml)).text;
     } on XmlException {
       return _stripTags(xhtml);
     }
@@ -281,7 +281,9 @@ const _paragraphBreaks = {
 /// Elements that start a new line, with no blank line.
 const _lineBreaks = {'br', 'dd', 'dt', 'li', 'tr'};
 
-XmlDocument _parseXhtml(String xhtml) => XmlDocument.parse(
+/// Parses XHTML the way every reader of EPUB markup in the app does, knowing
+/// HTML's named entities. Throws an [XmlException] if it is not well-formed.
+XmlDocument parseXhtml(String xhtml) => XmlDocument.parse(
   xhtml,
   entityMapping: const XmlDefaultEntityMapping.html5(),
 );

@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'book.dart';
 import 'epub_metadata.dart';
+import '../story_update/story_updater.dart';
 
 /// The reader's imported books, kept on the device.
 ///
@@ -115,6 +116,8 @@ class BookRepository {
       final file = File(path);
       if (await file.exists()) await file.delete();
     }
+    final storyModel = Directory(storyStorePath(root.path, book.id));
+    if (await storyModel.exists()) await storyModel.delete(recursive: true);
   }
 
   /// Queues a write, so two saves never share the temporary file. A failed

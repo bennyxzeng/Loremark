@@ -15,6 +15,7 @@ our living document (Process description → Test Plan & Bugs).
 | Acceptance tests | 20 force-quits, offline reading, no unexpected network traffic | `tool/acceptance/`, [acceptance.md](acceptance.md) | Emulator workflow |
 | Benchmarks | A 500,000-word book stays fast enough | `flutter test --tags benchmark`, [benchmarks.md](benchmarks.md) | No (manual) |
 | Real-book corpus | 50 public-domain EPUBs and 24 broken variants | `flutter test --tags corpus`, [corpus-testing.md](corpus-testing.md) | No (needs the books) |
+| Story Map updates | The Dart port matches the story model lab, and a failed update changes nothing | `flutter test test/story_update`, [story-update.md](story-update.md) | Yes |
 | Manual | Usability sessions with outside readers | Not run yet | No |
 
 Tests use `flutter_test`, the test framework that ships with Flutter. It runs unit and widget

@@ -1,0 +1,167 @@
+{
+  "sha256": "452d8183147c1d20a0d474b8d0c981556b2f1bdb4bfb7151c25729f413911317",
+  "sections": [
+    {
+      "section_id": "section-001",
+      "title": "Front Matter",
+      "chapter_number": null,
+      "href": "EPUB/section-001.xhtml",
+      "fragment": "section-001",
+      "text_sha256": "beb2014922a3636b8385acf84bb759cb829e21887f5e998ded1997891bc27691",
+      "paragraph_count": 31
+    },
+    {
+      "section_id": "section-002",
+      "title": "Epigraph",
+      "chapter_number": null,
+      "href": "EPUB/section-002.xhtml",
+      "fragment": "section-002",
+      "text_sha256": "fb3466593149577220de3024bb3788beee31828dc316ead2b9ef5239934dda45",
+      "paragraph_count": 2
+    },
+    {
+      "section_id": "section-003",
+      "title": "Coquelicots Blooming Across the Battlefield",
+      "chapter_number": null,
+      "href": "EPUB/section-003.xhtml",
+      "fragment": "section-003",
+      "text_sha256": "bd4982564fd05f8de16d394162801eab46d0454cf27ea89884a306e8b44d6a18",
+      "paragraph_count": 50
+    },
+    {
+      "section_id": "section-004",
+      "title": "Chapter 1: A Battlefield with Zero Casualties",
+      "chapter_number": 1,
+      "href": "EPUB/section-004.xhtml",
+      "fragment": "section-004",
+      "text_sha256": "d1053fa1bbdd5a1609a15112b64f9fa961aa5395f72a2d80bed92ade53f9d549",
+      "paragraph_count": 185
+    },
+    {
+      "section_id": "section-005",
+      "title": "Chapter 2: All Quiet on the Skeletal Front",
+      "chapter_number": 2,
+      "href": "EPUB/section-005.xhtml",
+      "fragment": "section-005",
+      "text_sha256": "1f5791967938e77aaa761f55dff0c8fdc4fc9a4416a45fc69d6e34fcb7bf122e",
+      "paragraph_count": 285
+    },
+    {
+      "section_id": "section-006",
+      "title": "Chapter 3: To Your Gallant Visage at the Underworld’s Edge",
+      "chapter_number": 3,
+      "href": "EPUB/section-006.xhtml",
+      "fragment": "section-006",
+      "text_sha256": "c088eb42012207fdb8aeba61fb9554b3a657ff3f7295e330b99233a165df927d",
+      "paragraph_count": 365
+    },
+    {
+      "section_id": "section-007",
+      "title": "Interlude: The Headless Knight",
+      "chapter_number": null,
+      "href": "EPUB/section-007.xhtml",
+      "fragment": "section-007",
+      "text_sha256": "3559c062ff57ab0be066b4e43a800b09b0f9a79acf5c8697c0728051a860584d",
+      "paragraph_count": 10
+    },
+    {
+      "section_id": "section-008",
+      "title": "Chapter 4: I Am Legion, for We Are Many",
+      "chapter_number": 4,
+      "href": "EPUB/section-008.xhtml",
+      "fragment": "section-008",
+      "text_sha256": "078e120fccc46e88093f4b4db1920f6b383515298884b678683a82733429f31f",
+      "paragraph_count": 237
+    },
+    {
+      "section_id": "section-009",
+      "title": "Interlude: The Headless Knight II",
+      "chapter_number": null,
+      "href": "EPUB/section-009.xhtml",
+      "fragment": "section-009",
+      "text_sha256": "de2c46631da040dd4e4cd238dccab7f3e1f2d46aa3aacc321b21aea7815e49e5",
+      "paragraph_count": 26
+    },
+    {
+      "section_id": "section-010",
+      "title": "Chapter 5: Fuckin’ Glory to the Spearhead Squadron",
+      "chapter_number": 5,
+      "href": "EPUB/section-010.xhtml",
+      "fragment": "section-010",
+      "text_sha256": "614ee8ab2de965264856897dfd2c31df72ec93a0bae90c4f4ec02a1b21e9dbb0",
+      "paragraph_count": 146
+    },
+    {
+      "section_id": "section-011",
+      "title": "Interlude: The Headless Knight III",
+      "chapter_number": null,
+      "href": "EPUB/section-011.xhtml",
+      "fragment": "section-011",
+      "text_sha256": "3d2242c06b263fd806cc85a827d84a6e700ea6fbdf1619aa478184245f185220",
+      "paragraph_count": 21
+    },
+    {
+      "section_id": "section-012",
+      "title": "Chapter 6: Fiat Justitia Ruat Caelum",
+      "chapter_number": 6,
+      "href": "EPUB/section-012.xhtml",
+      "fragment": "section-012",
+      "text_sha256": "2d969c9df72e7d2f433f679123ea08e3e6a9ea51318770a4029dfa388013e953",
+      "paragraph_count": 229
+    },
+    {
+      "section_id": "section-013",
+      "title": "Interlude: The Headless Knight IV",
+      "chapter_number": null,
+      "href": "EPUB/section-013.xhtml",
+      "fragment": "section-013",
+      "text_sha256": "c7dec28cf94b407db4db360ab430ad280e3aeaf40dad77e3e1b4ee0f68696f2b",
+      "paragraph_count": 26
+    },
+    {
+      "section_id": "section-014",
+      "title": "Chapter 7: Good-bye",
+      "chapter_number": 7,
+      "href": "EPUB/section-014.xhtml",
+      "fragment": "section-014",
+      "text_sha256": "a1a6d4714f04df6c9a8a8017db9b00c23d8f185c262b1929ffc7d68285d0ebf1",
+      "paragraph_count": 272
+    },
+    {
+      "section_id": "section-015",
+      "title": "Epilogue: The Bloodstained Queen’s Sojourn",
+      "chapter_number": null,
+      "href": "EPUB/section-015.xhtml",
+      "fragment": "section-015",
+      "text_sha256": "9f52eca148857cb1973b5c40b3d235a8c811648676bb7e7860245d6e18446afb",
+      "paragraph_count": 49
+    },
+    {
+      "section_id": "section-016",
+      "title": "Epilogue II: Reboot",
+      "chapter_number": null,
+      "href": "EPUB/section-016.xhtml",
+      "fragment": "section-016",
+      "text_sha256": "ada7c11e18e438913da5982e8d2cd1ad01660ccbd6876ca1d32a7d5ecd035870",
+      "paragraph_count": 13
+    },
+    {
+      "section_id": "section-017",
+      "title": "Afterword",
+      "chapter_number": null,
+      "href": "EPUB/section-017.xhtml",
+      "fragment": "section-017",
+      "text_sha256": "d8d08ae413b6f5c28d4526f2bc5cea661bf9df178680e575fd0b783272788ee7",
+      "paragraph_count": 22
+    },
+    {
+      "section_id": "section-018",
+      "title": "Back Matter",
+      "chapter_number": null,
+      "href": "EPUB/section-018.xhtml",
+      "fragment": "section-018",
+      "text_sha256": "6bbc788ae2ebe6af569d75b4a5917da5cf1602be662551804c3b7e90d2530d4b",
+      "paragraph_count": 9
+    }
+  ]
+}

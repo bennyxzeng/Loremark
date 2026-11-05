@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../story_update/story_model_choice.dart';
 import '../theme/decor.dart';
 import '../theme/loremark_theme.dart';
 import 'ai_settings.dart';
@@ -128,6 +129,13 @@ class SettingsScreen extends StatelessWidget {
                         ),
                       ),
                     ),
+                    const SizedBox(height: 26),
+                    Text(
+                      'STORY MAP',
+                      style: kicker(color: LoremarkColors.muted),
+                    ),
+                    const SizedBox(height: 8),
+                    _StoryMapSettings(settings: settings),
                   ],
                 ),
               ),
@@ -212,6 +220,112 @@ class _Rule extends StatelessWidget {
           colors: fadeTowardsStart ? [faded, solid] : [solid, faded],
         ),
       ),
+    );
+  }
+}
+
+/// What Story Map updates use: the model, how hard it thinks, and how strictly
+/// its answers are checked.
+class _StoryMapSettings extends StatelessWidget {
+  const _StoryMapSettings({required this.settings});
+
+  final AiSettings settings;
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = settings.credentials?.provider;
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // The choices depend on the provider, so they wait for a key.
+            if (provider != null) ...[
+              _Choice<StoryModelChoice>(
+                label: 'Model',
+                value: settings.storyModel,
+                options: StoryModelChoice.forProvider(provider.name),
+                optionLabel: (model) => model.label,
+                onChanged: settings.setStoryModel,
+              ),
+              _Choice<StoryEffort>(
+                label: 'Reasoning effort',
+                value: settings.storyEffort,
+                options: settings.storyModel.efforts,
+                optionLabel: (effort) => effort.label,
+                onChanged: settings.setStoryEffort,
+              ),
+              const Padding(
+                padding: EdgeInsets.only(top: 2, bottom: 6),
+                child: Text(
+                  'Higher effort can give better results, but takes longer '
+                  'and costs more.',
+                  style: TextStyle(fontSize: 12, color: LoremarkColors.muted),
+                ),
+              ),
+            ],
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Strict quote check'),
+              subtitle: const Text(
+                'Reject an update if a quote can’t be found in the book. '
+                'A rejected update still costs you. When off, those quotes '
+                'are only flagged.',
+              ),
+              value: settings.checkStoryQuotes,
+              onChanged: settings.setCheckStoryQuotes,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Choice<T> extends StatelessWidget {
+  const _Choice({
+    required this.label,
+    required this.value,
+    required this.options,
+    required this.optionLabel,
+    required this.onChanged,
+  });
+
+  final String label;
+  final T value;
+  final List<T> options;
+  final String Function(T) optionLabel;
+  final Future<void> Function(T) onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(child: Text(label)),
+        const SizedBox(width: 8),
+        Flexible(
+          child: DropdownButton<T>(
+            value: value,
+            isExpanded: true,
+            underline: const SizedBox.shrink(),
+            items: [
+              for (final option in options)
+                DropdownMenuItem(
+                  value: option,
+                  child: Text(
+                    optionLabel(option),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+            ],
+            onChanged: (picked) {
+              if (picked != null) onChanged(picked);
+            },
+          ),
+        ),
+      ],
     );
   }
 }

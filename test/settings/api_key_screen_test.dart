@@ -7,6 +7,7 @@ import 'package:loremark/main.dart';
 import 'package:loremark/settings/ai_settings.dart';
 import 'package:loremark/settings/connection_status.dart';
 import 'package:loremark/settings/settings_screen.dart';
+import 'package:loremark/story_update/story_model_choice.dart';
 
 void main() {
   late MemorySecretStore store;
@@ -191,5 +192,144 @@ void main() {
     expect(reopened.onboardingSeen, isTrue);
     expect(reopened.credentials?.provider, AiProvider.openai);
     expect(reopened.credentials?.apiKey, 'sk-kept');
+  });
+
+  group('Story Map settings', () {
+    Future<AiSettings> pumpSettings(
+      WidgetTester tester, {
+      String provider = 'openai',
+    }) async {
+      tester.view.physicalSize = const Size(1200, 5400);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+      store = MemorySecretStore({
+        'ai_onboarding_seen': 'true',
+        'ai_provider': provider,
+        'ai_api_key': 'sk-test',
+      });
+      final settings = AiSettings(store);
+      await settings.load();
+      await tester.pumpWidget(
+        AiSettingsScope(
+          settings: settings,
+          child: const MaterialApp(home: SettingsScreen()),
+        ),
+      );
+      return settings;
+    }
+
+    Future<void> pick(WidgetTester tester, String from, String to) async {
+      await tester.tap(find.text(from));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(to).last);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('OpenAI offers Terra, by default, and Sol', (tester) async {
+      final settings = await pumpSettings(tester);
+      expect(find.text('GPT-6.1 Terra'), findsOne);
+      await pick(tester, 'GPT-6.1 Terra', 'GPT-6.1 Sol');
+      expect(settings.storyModel, StoryModelChoice.gpt61Sol);
+      expect(store.values['story_model'], 'gpt-6.1-sol');
+    });
+
+    testWidgets('DeepSeek offers its own model', (tester) async {
+      await pumpSettings(tester, provider: 'deepseek');
+      expect(find.text('DeepSeek Flash'), findsOne);
+      expect(find.text('GPT-6.1 Terra'), findsNothing);
+    });
+
+    testWidgets('the reader picks the reasoning effort, high by default', (
+      tester,
+    ) async {
+      final settings = await pumpSettings(tester);
+      expect(settings.storyEffort, StoryEffort.high);
+      await pick(tester, 'High', 'Max');
+      expect(settings.storyEffort, StoryEffort.max);
+      expect(store.values['story_effort'], 'max');
+    });
+
+    testWidgets('efforts follow the model', (tester) async {
+      await pumpSettings(tester, provider: 'deepseek');
+      await tester.tap(find.text('High'));
+      await tester.pumpAndSettle();
+      expect(find.text('Medium'), findsNothing);
+      expect(find.text('Extra high'), findsNothing);
+      expect(find.text('None'), findsWidgets);
+    });
+
+    testWidgets('an effort the new model doesn\'t take falls back', (
+      tester,
+    ) async {
+      final settings = await pumpSettings(tester);
+      await pick(tester, 'High', 'None');
+      expect(settings.storyEffort, StoryEffort.none);
+      await pick(tester, 'GPT-6.1 Terra', 'GPT-6.1 Sol');
+      expect(settings.storyEffort, StoryEffort.high);
+    });
+
+    testWidgets('changing provider falls back to its default model', (
+      tester,
+    ) async {
+      final settings = await pumpSettings(tester);
+      await settings.setStoryModel(StoryModelChoice.gpt61Sol);
+      await settings.save(
+        const AiCredentials(provider: AiProvider.deepseek, apiKey: 'sk-new'),
+      );
+      expect(settings.storyModel, StoryModelChoice.deepseekFlash);
+    });
+
+    testWidgets('the quote check is off until turned on', (tester) async {
+      final settings = await pumpSettings(tester);
+      expect(settings.checkStoryQuotes, isFalse);
+      await tester.tap(find.text('Strict quote check'));
+      await tester.pumpAndSettle();
+      expect(settings.checkStoryQuotes, isTrue);
+      expect(store.values['story_check_quotes'], 'true');
+
+      final reloaded = AiSettings(store);
+      await reloaded.load();
+      expect(reloaded.checkStoryQuotes, isTrue);
+    });
+
+    testWidgets('without a key, only the quote check shows', (tester) async {
+      tester.view.physicalSize = const Size(1200, 5400);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+      final settings = AiSettings(store);
+      await settings.load();
+      await tester.pumpWidget(
+        AiSettingsScope(
+          settings: settings,
+          child: const MaterialApp(home: SettingsScreen()),
+        ),
+      );
+      expect(find.text('Strict quote check'), findsOne);
+      expect(find.text('Reasoning effort'), findsNothing);
+    });
+
+    testWidgets('fits a small phone', (tester) async {
+      await pumpSettings(tester);
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1;
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('Strict quote check'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(tester.takeException(), isNull);
+      expect(find.text('Reasoning effort'), findsOne);
+    });
+
+    testWidgets('removing the key keeps the choices', (tester) async {
+      final settings = await pumpSettings(tester);
+      await settings.setStoryEffort(StoryEffort.low);
+      await settings.remove();
+      await settings.save(
+        const AiCredentials(provider: AiProvider.openai, apiKey: 'sk-new'),
+      );
+      expect(settings.storyEffort, StoryEffort.low);
+    });
   });
 }

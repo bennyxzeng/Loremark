@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loremark/library/book_repository.dart';
+import 'package:loremark/story_update/story_updater.dart';
 
 import 'test_epub.dart';
 
@@ -77,6 +78,10 @@ void main() {
     final source = await writeFile('harbor.epub', buildEpub());
     final (:book, isNew: _) = await repository.importEpub(source);
     await repository.markOpened(book);
+    final storyModel = File(
+      '${storyStorePath(repository.root.path, book.id)}/story_model.json',
+    );
+    await storyModel.create(recursive: true);
 
     await repository.remove(book);
 
@@ -84,6 +89,7 @@ void main() {
     expect(repository.lastOpened, isNull);
     expect(await File(book.epubPath).exists(), isFalse);
     expect(await File(book.coverPath!).exists(), isFalse);
+    expect(await storyModel.parent.exists(), isFalse);
   });
 
   test('rejects a file that is not an EPUB', () async {

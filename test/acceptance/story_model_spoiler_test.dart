@@ -8,7 +8,7 @@ import 'package:loremark/story_model/story_snapshot.dart';
 import 'synthetic_story_model.dart';
 
 // Spoiler audit for the story model (spec: "nothing past the cutoff is
-// retrieved or shown"). For every section of the bundled demo model and of
+// retrieved or shown"). For every section of a real model and of
 // seeded synthetic models, it builds the snapshot a reader at that section
 // sees and checks, through `StorySnapshot`'s public API only, that:
 //
@@ -25,9 +25,9 @@ import 'synthetic_story_model.dart';
 // is a second opinion on `StorySnapshot`, not a copy of its code.
 
 void main() {
-  group('bundled demo model', () {
+  group('real model', () {
     final model = StoryModel.fromJson(
-      jsonDecode(File('assets/story_models/86v1.json').readAsStringSync())
+      jsonDecode(File('test/fixtures/86v1_story_model.json').readAsStringSync())
           as Map<String, dynamic>,
     );
 

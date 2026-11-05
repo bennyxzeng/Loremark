@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../story_update/story_model_choice.dart';
+
 /// The AI providers Loremark can call with the reader's own API key.
 enum AiProvider {
   openai(
@@ -99,6 +101,9 @@ class AiSettings extends ChangeNotifier {
   static const _providerKey = 'ai_provider';
   static const _apiKeyKey = 'ai_api_key';
   static const _onboardedKey = 'ai_onboarding_seen';
+  static const _storyModelKey = 'story_model';
+  static const _storyEffortKey = 'story_effort';
+  static const _storyQuotesKey = 'story_check_quotes';
 
   /// Settings kept in the system keychain.
   static Future<AiSettings> open() async {
@@ -114,6 +119,9 @@ class AiSettings extends ChangeNotifier {
 
   AiCredentials? _credentials;
   bool _onboardingSeen = false;
+  String? _storyModelId;
+  String? _storyEffortName;
+  bool _checkStoryQuotes = false;
 
   AiCredentials? get credentials => _credentials;
   bool get hasKey => _credentials != null;
@@ -121,8 +129,26 @@ class AiSettings extends ChangeNotifier {
   /// Whether the first-run API key screen was answered, by a key or a skip.
   bool get onboardingSeen => _onboardingSeen;
 
+  /// The model Story Map updates use: the reader's choice if the current
+  /// provider has it, or else the provider's default.
+  StoryModelChoice get storyModel => StoryModelChoice.resolve(
+    (_credentials?.provider ?? AiProvider.openai).name,
+    _storyModelId,
+  );
+
+  /// The reasoning effort for [storyModel]: the reader's choice if the model
+  /// accepts it, or else the default.
+  StoryEffort get storyEffort => storyModel.resolveEffort(_storyEffortName);
+
+  /// Whether a quote missing from its paragraph fails a Story Map update. Off,
+  /// it is only flagged, since a rejected update has already been paid for.
+  bool get checkStoryQuotes => _checkStoryQuotes;
+
   Future<void> load() async {
     _onboardingSeen = await _store.read(_onboardedKey) == 'true';
+    _storyModelId = await _store.read(_storyModelKey);
+    _storyEffortName = await _store.read(_storyEffortKey);
+    _checkStoryQuotes = await _store.read(_storyQuotesKey) == 'true';
     final providerName = await _store.read(_providerKey);
     final apiKey = await _store.read(_apiKeyKey);
     final provider = AiProvider.values
@@ -146,6 +172,24 @@ class AiSettings extends ChangeNotifier {
     await _store.delete(_providerKey);
     await _store.delete(_apiKeyKey);
     _credentials = null;
+    notifyListeners();
+  }
+
+  Future<void> setStoryModel(StoryModelChoice model) async {
+    await _store.write(_storyModelKey, model.id);
+    _storyModelId = model.id;
+    notifyListeners();
+  }
+
+  Future<void> setStoryEffort(StoryEffort effort) async {
+    await _store.write(_storyEffortKey, effort.name);
+    _storyEffortName = effort.name;
+    notifyListeners();
+  }
+
+  Future<void> setCheckStoryQuotes(bool check) async {
+    await _store.write(_storyQuotesKey, '$check');
+    _checkStoryQuotes = check;
     notifyListeners();
   }
 

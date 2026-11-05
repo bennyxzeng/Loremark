@@ -238,8 +238,8 @@ void main() {
     expect(find.text('Ask needs an API key'), findsNothing);
 
     await openTab(tester, 'Story Map');
-    await waitFor(tester, find.textContaining('Known by the end of'));
-    expect(find.byType(Slider), findsOne);
+    await waitFor(tester, find.text('No Story Map yet'));
+    expect(find.text('Update'), findsOne);
     expect(find.text('Story Map needs an API key'), findsNothing);
   });
 
@@ -257,7 +257,7 @@ void main() {
     expect(find.text('Ask needs a connection'), findsOne);
 
     await openTab(tester, 'Story Map');
-    await waitFor(tester, find.textContaining('Known by the end of'));
+    await waitFor(tester, find.textContaining('You’re offline. Updating'));
     expect(find.text('Story Map needs a connection'), findsNothing);
 
     connection.isOnline = true;

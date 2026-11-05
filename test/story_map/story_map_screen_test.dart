@@ -529,4 +529,198 @@ void main() {
       expect((Offset.zero & first.size).contains(position), isTrue);
     }
   });
+
+  group('past where the reader has read', () {
+    final latest = find.text('Known by the end of Chapter 2: The Letter');
+    final earliest = find.textContaining('Known by the end of Chapter 1');
+    final warning = find.text('Past where you’ve read');
+
+    Future<void> pumpAt(WidgetTester tester, int finished) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StoryMapScreen(
+              model: storyModelFixture(),
+              finishedSections: finished,
+            ),
+          ),
+        ),
+      );
+    }
+
+    Future<void> slideToEnd(WidgetTester tester) async {
+      await tester.drag(find.byType(Slider), const Offset(1000, 0));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('starts at the last section they finished', (tester) async {
+      await pumpAt(tester, 1);
+      expect(earliest, findsOne);
+      expect(latest, findsNothing);
+    });
+
+    testWidgets('sliding past it shows nothing until they let go', (
+      tester,
+    ) async {
+      await pumpAt(tester, 1);
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byType(Slider)),
+      );
+      await gesture.moveBy(const Offset(1000, 0));
+      await tester.pump();
+      expect(tester.widget<Slider>(find.byType(Slider)).value, 1);
+      expect(earliest, findsOne, reason: 'still the finished section');
+      expect(latest, findsNothing);
+      expect(warning, findsNothing);
+
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(warning, findsOne);
+      expect(latest, findsNothing, reason: 'not behind the dialog either');
+    });
+
+    testWidgets('confirming shows it', (tester) async {
+      await pumpAt(tester, 1);
+      await slideToEnd(tester);
+      expect(find.textContaining('may spoil the story'), findsOne);
+      await tester.tap(find.text('Show anyway'));
+      await tester.pumpAndSettle();
+      expect(latest, findsOne);
+    });
+
+    testWidgets('cancelling goes back', (tester) async {
+      await pumpAt(tester, 1);
+      await slideToEnd(tester);
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(earliest, findsOne);
+      expect(tester.widget<Slider>(find.byType(Slider)).value, 0);
+    });
+
+    testWidgets('confirmed once, it doesn\'t ask again', (tester) async {
+      await pumpAt(tester, 1);
+      await slideToEnd(tester);
+      await tester.tap(find.text('Show anyway'));
+      await tester.pumpAndSettle();
+
+      await slideToFirstChapter(tester);
+      expect(earliest, findsOne);
+      await slideToEnd(tester);
+      expect(warning, findsNothing);
+      expect(latest, findsOne);
+    });
+
+    testWidgets('sections they finished never ask', (tester) async {
+      await pumpAt(tester, 2);
+      expect(latest, findsOne);
+      await slideToFirstChapter(tester);
+      await slideToEnd(tester);
+      expect(warning, findsNothing);
+    });
+
+    testWidgets('with nothing finished, offers to show the first section', (
+      tester,
+    ) async {
+      await pumpAt(tester, 0);
+      expect(find.textContaining('Known by the end'), findsNothing);
+      expect(find.byType(CharacterGraphView), findsNothing);
+
+      await tester.tap(find.textContaining('anyway'));
+      await tester.pumpAndSettle();
+      expect(warning, findsOne);
+      await tester.tap(find.text('Show anyway'));
+      await tester.pumpAndSettle();
+      expect(earliest, findsOne);
+      expect(find.byType(CharacterGraphView), findsOne);
+    });
+
+    testWidgets('with nothing finished, cancelling keeps it hidden', (
+      tester,
+    ) async {
+      await pumpAt(tester, 0);
+      await tester.tap(find.textContaining('anyway'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Known by the end'), findsNothing);
+    });
+
+    testWidgets('follows the reader reading on', (tester) async {
+      await pumpAt(tester, 1);
+      expect(earliest, findsOne);
+      await pumpAt(tester, 2);
+      expect(latest, findsOne);
+    });
+
+    testWidgets('turning back to reread doesn\'t ask again', (tester) async {
+      await pumpAt(tester, 2);
+      await pumpAt(tester, 1);
+      expect(latest, findsOne);
+      await slideToFirstChapter(tester);
+      await slideToEnd(tester);
+      expect(warning, findsNothing);
+    });
+
+    Future<void> pumpGrowing(
+      WidgetTester tester, {
+      required bool complete,
+      required int? finished,
+    }) async {
+      final json = storyModelFixtureJson();
+      if (!complete) {
+        (json['processed_sections'] as List).removeWhere(
+          (section) => (section as Map)['section_id'] == 's2',
+        );
+        final records = json['records'] as Map;
+        for (final list in records.values) {
+          (list as List).removeWhere(
+            (record) => (record as Map)['learned_in_section_id'] == 's2',
+          );
+        }
+        json['transitions'] = <Object>[];
+      }
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StoryMapScreen(
+              model: StoryModel.fromJson(json),
+              finishedSections: finished,
+            ),
+          ),
+        ),
+      );
+    }
+
+    testWidgets('a section added past the reader doesn\'t show by itself', (
+      tester,
+    ) async {
+      await pumpGrowing(tester, complete: false, finished: 1);
+      expect(earliest, findsOne);
+      await pumpGrowing(tester, complete: true, finished: 1);
+      expect(earliest, findsOne);
+      expect(latest, findsNothing);
+      await slideToEnd(tester);
+      expect(warning, findsOne);
+    });
+
+    testWidgets('a section added that they have read does', (tester) async {
+      await pumpGrowing(tester, complete: false, finished: 2);
+      expect(earliest, findsOne);
+      await pumpGrowing(tester, complete: true, finished: 2);
+      expect(latest, findsOne);
+    });
+  });
+
+  test('a section remembers whether its quotes were checked', () {
+    StorySection parse(Map<String, dynamic> extra) => StorySection.fromJson({
+      'section_id': 's',
+      'section_order': 1,
+      'chapter_number': null,
+      'title': 'S',
+      ...extra,
+    });
+    expect(parse(const {}).quotesChecked, isTrue);
+    expect(parse(const {'quotes_checked': false}).quotesChecked, isFalse);
+    expect(parse(const {'href': 'a.xhtml'}).href, 'a.xhtml');
+  });
 }
