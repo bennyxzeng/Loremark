@@ -16,6 +16,8 @@
   &nbsp; · &nbsp;
   <a href="#how-it-works">How it works</a>
   &nbsp; · &nbsp;
+  <a href="#the-story-model">The story model</a>
+  &nbsp; · &nbsp;
   <a href="#the-team">Team</a>
 </p>
 
@@ -92,7 +94,7 @@ flowchart LR
 | **Book rendering** | Readium, through the [`flutter_readium`](https://pub.dev/packages/flutter_readium) 0.8.0 plugin. |
 | **On-device storage** | JSON files in the app's private folder: the library, reading positions, each book's notes, and search indexes. |
 | **AI provider** | OpenAI or DeepSeek, called straight from the app with the reader's own key. The key is kept with `flutter_secure_storage`. There is no Loremark server. |
-| **Story model** | Versioned JSON of characters, relationships and events, each linked to the chapter it comes from. The app shows the snapshot for the chosen chapter. |
+| **[Story model](#the-story-model)** | Versioned JSON of characters, relationships and events, each linked to the chapter it comes from. The app shows the snapshot for the chosen chapter. |
 | **Connectivity** | `connectivity_plus` drives the offline banner and locks features that need the network. |
 
 ### Spoiler and privacy rules
@@ -110,7 +112,7 @@ flowchart LR
 - Answers in the Ask tab, using only the chapters you have read (use case 6).
 - A recap when you come back to a book (use case 1).
 - A theory tracker that checks your guesses as the story reveals more (use case 2).
-- A Story Map that stops at your page, and character cards opened by tapping a name in the reader.
+- Character cards opened by tapping a name in the reader.
 
 **Stretch goals:** confusion detection that notices rereading and stalls and offers a nudge (in progress), an AI-generated map of the story's world, and, if time allows, training our own model.
 
@@ -155,6 +157,53 @@ flutter run
 Then follow the [walkthrough](#walkthrough-one-use-case-through-every-part-of-loremark). Any DRM-free EPUB works for reading and notes, for example one from [Project Gutenberg](https://www.gutenberg.org/). iOS builds from the same code and needs iOS 15 or later; so far we have tested on Android. See [docs/epub-reader.md](docs/epub-reader.md) for how the reader works and for Mac and iOS steps.
 
 Have feedback? [Open an issue](https://github.com/bennyxzeng/Loremark/issues) with the reading scenario, the chapter you were on, and what you expected Loremark to do. Clearly label any spoilers in examples.
+
+## The story model
+
+![The story model at a glance: entities, seven kinds of claims, evidence, two labels, and supersede/retract/resolve as the book goes on, all with Chapters 1–2 of 86 as the example](docs/assets/story-model-at-a-glance.svg)
+
+**In one sentence:** a story model records what a reader knows after a given section. It is not a whole-book encyclopedia: after Chapter 2 it holds only what Chapters 1–2 say, and nothing from later on shows up early.
+
+**① Entities and claims.** An entity is a character, location, or organization, and by itself it is only an ID and a kind (Shin is `c006`). Everything we know is split into separate claims that point to entities by ID. There are seven kinds: names, aliases, attributes, relationships, events, questions (uncertainties), and identity links. Small, separate claims can each carry their own evidence and each be overturned by a later section without touching the rest.
+
+**Evidence.** Every claim cites the text: which section, which paragraph, and an exact quote. The tool checks that the quote really is in that paragraph. That only proves the words are there, not that they support the claim; whether a claim is right still needs a person to read the passage.
+
+**② Two labels.** Relationships and events carry both labels; attributes and identity links carry only the first; names, aliases, and questions carry neither. The two labels are independent and combine freely.
+
+| Question | Label | Meaning | Example from 86 |
+| --- | --- | --- | --- |
+| How do we know? | `explicit` | the narration says it directly | Shin is the Spearhead squadron’s captain |
+| | `reported` | a character or in-world source says it; it may be false, and the speaker is recorded | Karlstahl says Handlers call Shin the Reaper and that he breaks his Handlers |
+| | `inferred` | not said outright, but it follows from the text | Annette is an Alba, from “her short hair was an Alba’s silver” |
+| When does it hold? | `current` | the present story | Lena is appointed Handler of the Spearhead squadron |
+| | `past` | earlier: memory, flashback, backstory | Nine years earlier, the Empire of Giad started the war with the Legion |
+| | `future` | planned, predicted, expected | The Republic expects every Legion unit to shut down in two years (illustration) |
+| | `hypothetical` | imagined: “if…” | Raiden thinks that, born in the age of knights, Shin would be the hero of a myth (illustration) |
+| | `unknown` | the text does not say when | does not occur in these chapters |
+
+The two rows marked “illustration” quote sentences from these chapters, but the current model has no such record. There is no `implicit` label: something the text does not say outright but implies is `inferred`.
+
+**③ Reading on, section by section.** Every processed section creates a new revision. A revision number counts processed sections, not chapters, because prologues and interludes are sections too. Old claims are never deleted; when a later section changes what we know, one of three actions makes an old claim inactive:
+
+- **supersede**: a new claim replaces an older one about the same thing. In Chapter 2, Undertaker’s real name turns out to be Shinei Nouzen, and his age goes from “a boy roughly Lena’s age” to “about to turn sixteen”.
+- **retract**: a later section shows an old claim was wrong; it is withdrawn with no replacement.
+- **resolve**: an open question gets its answer.
+
+Because old claims stay, the state after any chapter can be rebuilt. That is how the app switches chapters: at Chapter 1 Shin is Undertaker, at Chapter 2 he is Shinei Nouzen, and Raiden, who first appears in Chapter 2, is not shown at Chapter 1.
+
+**Where the diagram’s terms live in the file:**
+
+| In the diagram | In `story_model.json` |
+| --- | --- |
+| Entities | `entities` |
+| Seven kinds of claims | `names`, `aliases`, `attributes`, `relationships`, `events`, `uncertainties`, `identity_links` under `records` |
+| Evidence | each record’s `evidence` |
+| Two labels | `assertion` and `temporal_context` in each record’s `payload` |
+| supersede / retract / resolve | `transitions` |
+| Claims active now | `current.active_record_ids` |
+| How far the model has read | `processed_sections`, `revision` |
+
+For every field and label in detail, see the [field-by-field reference](docs/story-model-format.md).
 
 ## Meet your reading companion
 
