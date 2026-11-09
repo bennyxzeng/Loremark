@@ -336,3 +336,13 @@ TheoryStatus _ownStatus(TheoryState theory) {
   }
   return TheoryStatus.partiallyCorrect;
 }
+
+/// This shortens a theory's text so it fits on one line, like in the "Builds on"
+/// picker or a banner. Line breaks become spaces.
+/// Ex. a 90-letter theory becomes its first 40 letters and an ellipsis.
+String shortenTheoryText(String text, [int maxLength = 40]) {
+  final oneLine = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+  return oneLine.length <= maxLength
+      ? oneLine
+      : '${oneLine.substring(0, maxLength)}…';
+}

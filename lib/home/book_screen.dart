@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../library/book.dart';
 import '../notes/annotation_service.dart';
+import '../notes/note_list.dart';
 import '../reader/readium_reader_service.dart';
 import '../settings/ai_lock.dart';
 import '../search/search_index_store.dart';
@@ -30,6 +31,7 @@ class BookScreen extends StatefulWidget {
 }
 
 class _BookScreenState extends State<BookScreen> {
+  static const _notesTab = 2;
   static const _storyMapTab = 3;
 
   int _selectedTab = 0;
@@ -44,6 +46,22 @@ class _BookScreenState extends State<BookScreen> {
 
   /// Sends the Read tab to a note tapped in the Notes tab.
   final _noteJumps = NoteJumpController();
+
+  /// Scrolls the Notes tab to one note. [showNoteInNotesTab] uses it.
+  final _noteFocus = NoteFocusController();
+
+  /// Opens the Notes tab with the note of the given id scrolled to and
+  /// briefly outlined. The theory banner uses this to show a theory.
+  void showNoteInNotesTab(String noteId) {
+    _selectTab(_notesTab);
+    _noteFocus.focus(noteId);
+  }
+
+  @override
+  void dispose() {
+    _noteFocus.dispose();
+    super.dispose();
+  }
 
   void _selectTab(int index) {
     setState(() {
@@ -86,6 +104,7 @@ class _BookScreenState extends State<BookScreen> {
                       // Tapping a note goes back to the Read tab, at its passage.
                       NotesScreen(
                         notes: _notes,
+                        focusController: _noteFocus,
                         onOpenNote: (note) {
                           _selectTab(0);
                           unawaited(_noteJumps.show(note));

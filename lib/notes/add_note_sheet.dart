@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'highlight_colors.dart';
 import 'note.dart';
+import 'theory.dart';
 
 /// This class is what the reader chose in the note sheet: save the note
 /// ([AddNoteResult]) or remove it ([RemoveNoteResult]).
@@ -17,7 +18,19 @@ final class AddNoteResult extends NoteSheetResult {
   /// This is the highlight color the reader picked.
   final HighlightColor color;
 
-  const AddNoteResult(this.body, this.color);
+  /// This is whether the reader saved it as a personal note or as a theory.
+  final NoteKind kind;
+
+  /// This is the older theory a theory builds on, or null for none.
+  /// It is always null for a personal note.
+  final String? dependsOnId;
+
+  const AddNoteResult(
+    this.body,
+    this.color, {
+    this.kind = NoteKind.personalNote,
+    this.dependsOnId,
+  });
 }
 
 /// This class means the reader tapped the remove button to remove the note
@@ -33,16 +46,26 @@ final class RemoveNoteResult extends NoteSheetResult {
 /// - initialBody: The text already in the note when editing. (Optional)
 /// - initialColor: The color already picked when editing. (Optional)
 /// - title: The title of the sheet. (Ex. 'Add note' or 'Edit note')
+/// - initialKind: Whether the note starts as a personal note or a theory.
+///   (Optional, personal note by default)
+/// - initialDependsOnId: The older theory the note already builds on when
+///   editing. (Optional)
+/// - olderTheories: The theories the note could build on, shown in the
+///   "Builds on" picker when Theory is chosen. The picker is left out when
+///   there are none. (Optional)
 /// - removeLabel: The label of a button next to "Save note" that removes the
 ///   note being edited. No button is shown when it is null, as when adding a
 ///   new note. (Optional) (Ex. 'Remove highlight' or 'Delete note')
-/// Returns: The typed note and color, a [RemoveNoteResult] if the reader tapped
+/// Returns: The typed note, color, and kind, a [RemoveNoteResult] if the reader tapped
 /// the remove button, or null if the reader closed the sheet.
 Future<NoteSheetResult?> showAddNoteSheet(
   BuildContext context, {
   required String selectedText,
   String initialBody = '',
   HighlightColor initialColor = HighlightColor.yellow,
+  NoteKind initialKind = NoteKind.personalNote,
+  String? initialDependsOnId,
+  List<Note> olderTheories = const [],
   String title = 'Add note',
   String? removeLabel,
 }) {
@@ -54,6 +77,9 @@ Future<NoteSheetResult?> showAddNoteSheet(
       selectedText: selectedText,
       initialBody: initialBody,
       initialColor: initialColor,
+      initialKind: initialKind,
+      initialDependsOnId: initialDependsOnId,
+      olderTheories: olderTheories,
       title: title,
       removeLabel: removeLabel,
     ),
@@ -64,6 +90,9 @@ class _AddNoteSheet extends StatefulWidget {
   final String selectedText;
   final String initialBody;
   final HighlightColor initialColor;
+  final NoteKind initialKind;
+  final String? initialDependsOnId;
+  final List<Note> olderTheories;
   final String title;
   final String? removeLabel;
 
@@ -71,6 +100,9 @@ class _AddNoteSheet extends StatefulWidget {
     required this.selectedText,
     required this.initialBody,
     required this.initialColor,
+    required this.initialKind,
+    required this.initialDependsOnId,
+    required this.olderTheories,
     required this.title,
     required this.removeLabel,
   });
@@ -84,6 +116,14 @@ class _AddNoteSheetState extends State<_AddNoteSheet> {
   late final _bodyController = TextEditingController(text: widget.initialBody);
   // This is the highlight color the reader currently has picked.
   late HighlightColor _color = widget.initialColor;
+  // This is whether the reader is writing a personal note or a theory.
+  late NoteKind _kind = widget.initialKind;
+  // This is the older theory the reader picked in "Builds on", or null for none.
+  // A link to a theory that is not on offer (anymore) is not kept.
+  late String? _dependsOnId =
+      widget.olderTheories.any((note) => note.id == widget.initialDependsOnId)
+      ? widget.initialDependsOnId
+      : null;
   // This is the message shown under the text box when the reader tries to save an empty note.
   String? _errorText;
 
@@ -104,7 +144,15 @@ class _AddNoteSheetState extends State<_AddNoteSheet> {
       });
       return;
     }
-    Navigator.of(context).pop(AddNoteResult(body, _color));
+    final isTheory = _kind == NoteKind.theory;
+    Navigator.of(context).pop(
+      AddNoteResult(
+        body,
+        _color,
+        kind: _kind,
+        dependsOnId: isTheory ? _dependsOnId : null,
+      ),
+    );
   }
 
   @override
@@ -146,6 +194,22 @@ class _AddNoteSheetState extends State<_AddNoteSheet> {
             ),
           ),
           const SizedBox(height: 16),
+          // This chooses between a plain note and a theory Loremark keeps track of.
+          SegmentedButton<NoteKind>(
+            segments: const [
+              ButtonSegment(
+                value: NoteKind.personalNote,
+                label: Text('Personal note'),
+              ),
+              ButtonSegment(value: NoteKind.theory, label: Text('Theory')),
+            ],
+            selected: {_kind},
+            showSelectedIcon: false,
+            expandedInsets: EdgeInsets.zero,
+            onSelectionChanged: (selection) =>
+                setState(() => _kind = selection.single),
+          ),
+          const SizedBox(height: 16),
           TextField(
             controller: _bodyController,
             autofocus: true,
@@ -162,6 +226,31 @@ class _AddNoteSheetState extends State<_AddNoteSheet> {
               if (_errorText != null) setState(() => _errorText = null);
             },
           ),
+          // A theory can build on one of the reader's older theories.
+          if (_kind == NoteKind.theory && widget.olderTheories.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String?>(
+              initialValue: _dependsOnId,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'Builds on',
+                border: OutlineInputBorder(),
+              ),
+              items: [
+                const DropdownMenuItem<String?>(child: Text('None')),
+                for (final theory in widget.olderTheories)
+                  DropdownMenuItem<String?>(
+                    value: theory.id,
+                    child: Text(
+                      shortenTheoryText(theory.body),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+              ],
+              onChanged: (id) => setState(() => _dependsOnId = id),
+            ),
+          ],
           const SizedBox(height: 16),
           // This is the row of colors the reader can pick for the highlight.
           Row(

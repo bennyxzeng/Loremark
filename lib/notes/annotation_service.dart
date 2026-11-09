@@ -308,6 +308,17 @@ class AnnotationService extends ChangeNotifier {
       if (note.kind == NoteKind.theory) note,
   ]);
 
+  /// These are the theories of the book that a note could build on: the ones
+  /// made before the note with the given id, in reading order.
+  /// Used for the "Builds on" picker.
+  List<Note> theoriesBefore(String id) {
+    final note = _notes[_indexOf(id)];
+    return [
+      for (final each in _notes)
+        if (each.kind == NoteKind.theory && _isOlder(each, note)) each,
+    ];
+  }
+
   /// This tells how the theory with the given id is doing right now.
   /// It is worked out from the sub-theories and the theories it builds on each time.
   /// Throws a [NoteNotFoundException] if there is no such note, and an

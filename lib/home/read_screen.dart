@@ -357,6 +357,7 @@ class _ReadScreenState extends State<ReadScreen> {
     final result = await showAddNoteSheet(
       context,
       selectedText: selection.text,
+      olderTheories: notes.theories,
     );
     if (result is! AddNoteResult || !mounted) return;
     await saveOrReport(
@@ -369,6 +370,8 @@ class _ReadScreenState extends State<ReadScreen> {
         textAfter: selection.after,
         body: result.body,
         color: result.color,
+        kind: result.kind,
+        dependsOnId: result.dependsOnId,
       ),
       failureMessage: 'Could not save your note. Try again.',
     );
