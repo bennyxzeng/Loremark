@@ -149,6 +149,112 @@ class GraphLayout {
   final Size size;
 }
 
+/// One relationship's name on a [GraphLine].
+class GraphLabel {
+  const GraphLabel({
+    required this.text,
+    required this.isNew,
+    required this.isFaded,
+  });
+
+  final String text;
+  final bool isNew;
+
+  /// Whether the text is faded because it is inferred or reported on a line
+  /// that isn't.
+  final bool isFaded;
+}
+
+/// Every relationship from one node to another, drawn as a single line.
+class GraphLine {
+  const GraphLine({
+    required this.sourceId,
+    required this.targetId,
+    required this.labels,
+    required this.isPast,
+    required this.isInferred,
+    required this.isNew,
+  });
+
+  factory GraphLine._fromRows(
+    String sourceId,
+    String targetId,
+    Map<(String, bool), ({bool isInferred, bool isNew})> rows,
+  ) {
+    final isPast = rows.keys.every((key) => key.$2);
+    final isInferred = rows.values.every((row) => row.isInferred);
+    return GraphLine(
+      sourceId: sourceId,
+      targetId: targetId,
+      labels: [
+        for (final MapEntry(key: (text, rowIsPast), value: row) in rows.entries)
+          GraphLabel(
+            text: rowIsPast && !isPast ? '$text (past)' : text,
+            isNew: row.isNew,
+            isFaded: row.isInferred && !row.isNew && !isInferred,
+          ),
+      ],
+      isPast: isPast,
+      isInferred: isInferred,
+      isNew: rows.values.any((row) => row.isNew),
+    );
+  }
+
+  /// One line per direction between any two nodes, in the order of [records].
+  ///
+  /// A name repeated in the same time frame is listed once.
+  static List<GraphLine> merge(
+    Iterable<StoryRecord<Relationship>> records, {
+    required String Function(String entityId) canonicalId,
+    required bool Function(StoryRecord<Relationship> record) isNew,
+  }) {
+    final lines =
+        <
+          (String, String),
+          Map<(String, bool), ({bool isInferred, bool isNew})>
+        >{};
+    for (final record in records) {
+      final payload = record.payload;
+      final isInferred = payload.assertion != Assertion.explicit;
+      final recordIsNew = isNew(record);
+      lines
+          .putIfAbsent((
+            canonicalId(payload.sourceId),
+            canonicalId(payload.targetId),
+          ), () => {})
+          .update(
+            (
+              readableLabel(payload.label),
+              payload.temporalContext == TemporalContext.past,
+            ),
+            (row) => (
+              isInferred: row.isInferred && isInferred,
+              isNew: row.isNew || recordIsNew,
+            ),
+            ifAbsent: () => (isInferred: isInferred, isNew: recordIsNew),
+          );
+    }
+    return [
+      for (final MapEntry(key: (sourceId, targetId), value: rows)
+          in lines.entries)
+        GraphLine._fromRows(sourceId, targetId, rows),
+    ];
+  }
+
+  final String sourceId;
+  final String targetId;
+  final List<GraphLabel> labels;
+
+  /// Dashed: every relationship on the line is set in the past.
+  final bool isPast;
+
+  /// Faded: no relationship on the line is stated directly.
+  final bool isInferred;
+
+  /// Thick and colored: at least one relationship on the line is new.
+  final bool isNew;
+}
+
 /// The Story Map's relationship graph as of [snapshot] (UC5).
 ///
 /// Node positions come from the whole model, not just the snapshot, so nodes
@@ -350,31 +456,49 @@ class _CharacterGraphViewState extends State<CharacterGraphView> {
     Map<String, _GraphNode> nodes,
   ) {
     final snapshot = widget.snapshot;
-    // Edges between the same two nodes are spread apart so labels don't stack.
-    final byPair = <(String, String), List<StoryRecord<Relationship>>>{};
-    for (final record in relationships) {
-      final from = snapshot.canonicalId(record.payload.sourceId);
-      final to = snapshot.canonicalId(record.payload.targetId);
-      if (!nodes.containsKey(from) || !nodes.containsKey(to)) continue;
-      final pair = from.compareTo(to) < 0 ? (from, to) : (to, from);
-      byPair.putIfAbsent(pair, () => []).add(record);
-    }
-
-    return [
-      for (final MapEntry(key: (first, second), value: records)
-          in byPair.entries)
-        for (final (index, record) in records.indexed)
-          _GraphEdge(
-            from: nodes[snapshot.canonicalId(record.payload.sourceId)]!.center,
-            to: nodes[snapshot.canonicalId(record.payload.targetId)]!.center,
-            normal: _normal(nodes[first]!.center, nodes[second]!.center),
-            lane: index - (records.length - 1) / 2,
-            label: readableLabel(record.payload.label),
-            isPast: record.payload.temporalContext == TemporalContext.past,
-            isInferred: record.payload.assertion != Assertion.explicit,
-            isNew: snapshot.isNewRecord(record),
-          ),
+    final lines = [
+      for (final line in GraphLine.merge(
+        relationships,
+        canonicalId: snapshot.canonicalId,
+        isNew: snapshot.isNewRecord,
+      ))
+        if (nodes.containsKey(line.sourceId) &&
+            nodes.containsKey(line.targetId))
+          line,
     ];
+    final directions = {
+      for (final line in lines) (line.sourceId, line.targetId),
+    };
+    return [
+      for (final line in lines)
+        _edge(
+          line,
+          nodes,
+          isTwoWay: directions.contains((line.targetId, line.sourceId)),
+        ),
+    ];
+  }
+
+  _GraphEdge _edge(
+    GraphLine line,
+    Map<String, _GraphNode> nodes, {
+    required bool isTwoWay,
+  }) {
+    final from = nodes[line.sourceId]!.center;
+    final to = nodes[line.targetId]!.center;
+    // The normal is the same for both directions, so that a two-way pair's
+    // opposite lanes end up on opposite sides.
+    final isForward = line.sourceId.compareTo(line.targetId) < 0;
+    return _GraphEdge(
+      from: from,
+      to: to,
+      normal: isForward ? _normal(from, to) : _normal(to, from),
+      lane: !isTwoWay ? 0 : (isForward ? -0.5 : 0.5),
+      labels: line.labels,
+      isPast: line.isPast,
+      isInferred: line.isInferred,
+      isNew: line.isNew,
+    );
   }
 
   static Offset _normal(Offset from, Offset to) {
@@ -460,7 +584,10 @@ class GraphLegendSample extends StatelessWidget {
               to: Offset(_size.width + reach, center.dy),
               normal: Offset.zero,
               lane: 0,
-              label: label,
+              labels: [
+                if (label.isNotEmpty)
+                  GraphLabel(text: label, isNew: isNew, isFaded: false),
+              ],
               isPast: isPast,
               isInferred: isInferred,
               isNew: isNew,
@@ -502,7 +629,7 @@ class _GraphEdge {
     required this.to,
     required this.normal,
     required this.lane,
-    required this.label,
+    required this.labels,
     required this.isPast,
     required this.isInferred,
     required this.isNew,
@@ -512,10 +639,10 @@ class _GraphEdge {
   final Offset to;
 
   /// Unit vector across the line, and how many lanes to move along it when
-  /// several edges join the same two nodes.
+  /// the two nodes have a line each way.
   final Offset normal;
   final double lane;
-  final String label;
+  final List<GraphLabel> labels;
   final bool isPast;
   final bool isInferred;
   final bool isNew;
@@ -578,7 +705,7 @@ class _GraphPainter extends CustomPainter {
 
     // A label is skipped if it would overlap one already drawn, so zooming
     // out thins labels out instead of piling them up. Well-connected and new
-    // names go first, then relationship labels.
+    // names go first, then relationship labels, which also stay off the nodes.
     final taken = <Rect>[];
     final byPriority = [...nodes]
       ..sort((a, b) {
@@ -591,33 +718,46 @@ class _GraphPainter extends CustomPainter {
     for (final node in byPriority) {
       _paintName(canvas, node, metrics, taken);
     }
-    for (final edge in edges) {
+    taken.addAll([
+      for (final node in nodes)
+        Rect.fromCircle(center: node.center, radius: metrics.radius),
+    ]);
+    // Two-way pairs and short lines have the fewest free spots, so they choose
+    // first.
+    final fewestSpotsFirst = [...edges]
+      ..sort((a, b) {
+        if ((a.lane == 0) != (b.lane == 0)) return a.lane == 0 ? 1 : -1;
+        return (a.to - a.from).distanceSquared.compareTo(
+          (b.to - b.from).distanceSquared,
+        );
+      });
+    for (final edge in fewestSpotsFirst) {
       _paintEdgeLabel(canvas, edge, metrics, taken);
     }
   }
 
+  Size _labelSize(TextPainter text, _GraphMetrics metrics) =>
+      Size(text.width + 6 * metrics.point, text.height + 2 * metrics.point);
+
   /// Paints [text] on a light box whose top edge is centered on [topCenter],
-  /// unless the box would overlap one in [taken].
-  void _paintLabel(
+  /// unless the box would overlap one in [taken]. Returns whether it did.
+  bool _paintLabel(
     Canvas canvas,
     TextPainter text,
     Offset topCenter,
     _GraphMetrics metrics,
     List<Rect> taken,
   ) {
-    final box = Rect.fromLTWH(
-      topCenter.dx - text.width / 2 - 3 * metrics.point,
-      topCenter.dy,
-      text.width + 6 * metrics.point,
-      text.height + 2 * metrics.point,
-    );
-    if (taken.any(box.overlaps)) return;
+    final size = _labelSize(text, metrics);
+    final box = Offset(topCenter.dx - size.width / 2, topCenter.dy) & size;
+    if (taken.any(box.overlaps)) return false;
     taken.add(box);
     canvas.drawRRect(
       RRect.fromRectAndRadius(box, Radius.circular(3 * metrics.point)),
       Paint()..color = colors.surface.withValues(alpha: 0.85),
     );
     text.paint(canvas, box.topLeft + Offset(3, 1) * metrics.point);
+    return true;
   }
 
   Offset _shift(_GraphEdge edge, _GraphMetrics metrics) =>
@@ -665,7 +805,17 @@ class _GraphPainter extends CustomPainter {
     canvas.drawPath(arrow, Paint()..color = color);
   }
 
-  /// Draws the relationship name, unless the line is too short on screen.
+  /// Where to try a line's label, as fractions of the way along it.
+  static const _labelSpots = [0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8];
+
+  /// The same for a two-way pair's lines: nearer the arrowhead, so each label
+  /// is by its own arrow and the pair's labels stay apart.
+  static const _twoWayLabelSpots = [0.65, 0.75, 0.55, 0.85];
+
+  /// Draws the line's names at the first free spot along it, if there is one.
+  ///
+  /// A label stays centered on its line where it can, so that it can't be
+  /// taken for the label of a line nearby, and otherwise goes right beside it.
   void _paintEdgeLabel(
     Canvas canvas,
     _GraphEdge edge,
@@ -673,27 +823,66 @@ class _GraphPainter extends CustomPainter {
     List<Rect> taken,
   ) {
     final text = _edgeLabelText(edge, metrics);
-    final length = (edge.to - edge.from).distance;
-    if (length < text.width + 2 * metrics.radius + 8 * metrics.point) return;
-
-    final middle = (edge.from + edge.to) / 2 + _shift(edge, metrics);
-    _paintLabel(
-      canvas,
-      text,
-      middle - Offset(0, text.height / 2 + metrics.point),
-      metrics,
-      taken,
-    );
+    final isTwoWay = edge.lane != 0;
+    final beside = _labelBeside(edge, text, metrics);
+    final tries = [
+      for (final spot in isTwoWay ? _twoWayLabelSpots : _labelSpots)
+        (spot, _shift(edge, metrics)),
+      for (final spot in _labelSpots.take(3))
+        if (isTwoWay)
+          (spot, beside * edge.lane.sign)
+        else ...[
+          (spot, beside),
+          (spot, -beside),
+        ],
+    ];
+    final line = edge.to - edge.from;
+    for (final (spot, across) in tries) {
+      final center = edge.from + line * spot + across;
+      final topCenter = center - Offset(0, text.height / 2 + metrics.point);
+      if (_paintLabel(canvas, text, topCenter, metrics, taken)) return;
+    }
   }
 
-  TextPainter _edgeLabelText(_GraphEdge edge, _GraphMetrics metrics) => _text(
-    edge.label,
-    textStyle.copyWith(
-      fontSize: metrics.labelSize,
-      color: edge.isNew ? colors.primary : colors.onSurfaceVariant,
-    ),
-    maxWidth: 110 * metrics.point,
-  );
+  /// How far across to move a label for it to clear the line between the
+  /// nodes. On opposite sides of that line, a two-way pair's labels can't
+  /// overlap each other, however short it is.
+  Offset _labelBeside(
+    _GraphEdge edge,
+    TextPainter text,
+    _GraphMetrics metrics,
+  ) {
+    final size = _labelSize(text, metrics);
+    final halfAcross =
+        (edge.normal.dx.abs() * size.width +
+            edge.normal.dy.abs() * size.height) /
+        2;
+    return edge.normal * (halfAcross + metrics.point);
+  }
+
+  /// One row per relationship. No ellipsis, as that would cut it to one line.
+  TextPainter _edgeLabelText(_GraphEdge edge, _GraphMetrics metrics) {
+    final style = textStyle.copyWith(fontSize: metrics.labelSize);
+    return TextPainter(
+      text: TextSpan(
+        children: [
+          for (final (index, label) in edge.labels.indexed)
+            TextSpan(
+              text: index == 0 ? label.text : '\n${label.text}',
+              style: style.copyWith(
+                color: label.isNew
+                    ? colors.primary
+                    : colors.onSurfaceVariant.withValues(
+                        alpha: label.isFaded ? 0.6 : 1,
+                      ),
+              ),
+            ),
+        ],
+      ),
+      textAlign: TextAlign.center,
+      textDirection: TextDirection.ltr,
+    )..layout(maxWidth: 110 * metrics.point);
+  }
 
   void _paintNode(Canvas canvas, _GraphNode node, _GraphMetrics metrics) {
     final r = metrics.radius;
@@ -737,16 +926,20 @@ class _GraphPainter extends CustomPainter {
     _GraphMetrics metrics,
     List<Rect> taken,
   ) {
-    final name = _text(
-      node.label,
-      textStyle.copyWith(
-        fontSize: metrics.nameSize,
-        color: colors.onSurface,
-        fontWeight: node.isHighlighted ? FontWeight.w700 : FontWeight.w500,
+    final name = TextPainter(
+      text: TextSpan(
+        text: node.label,
+        style: textStyle.copyWith(
+          fontSize: metrics.nameSize,
+          color: colors.onSurface,
+          fontWeight: node.isHighlighted ? FontWeight.w700 : FontWeight.w500,
+        ),
       ),
-      maxWidth: 110 * metrics.point,
+      textAlign: TextAlign.center,
+      textDirection: TextDirection.ltr,
       maxLines: 2,
-    );
+      ellipsis: '…',
+    )..layout(maxWidth: 110 * metrics.point);
     _paintLabel(
       canvas,
       name,
@@ -755,19 +948,6 @@ class _GraphPainter extends CustomPainter {
       taken,
     );
   }
-
-  TextPainter _text(
-    String text,
-    TextStyle style, {
-    required double maxWidth,
-    int maxLines = 1,
-  }) => TextPainter(
-    text: TextSpan(text: text, style: style),
-    textAlign: TextAlign.center,
-    textDirection: TextDirection.ltr,
-    maxLines: maxLines,
-    ellipsis: '…',
-  )..layout(maxWidth: maxWidth);
 
   @override
   bool shouldRepaint(_GraphPainter oldDelegate) =>
@@ -798,7 +978,7 @@ class _LegendPainter extends _GraphPainter {
       _paintNode(canvas, node, metrics);
     }
     for (final edge in edges) {
-      if (edge.label.isEmpty) continue;
+      if (edge.labels.isEmpty) continue;
       // Above the line, not on it as in the graph: a sample is too short for
       // the name to leave the line and arrowhead showing.
       final text = _edgeLabelText(edge, metrics);

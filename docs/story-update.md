@@ -21,6 +21,7 @@ the command line.
 | `story_run_folder.dart` | `pipeline.py`, `artifacts.py` | Keeps a folder of everything about each update |
 | `story_archive.dart` | (new) | Zips a book's store and run folders to export them |
 | `story_import.dart` | (new) | Checks a file and loads it as a book's store |
+| `story_paragraphs.dart` | (new) | Finds the paragraphs a model's evidence cites, for answering from them |
 
 Not ported: the command line, the `review.md` and `diff.md` reports, and committing a run after
 manual corrections. A reader can't correct a run in the app, so a failed one is tried again, or
@@ -133,6 +134,40 @@ until the reader agrees to replace it:
 
 Replacing goes by renames, and `recoverReplacedStore` finishes the job if the app stops partway, so
 the store is always the old one or the new. The replaced store is deleted, and its run folders stay.
+
+## Reading the paragraphs back
+
+Every update saves its section's paragraphs in the store's `inputs/`, each with an ID such as `p0012`,
+and every record's evidence names a `section_id` and a `paragraph_id`. So answering from the map goes
+from the facts to the text behind them:
+
+```dart
+final visible = await backend.reachedSections(book, model.sections);
+final paragraphs = await backend.paragraphs(book, visibleSections: visible);
+final snapshot = StorySnapshot(model, model.sections[visible - 1]); // if visible > 0
+// `records` are the facts picked out of the snapshot for a question.
+final context = paragraphs.forEvidence(
+  records.expand((record) => record.evidence),
+  context: 1,
+);
+// Each StoryParagraph: sectionId, id, number, text. In reading order, no repeats.
+```
+
+- **`visibleSections` is the spoiler boundary**, and it is required. It counts from the first
+  processed section. Later sections aren't loaded at all, so a lookup can't reach them.
+- **Answers go by `reachedSections`, the map by `finishedSections`.** People ask while reading, so
+  the section being read counts, all of it: an answer can draw on what is still ahead in that
+  section. Only sections already in the map count, and of several sharing one EPUB document, only the
+  first unfinished one, since a position can't tell them apart.
+- **Evidence always comes from the section its record was learned in**, so records from a snapshot
+  never lead past it.
+- **Answer from the paragraph, not the quote.** With the quote check off a quote may not match, but
+  `unknown_paragraph` is always an error, so the paragraph it names is real.
+- **A map loaded from a lone `story_model.json` has no `inputs/`.** Its text comes from the EPUB
+  instead, and is used only if it hashes to the model's `text_sha256`. The same goes for a saved file
+  that is missing or changed.
+- **These aren't search's paragraphs.** `ParagraphIndex` numbers by spine item and cuts long
+  paragraphs up, so a `Passage` and a `StoryParagraph` can't be matched by number.
 
 ## Staying in step with the lab
 

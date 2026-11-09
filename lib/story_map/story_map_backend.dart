@@ -15,6 +15,7 @@ import '../story_update/story_api_client.dart';
 import '../story_update/story_archive.dart';
 import '../story_update/story_import.dart';
 import '../story_update/story_model_choice.dart';
+import '../story_update/story_paragraphs.dart';
 import '../story_update/story_run_folder.dart';
 import '../story_update/story_updater.dart';
 
@@ -40,6 +41,28 @@ int finishedStorySections(
     count++;
   }
   return count;
+}
+
+/// How many of [sections], counted from the first, the reader has reached at
+/// [current]: those they have finished, and the one they are in. Answers go by
+/// this, since people ask while reading, so an answer can draw on the rest of
+/// that section too. The Story Map goes by [finishedStorySections].
+///
+/// A position can't tell sections sharing a document apart, so only the first
+/// unfinished one counts as being read. Counting them all would give away every
+/// chapter of a book that keeps them in one file.
+int reachedStorySections(
+  List<StorySection> sections,
+  List<SpineItem> spine,
+  ReaderPosition? current,
+) {
+  if (current == null) return 0;
+  final finished = finishedStorySections(sections, spine, current);
+  if (finished == sections.length) return finished;
+  final index = spineIndexOf(spine, sections[finished].href ?? '');
+  return index != null && index <= current.sectionIndex
+      ? finished + 1
+      : finished;
 }
 
 /// How exporting a book's Story Map files ended.
@@ -74,6 +97,15 @@ abstract interface class StoryMapBackend {
 
   /// How many of [sections] the reader has finished.
   Future<int> finishedSections(Book book, List<StorySection> sections);
+
+  /// How many of [sections] the reader has reached, counting the one they are
+  /// in. The boundary for answering: see [reachedStorySections].
+  Future<int> reachedSections(Book book, List<StorySection> sections);
+
+  /// The paragraphs of the first [visibleSections] sections of [book]'s Story
+  /// Map. Nothing past them is loaded. Throws a `StoryStoreError` or a
+  /// `StoryEpubError` if a section's text can't be read.
+  Future<StoryParagraphs> paragraphs(Book book, {required int visibleSections});
 
   /// What pressing Update would do.
   Future<StoryUpdateStatus> inspect(Book book);
@@ -137,13 +169,37 @@ class DeviceStoryMapBackend implements StoryMapBackend {
     return json == null ? null : StoryModel.fromJson(json);
   }
 
-  @override
-  Future<int> finishedSections(Book book, List<StorySection> sections) async {
+  /// The reader's saved position in [book], and the book's spine.
+  Future<(ReaderPosition?, List<SpineItem>)> _readingPlace(Book book) async {
     final store = await ReadingPositionStore.open();
     await store.saved;
     final position = await store.load(book.id);
     final spine = await (_spines[book.id] ??= readSpine(book.epubPath));
+    return (position, spine);
+  }
+
+  @override
+  Future<int> finishedSections(Book book, List<StorySection> sections) async {
+    final (position, spine) = await _readingPlace(book);
     return finishedStorySections(sections, spine, position);
+  }
+
+  @override
+  Future<int> reachedSections(Book book, List<StorySection> sections) async {
+    final (position, spine) = await _readingPlace(book);
+    return reachedStorySections(sections, spine, position);
+  }
+
+  @override
+  Future<StoryParagraphs> paragraphs(
+    Book book, {
+    required int visibleSections,
+  }) async {
+    final path = await _storePath(book);
+    final epub = book.epubPath;
+    return Isolate.run(
+      () => readStoryParagraphs(path, epub, visibleSections: visibleSections),
+    );
   }
 
   @override
