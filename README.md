@@ -43,7 +43,7 @@ These are our six use cases and where each one stands in this beta.
 | **5 · Explore the Story Map** | **Operational** | A relationship graph of the characters, with a chapter slider. Move the slider back and facts from later chapters disappear. The **Chapter** page lists what the reader learned in that chapter. |
 | **4 · Look up a character** | **Operational** | A searchable character list, and a card for each character showing what is known as of the chosen chapter. Opening a card by tapping a name in the reader isn't in yet. |
 | **1 · Get a recap when you come back** | In progress | |
-| **2 · Track a theory** | In progress | |
+| **2 · Track a theory** | In progress | Select text, choose **Add note**, and pick **Theory** to save a prediction. A theory can build on one of your older theories, and the Notes tab shows each one with a **Theory** tag and its status, which starts as **Unconfirmed**. Checking a theory against the book as you read isn't in yet, so the status doesn't change on its own. See [docs/theories.md](docs/theories.md). |
 | **6 · Ask about the story** | In progress | The Ask tab is in the app and unlocks with an API key, but it doesn't answer questions yet. |
 
 These features support the use cases above, and all of them work in the beta:
