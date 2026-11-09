@@ -15,6 +15,7 @@ import 'package:loremark/story_model/story_model.dart';
 import 'package:loremark/story_update/delta_schema.dart';
 import 'package:loremark/story_update/story_import.dart';
 import 'package:loremark/story_update/story_model_choice.dart';
+import 'package:loremark/story_update/story_paragraphs.dart';
 import 'package:loremark/story_update/story_updater.dart';
 
 import '../story_model/story_model_fixture.dart';
@@ -63,6 +64,16 @@ class _FakeBackend implements StoryMapBackend {
   @override
   Future<int> finishedSections(Book book, List<StorySection> sections) async =>
       finished;
+
+  @override
+  Future<int> reachedSections(Book book, List<StorySection> sections) async =>
+      finished;
+
+  @override
+  Future<StoryParagraphs> paragraphs(
+    Book book, {
+    required int visibleSections,
+  }) async => StoryParagraphs(const {});
 
   @override
   Future<StoryUpdateStatus> inspect(Book book) async => status;
@@ -1309,6 +1320,59 @@ void main() {
         ),
         0,
       );
+    });
+
+    group('counting the section being read,', () {
+      int reached(ReaderPosition? position) =>
+          reachedStorySections(sections, spine, position);
+
+      test('nothing without a position', () => expect(reached(null), 0));
+      test('nothing on the cover', () {
+        expect(reached(const ReaderPosition(0, 0.5)), 0);
+      });
+      test('a section counts as soon as it is opened', () {
+        expect(reached(const ReaderPosition(1, 0)), 1);
+        expect(reached(const ReaderPosition(1, 0.5)), 1);
+      });
+      test('finishing a section reaches no further', () {
+        expect(reached(const ReaderPosition(1, 1)), 1);
+      });
+      test('only the first unfinished section of a document counts', () {
+        expect(reached(const ReaderPosition(2, 0)), 2);
+        expect(reached(const ReaderPosition(2, 0.9)), 2);
+        expect(reached(const ReaderPosition(2, 1)), 3);
+      });
+      test('the last section, and the end of the book', () {
+        expect(reached(const ReaderPosition(3, 0.5)), 4);
+        expect(reached(const ReaderPosition(3, 1)), 4);
+      });
+      test('a document that is not in the map adds nothing', () {
+        expect(
+          reachedStorySections(
+            [sections.first, sections.last],
+            spine,
+            const ReaderPosition(2, 0.5),
+          ),
+          1,
+        );
+      });
+      test('a section not in the spine adds nothing', () {
+        expect(
+          reachedStorySections(
+            [
+              const StorySection(
+                id: 'a',
+                order: 1,
+                chapterNumber: null,
+                title: 'a',
+              ),
+            ],
+            spine,
+            const ReaderPosition(3, 1),
+          ),
+          0,
+        );
+      });
     });
   });
 }

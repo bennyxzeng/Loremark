@@ -175,6 +175,24 @@ class StoryStore {
     }
   }
 
+  /// The saved text of [section] as stored, checked against the hash the model
+  /// recorded for it.
+  Uint8List _readInputBytes(JsonMap section) {
+    final relpath = section['input_relative_path'] as String;
+    final data = _read(relpath, 'input');
+    if (sha256OfBytes(data) != section['input_file_sha256']) {
+      throw StoryStoreError('Input $relpath does not match its SHA-256');
+    }
+    return data;
+  }
+
+  /// The saved text of [section], an entry of the model's `processed_sections`.
+  ///
+  /// Throws a [StoryStoreError] if it is missing or isn't what the model
+  /// recorded. Unlike [load], this checks nothing else about the store.
+  JsonMap readInput(JsonMap section) =>
+      jsonDecode(utf8.decode(_readInputBytes(section))) as JsonMap;
+
   /// The latest model as stored, for showing it, or null if there is none.
   ///
   /// Showing a model needs no more than this; [load] checks everything.
@@ -211,14 +229,10 @@ class StoryStore {
       final inputFiles = <String, Uint8List>{};
       for (final raw in model['processed_sections'] as List) {
         final section = raw as JsonMap;
-        final relpath = section['input_relative_path'] as String;
-        final data = _read(relpath, 'input');
-        if (sha256OfBytes(data) != section['input_file_sha256']) {
-          throw StoryStoreError('Input $relpath does not match its SHA-256');
-        }
+        final data = _readInputBytes(section);
         inputs[section['section_id'] as String] =
             jsonDecode(utf8.decode(data)) as JsonMap;
-        inputFiles[relpath] = data;
+        inputFiles[section['input_relative_path'] as String] = data;
       }
 
       _verifyManifests();
