@@ -1,8 +1,8 @@
 # Theories
 
-How a reader keeps a theory in Loremark, what its status means, and why it is built this way. Owner: Kevin. Code: [`lib/notes/theory.dart`](../lib/notes/theory.dart) (the data and the status rule), [`lib/notes/annotation_service.dart`](../lib/notes/annotation_service.dart) (saving and the dependency rules), [`lib/notes/add_note_sheet.dart`](../lib/notes/add_note_sheet.dart) and [`lib/notes/note_list.dart`](../lib/notes/note_list.dart) (the screens).
+How a reader keeps a theory in Loremark, what its status means, and why it is built this way. Owner: Kevin. Code: [`lib/theories/`](../lib/theories/) (the checker, part 2), [`lib/notes/theory.dart`](../lib/notes/theory.dart) (the data and the status rule), [`lib/notes/annotation_service.dart`](../lib/notes/annotation_service.dart) (saving and the dependency rules), [`lib/notes/add_note_sheet.dart`](../lib/notes/add_note_sheet.dart) and [`lib/notes/note_list.dart`](../lib/notes/note_list.dart) (the screens).
 
-**Contents:** [Part 1: keeping a theory](#part-1-keeping-a-theory) · [What a theory is](#what-a-theory-is) · [Using it](#using-it) · [Statuses](#statuses) · [Building on an older theory](#building-on-an-older-theory) · [What is stored](#what-is-stored) · [Why it is built this way](#why-it-is-built-this-way) · [Spoilers](#spoilers) · [Testing](#testing) · [Not done yet](#not-done-yet)
+**Contents:** [Part 2: checking a theory](#part-2-checking-a-theory) (at the end) · [Part 1: keeping a theory](#part-1-keeping-a-theory) · [What a theory is](#what-a-theory-is) · [Using it](#using-it) · [Statuses](#statuses) · [Building on an older theory](#building-on-an-older-theory) · [What is stored](#what-is-stored) · [Why it is built this way](#why-it-is-built-this-way) · [Spoilers](#spoilers) · [Testing](#testing) · [Not done yet](#not-done-yet)
 
 # Part 1: keeping a theory
 
@@ -88,8 +88,80 @@ Theories are written from what the reader has read, and nothing in this branch s
 
 ## Not done yet
 
-- Splitting a theory into sub-theories and checking it against the book. Until the check branch, every theory stays Unconfirmed.
-- The banner that tells the reader a theory changed. It will use `NoteFocusController`.
+- Splitting a theory and checking it against the book, and the banner: these are part 2 below.
 - The Notes tab does not search a theory's sub-theories.
 - A theory can't be moved to another passage.
 - The Notes tab is not lazy (see above).
+
+# Part 2: checking a theory
+
+This part is what the `feat/theory-correctness-check` branch adds. With an API key saved and a connection, Loremark splits each theory into sub-theories, checks them against each section the reader finishes, and tells the reader when a theory's status changes. It follows Use Case #2 (steps 1 to 3, and 3a to 3c), the Features #4 rule that a theory's result must be backed by the text, and the privacy requirement. Code: [`lib/theories/theory_requests.dart`](../lib/theories/theory_requests.dart) (the prompts, schemas and answer reading), [`lib/theories/theory_checker.dart`](../lib/theories/theory_checker.dart) (what runs and when), and the wiring in [`lib/home/book_screen.dart`](../lib/home/book_screen.dart).
+
+## How checking works
+
+1. **Split.** A theory with no sub-theories is sent to the model with the passage it was written on. The model returns one to five sub-theories (one when the theory makes a single prediction). They are saved as open.
+2. **Check.** For each section the reader has finished, in order, Loremark sends that one section's text and the open sub-theories that still need it. The model answers `confirmed`, `refuted` or `undecided` for each, and for the first two it must quote the section word for word.
+3. **Accept only real evidence.** A verdict counts only if its quote occurs in that section's text (ignoring differences in spaces and line breaks). Otherwise the sub-theory stays open. Once a sub-theory is confirmed or refuted it never changes again and is not sent again. The evidence (section, chapter label and quote) is saved with it.
+4. **Status.** The overall status is still derived by `theoryStatus` (part 1), so one confirmed sub-theory out of two gives Partially correct, and a refuted older theory makes the theories built on it Invalidated. Nothing about status is stored.
+5. **Banner.** When a theory's status moves from Unconfirmed or Partially correct to something new, a bar appears: `Theory confirmed: "<theory, shortened>"` with a **View** button that opens the Notes tab on that theory. This includes theories that became Invalidated because the one they build on was refuted. One bar per theory per run.
+
+A theory is only checked against sections from the one it was written in onward, and each theory remembers the last section it has seen (`checkedThroughSection`), so no section is asked about twice. A theory that is already Invalidated through its dependency is not checked any more, so no money is spent on it.
+
+## When it runs
+
+- When a book is opened, when the number of finished sections goes up, and when a theory is saved or edited (so it gets split).
+- Only if the book has an unresolved theory, an API key is saved, and the device is online. Without a key or offline nothing is sent and nothing breaks: theories can still be written, edited and deleted.
+- One run at a time. A trigger that arrives during a run is merged into a single follow-up run that uses the latest position.
+- No automatic retries. A failed run is simply tried again at the next trigger (the next finished section, the next time the book is opened, or the next theory saved).
+
+## What is sent, and what is not
+
+| Request | Contents | Never contains |
+|---|---|---|
+| Split | The theory's text and the passage the reader selected when writing it | Any section of the book, personal notes, other theories |
+| Check | The paragraphs of exactly one finished section, and the open sub-theories' text (from one or more theories) | Any other section, personal notes, highlights |
+
+How this maps to the privacy requirement and its verification:
+
+- **Spoilers.** The boundary is `completedSectionCutoff` (the same one search uses), turned into a count of finished sections. A section whose index is not below that count is never sent: not the section the reader is in, not a later one. Turning back to reread an earlier chapter does not shrink it (it uses the furthest position reached in this session). Tests capture every request body and check that marker phrases planted in the section in progress and in a later chapter never appear.
+- **One chapter per request.** A check request carries one section. A test checks that each captured request holds exactly one chapter heading.
+- **Theory text only in theory requests.** Personal notes and highlights are never read by the checker. A test plants a diary-style note and a highlight and checks neither appears.
+- **HTTPS and the AI provider only.** The checker uses the same sender as the Story Map (`callResponsesApi`), so it goes to the reader's own provider (api.openai.com or api.deepseek.com) over HTTPS with the reader's own key. The tests assert the scheme and host of every request.
+- **Provider settings.** The OpenAI request asks for no storage (`store: false`), as the story requests do.
+
+The split request includes the passage the theory was written on, which is a short excerpt the reader chose and has read. It can be in the section the reader is still reading. It is not a whole section, but it is the one place where text from an unfinished section can leave the device (see the open questions in the hand-off notes).
+
+## Which model, and what it costs
+
+The check uses the provider's light default model (`StoryModelChoice.forProvider(provider).first`: DeepSeek Flash or GPT-6.1 Terra) at the lowest effort that model accepts, not the Story Map model the reader picked. The team agreed in chat that DeepSeek or Terra are fine for light tasks, and the Story Map's most expensive model costs about $1.50 per four chapters, which is far too much for a background check. One check request is one section plus a few sentences. The cost has not been measured on a real key.
+
+## When it fails
+
+A request can fail with a bad key (401), a rate limit (429), a server error (500), a timeout, no connection, an answer that is not JSON, a refusal, or an answer in the wrong shape. In every case:
+
+- no note changes (verdicts and progress already saved for earlier sections of the same run are kept, because each section's answer is saved before the next is asked for);
+- the checker records only the failure's category (such as `authentication` or `rate_limit`), never the key, the provider's message or any book text;
+- the run stops and reading is not interrupted: nothing is shown and no reader screen waits for it.
+
+If the reader edits a theory while its request is out, the answer is dropped, because the theory is a new prediction (part 1, D4).
+
+## Why it is built this way
+
+- **Quote check instead of trusting the model (D8).** A model can say "confirmed" about a claim the text does not settle. Requiring a quote that really occurs in that section makes every verdict traceable to words the reader can find, and invented evidence is thrown away. The cost is that a correct verdict with a slightly reworded quote is also ignored; the sub-theory stays open and is not asked about that section again.
+- **Undecided is the default.** The prompt tells the model to answer undecided unless the section settles the prediction, because a wrongly resolved sub-theory can never be undone.
+- **Whole finished sections only (D5).** The app's page-level reading position is not exact enough to cut a section safely, so only sections the reader has completely finished count, which is the same rule search already uses.
+- **One section per request.** The privacy requirement allows at most one chapter. Checking several theories in the same section shares one request, so adding theories does not add requests.
+- **The same sender as the Story Map.** No second HTTP client to keep safe. The request shape mirrors `buildUpdateRequest`, which is tied to the Story Map's context, so the checker builds its own bodies in the same shape instead of calling it.
+
+## Limits
+
+- The verdicts are a model's judgement, only checked for having real evidence, not for being right. The reader can read the quote and decide.
+- Only whole finished sections count, so a theory is settled only after the reader finishes the section that settles it.
+- The furthest position is kept for the current session only. When a book is reopened, the saved page is the reader's position, so sections beyond it that were read in an earlier session are not checked until the reader gets back to them. This errs on the safe side.
+- Evidence labels say `Section N` (the book's file order), not the book's own chapter title.
+- Checks do not start by themselves when a key is saved or the connection returns; they wait for the next trigger.
+- Nothing here has been tried against a real API key or on a device. The tests use a fake network.
+
+## Testing
+
+`test/theories/theory_checker_test.dart` (splitting, verdicts and evidence, every status outcome including dependencies, what is sent and not sent, each failure type, no key or offline, merged triggers) and `test/home/theory_banner_test.dart` (the bar and its View button opening the Notes tab on the theory).
