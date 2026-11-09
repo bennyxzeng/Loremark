@@ -94,6 +94,15 @@ class GraphGuideView extends StatelessWidget {
           title: 'Arrow',
           detail: 'Read along the arrow: A → member of → B.',
         ),
+        const _Tip(
+          'Two nodes share one line per direction. Each name on a line is one '
+          'relationship.',
+        ),
+        const _Tip(
+          'A line with several relationships is thick if any is new, and '
+          'dashed or faded only if all are. “(past)” or faded text marks the '
+          'rest.',
+        ),
         const FactHeading('Using the graph'),
         const _Tip('Tap a name to open its card.'),
         const _Tip('Pinch to zoom, and drag to move around.'),

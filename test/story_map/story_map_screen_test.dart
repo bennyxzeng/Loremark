@@ -7,6 +7,7 @@ import 'package:loremark/story_map/label_guide_sheet.dart';
 import 'package:loremark/story_map/story_facts.dart';
 import 'package:loremark/story_map/story_map_screen.dart';
 import 'package:loremark/story_model/story_model.dart';
+import 'package:loremark/story_model/story_snapshot.dart';
 
 import '../story_model/story_model_fixture.dart';
 
@@ -528,6 +529,220 @@ void main() {
     for (final position in first.positions.values) {
       expect((Offset.zero & first.size).contains(position), isTrue);
     }
+  });
+
+  group('graph lines', () {
+    var nextId = 100;
+
+    // The fixture already has c002 watches c001 from Chapter 1, and c004 is
+    // revealed to be c002.
+    Map<String, dynamic> relationship(
+      String source,
+      String label,
+      String target, {
+      String section = 's2',
+      String assertion = 'explicit',
+      String temporal = 'current',
+    }) => {
+      'id': 'f${nextId++}',
+      'introduced_revision': section == 's1' ? 1 : 2,
+      'learned_in_section_id': section,
+      'legacy_id': null,
+      'payload': {
+        'source_id': source,
+        'target_id': target,
+        'label': label,
+        'description': '$source $label $target',
+        'assertion': assertion,
+        'attributed_to_id': null,
+        'temporal_context': temporal,
+      },
+      'evidence': <Map<String, dynamic>>[],
+    };
+
+    StorySnapshot snapshotWith(List<Map<String, dynamic>> extra) {
+      final json = storyModelFixtureJson();
+      final records = json['records'] as Map<String, dynamic>;
+      (records['relationships'] as List).addAll(extra);
+      final model = StoryModel.fromJson(json);
+      return StorySnapshot(model, model.sections[1]);
+    }
+
+    List<GraphLine> linesOf(StorySnapshot snapshot) => GraphLine.merge(
+      snapshot.relationships,
+      canonicalId: snapshot.canonicalId,
+      isNew: snapshot.isNewRecord,
+    );
+
+    GraphLine lineOf(StorySnapshot snapshot, String source, String target) =>
+        linesOf(snapshot).singleWhere(
+          (line) => line.sourceId == source && line.targetId == target,
+        );
+
+    List<String> textsOf(GraphLine line) => [
+      for (final label in line.labels) label.text,
+    ];
+
+    test('relationships going the same way share one line', () {
+      final line = lineOf(
+        snapshotWith([
+          relationship('c002', 'follows_closely', 'c001'),
+          relationship('c002', 'fears', 'c001'),
+        ]),
+        'c002',
+        'c001',
+      );
+
+      expect(textsOf(line), ['watches', 'follows closely', 'fears']);
+    });
+
+    test('opposite directions get a line each', () {
+      final snapshot = snapshotWith([relationship('c001', 'avoids', 'c002')]);
+
+      expect(textsOf(lineOf(snapshot, 'c002', 'c001')), ['watches']);
+      expect(textsOf(lineOf(snapshot, 'c001', 'c002')), ['avoids']);
+    });
+
+    test('a revealed identity joins the line of who they really are', () {
+      final line = lineOf(
+        snapshotWith([relationship('c004', 'hires', 'c001')]),
+        'c002',
+        'c001',
+      );
+
+      expect(textsOf(line), ['watches', 'hires']);
+    });
+
+    test('a repeated relationship is listed once', () {
+      final line = lineOf(
+        snapshotWith([relationship('c002', 'watches', 'c001')]),
+        'c002',
+        'c001',
+      );
+
+      expect(textsOf(line), ['watches']);
+      expect(line.labels.single.isNew, isTrue);
+    });
+
+    test('a line is new if any of its relationships is', () {
+      final line = lineOf(
+        snapshotWith([relationship('c002', 'fears', 'c001')]),
+        'c002',
+        'c001',
+      );
+
+      expect(line.isNew, isTrue);
+      expect([for (final label in line.labels) label.isNew], [false, true]);
+    });
+
+    test('a line is dashed only if all of it is in the past', () {
+      final allPast = lineOf(
+        snapshotWith([
+          relationship('c003', 'taught', 'c002', temporal: 'past'),
+          relationship('c003', 'fought', 'c002', temporal: 'past'),
+        ]),
+        'c003',
+        'c002',
+      );
+      expect(allPast.isPast, isTrue);
+      expect(textsOf(allPast), ['taught', 'fought']);
+
+      final mixed = lineOf(
+        snapshotWith([relationship('c002', 'hated', 'c001', temporal: 'past')]),
+        'c002',
+        'c001',
+      );
+      expect(mixed.isPast, isFalse);
+      expect(textsOf(mixed), ['watches', 'hated (past)']);
+    });
+
+    test('a line is faded only if none of it is stated directly', () {
+      final allInferred = lineOf(
+        snapshotWith([
+          relationship('c003', 'knows', 'c002', assertion: 'inferred'),
+          relationship('c003', 'trusts', 'c002', assertion: 'reported'),
+        ]),
+        'c003',
+        'c002',
+      );
+      expect(allInferred.isInferred, isTrue);
+      expect(allInferred.labels.any((label) => label.isFaded), isFalse);
+
+      final mixed = lineOf(
+        snapshotWith([
+          relationship(
+            'c002',
+            'fears',
+            'c001',
+            section: 's1',
+            assertion: 'inferred',
+          ),
+        ]),
+        'c002',
+        'c001',
+      );
+      expect(mixed.isInferred, isFalse);
+      expect([for (final label in mixed.labels) label.isFaded], [false, true]);
+    });
+
+    test('a new inferred relationship is not faded', () {
+      final line = lineOf(
+        snapshotWith([
+          relationship('c002', 'fears', 'c001', assertion: 'inferred'),
+        ]),
+        'c002',
+        'c001',
+      );
+
+      expect(line.labels.last.isFaded, isFalse);
+    });
+
+    testWidgets('one line per direction, with every label once zoomed in', (
+      tester,
+    ) async {
+      final snapshot = snapshotWith([
+        relationship('c002', 'follows', 'c001'),
+        relationship('c002', 'fears', 'c001'),
+        relationship('c001', 'avoids', 'c002'),
+      ]);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: CharacterGraphView(
+              snapshot: snapshot,
+              onEntityTap: (_) {},
+              onGuideTap: () {},
+            ),
+          ),
+        ),
+      );
+
+      final graph = tester.renderObject(
+        find.descendant(
+          of: find.byType(InteractiveViewer),
+          matching: find.byType(CustomPaint),
+        ),
+      );
+      // c002 -> c001, c001 -> c002 and c003 -> c001.
+      expect(graph, paintsExactlyCountTimes(#drawLine, 3));
+
+      // The test font is wide, so it takes more than one pinch to make room.
+      final center = tester.getCenter(find.byType(InteractiveViewer));
+      for (var pinch = 0; pinch < 2; pinch++) {
+        final left = await tester.startGesture(center - const Offset(20, 0));
+        final right = await tester.startGesture(center + const Offset(20, 0));
+        await tester.pump();
+        await left.moveBy(const Offset(-100, 0));
+        await right.moveBy(const Offset(100, 0));
+        await tester.pump();
+        await left.up();
+        await right.up();
+        await tester.pumpAndSettle();
+      }
+
+      // Those three lines' labels, and three names.
+      expect(graph, paintsExactlyCountTimes(#drawParagraph, 6));
+    });
   });
 
   group('past where the reader has read', () {
