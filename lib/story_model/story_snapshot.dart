@@ -7,8 +7,15 @@ typedef StoryQuestion = ({
 });
 
 /// How far a reader has got through a story model's sections.
+///
+/// This is the one spoiler boundary for a Story Map: what it shows, and what
+/// anything answering the reader can draw on, both stop here.
 class StoryReadingProgress {
-  const StoryReadingProgress(this.finished, {this.hiddenInNext});
+  const StoryReadingProgress(
+    this.finished, {
+    this.hiddenInNext,
+    this.paragraphsReadInNext = 0,
+  });
 
   /// How many of the sections, counted from the first, are behind the reader.
   final int finished;
@@ -16,6 +23,10 @@ class StoryReadingProgress {
   /// If the reader is partway through the section after those, the IDs of its
   /// records and transitions they haven't reached. Otherwise null.
   final Set<String>? hiddenInNext;
+
+  /// If the reader is partway through the section after those, how many of its
+  /// paragraphs they have turned past. Otherwise 0.
+  final int paragraphsReadInNext;
 
   /// How many sections have something to show, the partway one included.
   int get shown => finished + (hiddenInNext == null ? 0 : 1);

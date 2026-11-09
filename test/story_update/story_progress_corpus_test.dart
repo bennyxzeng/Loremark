@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loremark/story_model/story_model.dart';
+import 'package:loremark/story_model/story_snapshot.dart';
 import 'package:loremark/story_update/story_book.dart';
 import 'package:loremark/story_update/story_paragraphs.dart';
 
@@ -44,7 +45,7 @@ void main() {
         final paragraphs = readStoryParagraphs(
           store,
           epub,
-          visibleSections: model.sections.length,
+          StoryReadingProgress(model.sections.length),
         );
         final book = StoryBook.open(File(epub).readAsBytesSync());
         final wanted = expected.entries
@@ -118,6 +119,29 @@ void main() {
               ],
               wanted[section.id],
               reason: section.id,
+            );
+          }
+
+          // Answers stop where the map does: halfway through, each fact showing
+          // can be traced to a paragraph already passed.
+          final half = own.length ~/ 2;
+          final hiddenAtHalf = hiddenAt(half);
+          final partway = readStoryParagraphs(
+            store,
+            epub,
+            StoryReadingProgress(
+              model.sections.indexOf(section),
+              hiddenInNext: hiddenAtHalf,
+              paragraphsReadInNext: half,
+            ),
+          );
+          expect(partway.ofSection(section.id), hasLength(half));
+          for (final record in records) {
+            if (hiddenAtHalf.contains(record.id)) continue;
+            expect(
+              partway.forEvidence(record.evidence),
+              isNotEmpty,
+              reason: '${section.id} ${record.id}',
             );
           }
 

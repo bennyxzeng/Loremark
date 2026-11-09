@@ -29,10 +29,10 @@ class StoryParagraph {
   final String text;
 }
 
-/// The paragraphs of the sections a reader may see, for answering from them.
+/// The paragraphs a reader has read, for answering from them.
 ///
-/// Later sections aren't left out by a check on each call: they were never
-/// loaded, so nothing here can reach them. See [readStoryParagraphs].
+/// What they haven't read isn't left out by a check on each call: it isn't in
+/// here, so nothing can reach it. See [readStoryParagraphs].
 class StoryParagraphs {
   /// [_sections] holds each section's paragraphs, in reading order.
   StoryParagraphs(this._sections)
@@ -45,19 +45,20 @@ class StoryParagraphs {
   final Map<String, List<StoryParagraph>> _sections;
   final Map<String, Map<String, StoryParagraph>> _byId;
 
-  /// The paragraph called [paragraphId], or null if there is none or its
-  /// section isn't visible.
+  /// The paragraph called [paragraphId], or null if there is none or it isn't
+  /// visible.
   StoryParagraph? paragraph(String sectionId, String paragraphId) =>
       _byId[sectionId]?[paragraphId];
 
-  /// The paragraphs of the section called [sectionId], in reading order. Empty
-  /// if it isn't visible.
+  /// The visible paragraphs of the section called [sectionId], in reading order.
+  /// Empty if none are.
   List<StoryParagraph> ofSection(String sectionId) =>
       _sections[sectionId] ?? const [];
 
   /// The paragraphs [evidence] cites, each with [context] neighbors on either
-  /// side from its own section. No paragraph appears twice, they come in reading
-  /// order, and evidence from a section that isn't visible is skipped.
+  /// side from its own section, as far as they are visible. No paragraph appears
+  /// twice, they come in reading order, and evidence naming a paragraph that
+  /// isn't visible is skipped.
   ///
   /// With the quote check off a quote may not match its paragraph, but the
   /// paragraph it names is always real, so answer from this text, not the quote.
@@ -88,26 +89,44 @@ class StoryParagraphs {
   }
 }
 
-/// The paragraphs of the first [visibleSections] sections of the Story Map at
-/// [storePath]. Empty if there is no map.
+/// The paragraphs of the Story Map at [storePath] that a reader at [progress] has
+/// read: all of the sections they have finished, and the start of the one they
+/// are partway through. Empty if there is no map.
 ///
-/// [visibleSections] is the spoiler boundary. For answering a reader, that is
-/// `StoryMapBackend.reachedSections`. A map can hold sections the reader hasn't
+/// [progress] is the spoiler boundary, the same one the map shows up to: see
+/// `StoryMapBackend.readingProgress`. A map can hold sections the reader hasn't
 /// reached, since updating isn't tied to reading progress.
+///
+/// Throws a [StoryStoreError] or a [StoryEpubError] if a section's text can't be
+/// had, rather than returning part of what is visible.
+StoryParagraphs readStoryParagraphs(
+  String storePath,
+  String epubPath,
+  StoryReadingProgress progress,
+) {
+  final sections = _readSections(storePath, epubPath, progress.shown);
+  if (progress.hiddenInNext != null && sections.length == progress.shown) {
+    final partway = sections.keys.last;
+    sections[partway] = sections[partway]!
+        .take(progress.paragraphsReadInNext)
+        .toList();
+  }
+  return StoryParagraphs(sections);
+}
+
+/// Every paragraph of the first [count] sections of the Story Map at
+/// [storePath], in reading order. Empty if there is no map.
 ///
 /// A section comes from its saved text. A map loaded from a single
 /// `story_model.json` has none, so its text comes from the EPUB at [epubPath],
 /// and is used only if it hashes to what the model recorded.
-///
-/// Throws a [StoryStoreError] or a [StoryEpubError] if a section's text can't be
-/// had either way, rather than returning part of what is visible.
-StoryParagraphs readStoryParagraphs(
+Map<String, List<StoryParagraph>> _readSections(
   String storePath,
-  String epubPath, {
-  required int visibleSections,
-}) {
+  String epubPath,
+  int count,
+) {
   final model = readStoryModel(storePath);
-  if (model == null) return StoryParagraphs(const {});
+  if (model == null) return {};
   final store = StoryStore(Directory(storePath));
   final processed = (model['processed_sections'] as List)
       .cast<JsonMap>()
@@ -119,13 +138,13 @@ StoryParagraphs readStoryParagraphs(
   StoryBook? book;
   StoryBook openBook() => book ??= _openBookOf(model, epubPath);
 
-  return StoryParagraphs({
-    for (final section in processed.take(max(visibleSections, 0)))
+  return {
+    for (final section in processed.take(max(count, 0)))
       section['section_id'] as String: _paragraphsOf(
         section['section_id'] as String,
         _savedInput(store, section) ?? _extractedInput(openBook(), section),
       ),
-  });
+  };
 }
 
 /// Past every paragraph: known only once the section is finished.
@@ -275,13 +294,11 @@ StoryReadingProgress readStoryProgress(
         hiddenInNext: hiddenWithinSection(
           model,
           model.sectionById(id)!,
-          readStoryParagraphs(
-            storePath,
-            epubPath,
-            visibleSections: done + 1,
-          ).ofSection(id),
+          // All of the section: finding a quote takes the paragraphs ahead too.
+          _readSections(storePath, epubPath, done + 1)[id] ?? const [],
           paragraphsRead: read,
         ),
+        paragraphsReadInNext: read,
       );
     }
     return StoryReadingProgress(done);

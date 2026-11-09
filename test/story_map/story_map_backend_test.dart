@@ -99,21 +99,32 @@ void main() {
 
     // The paragraphs its evidence cites can be read back, up to a boundary.
     final evidence = model.allRecords.expand((record) => record.evidence);
-    final visible = await backend.paragraphs(book, visibleSections: 1);
+    final visible = await backend.paragraphs(
+      book,
+      const StoryReadingProgress(1),
+    );
     expect(visible.forEvidence(evidence), isNotEmpty);
-    final hidden = await backend.paragraphs(book, visibleSections: 0);
+    final hidden = await backend.paragraphs(
+      book,
+      const StoryReadingProgress(0),
+    );
     expect(hidden.forEvidence(evidence), isEmpty);
 
     // Nothing read yet: not even this section counts as finished.
     Future<StoryReadingProgress> progress() =>
         backend.readingProgress(book, model.sections);
     expect((await progress()).finished, 0);
-    expect(await backend.reachedSections(book, model.sections), 0);
     final positions = await ReadingPositionStore.open();
-    // Partway through it: reached for answering, but not finished for the map.
+    // Partway through it, with no page start: nothing of it can be used.
     await positions.save(book.id, const ReaderPosition(1, 0.5));
     expect((await progress()).finished, 0);
-    expect(await backend.reachedSections(book, model.sections), 1);
+    expect(
+      (await backend.paragraphs(
+        book,
+        await progress(),
+      )).ofSection('section-002'),
+      isEmpty,
+    );
     // With the page's start known, the map follows it paragraph by paragraph.
     expect((await progress()).hiddenInNext, isNull);
     await positions.savePageStart(
@@ -121,6 +132,15 @@ void main() {
       const PageStart(1, ':root > :nth-child(2) > :nth-child(3)'),
     );
     expect((await progress()).hiddenInNext, isNotNull);
+    // And what can be answered from stops at the same paragraph.
+    expect((await progress()).paragraphsReadInNext, greaterThan(0));
+    expect(
+      (await backend.paragraphs(
+        book,
+        await progress(),
+      )).ofSection('section-002'),
+      hasLength((await progress()).paragraphsReadInNext),
+    );
     // A start left over from another file says nothing about this one.
     await positions.savePageStart(
       book.id,

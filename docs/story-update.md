@@ -149,9 +149,13 @@ and every record's evidence names a `section_id` and a `paragraph_id`. So answer
 from the facts to the text behind them:
 
 ```dart
-final visible = await backend.reachedSections(book, model.sections);
-final paragraphs = await backend.paragraphs(book, visibleSections: visible);
-final snapshot = StorySnapshot(model, model.sections[visible - 1]); // if visible > 0
+final progress = await backend.readingProgress(book, model.sections);
+final paragraphs = await backend.paragraphs(book, progress);
+final snapshot = StorySnapshot( // if progress.shown > 0
+  model,
+  model.sections[progress.shown - 1],
+  hidden: progress.hiddenInNext ?? const {},
+);
 // `records` are the facts picked out of the snapshot for a question.
 final context = paragraphs.forEvidence(
   records.expand((record) => record.evidence),
@@ -160,14 +164,16 @@ final context = paragraphs.forEvidence(
 // Each StoryParagraph: sectionId, id, number, text. In reading order, no repeats.
 ```
 
-- **`visibleSections` is the spoiler boundary**, and it is required. It counts from the first
-  processed section. Later sections aren't loaded at all, so a lookup can't reach them.
-- **Answers go by `reachedSections`, the map by `readingProgress`.** People ask while reading, so
-  the section being read counts, all of it: an answer can draw on what is still ahead in that
-  section. Only sections already in the map count, and of several sharing one EPUB document, only the
-  first unfinished one, since a position can't tell them apart.
+- **`StoryReadingProgress` is the spoiler boundary**, and it is required. Finished sections come
+  whole, and of the section being read only the paragraphs turned past. Nothing else is kept, so a
+  lookup can't reach it, and neither can `forEvidence`'s neighbors.
+- **Answers stop where the map does.** Don't work out another boundary for a feature that answers
+  the reader: take it from `readingProgress`. A page just turned to hasn't been read, so on a
+  section's first page nothing of that section can be used, and if a page can't be placed, only
+  finished sections can.
 - **Evidence always comes from the section its record was learned in**, so records from a snapshot
-  never lead past it.
+  never lead past it. A citation ahead of the page just isn't found: a name shows at its first
+  citation, so its later ones can be further on.
 - **Answer from the paragraph, not the quote.** With the quote check off a quote may not match, but
   `unknown_paragraph` is always an error, so the paragraph it names is real.
 - **A map loaded from a lone `story_model.json` has no `inputs/`.** Its text comes from the EPUB

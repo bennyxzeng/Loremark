@@ -440,6 +440,7 @@ void main() {
       );
       expect(progress.finished, 0);
       expect(progress.hiddenInNext, isNotNull);
+      expect(progress.paragraphsReadInNext, greaterThan(0));
       expect(progress.shown, 1);
     });
 
