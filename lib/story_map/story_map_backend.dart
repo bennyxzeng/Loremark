@@ -11,6 +11,7 @@ import '../reader/reading_position_store.dart';
 import '../search/search_cutoff.dart';
 import '../settings/ai_settings.dart';
 import '../story_model/story_model.dart';
+import '../story_model/story_snapshot.dart';
 import '../story_update/story_api_client.dart';
 import '../story_update/story_archive.dart';
 import '../story_update/story_import.dart';
@@ -20,17 +21,23 @@ import '../story_update/story_run_folder.dart';
 import '../story_update/story_updater.dart';
 
 /// How many of [sections], counted from the first, the reader has finished at
-/// [current]. A section counts only once its whole document is finished, since
-/// the Story Map shows what is known by the end of a section. Without a position
-/// it is none.
+/// [current]. A section counts only once the reader has turned past the end of
+/// its whole document, since a page just turned to hasn't been read yet. The last
+/// page of the book has nothing to turn to, so reaching it is enough. Without a
+/// position it is none.
 int finishedStorySections(
   List<StorySection> sections,
   List<SpineItem> spine,
   ReaderPosition? current,
 ) {
   if (current == null) return 0;
+  final atBookEnd =
+      current.progression == 1 &&
+      current.sectionIndex == spine.lastIndexWhere((item) => item.linear);
   // Takes a furthest position too, for when the reader's is kept.
-  final cutoff = completedSectionCutoff(current: current);
+  final cutoff = completedSectionCutoff(
+    current: atBookEnd ? current : ReaderPosition(current.sectionIndex, 0),
+  );
   final finishedItems = cutoff.progression == 1
       ? cutoff.sectionIndex + 1
       : cutoff.sectionIndex;
@@ -95,8 +102,12 @@ abstract interface class StoryMapBackend {
   /// The book's story model, or null if none has been built yet.
   Future<StoryModel?> loadModel(Book book);
 
-  /// How many of [sections] the reader has finished.
-  Future<int> finishedSections(Book book, List<StorySection> sections);
+  /// How far the reader has got through [sections], down to the paragraph in the
+  /// section they are partway through.
+  Future<StoryReadingProgress> readingProgress(
+    Book book,
+    List<StorySection> sections,
+  );
 
   /// How many of [sections] the reader has reached, counting the one they are
   /// in. The boundary for answering: see [reachedStorySections].
@@ -179,9 +190,41 @@ class DeviceStoryMapBackend implements StoryMapBackend {
   }
 
   @override
-  Future<int> finishedSections(Book book, List<StorySection> sections) async {
+  Future<StoryReadingProgress> readingProgress(
+    Book book,
+    List<StorySection> sections,
+  ) async {
     final (position, spine) = await _readingPlace(book);
-    return finishedStorySections(sections, spine, position);
+    final finished = finishedStorySections(sections, spine, position);
+    final store = await ReadingPositionStore.open();
+    final start = await store.loadPageStart(book.id);
+    if (start == null || start.sectionIndex != position?.sectionIndex) {
+      return StoryReadingProgress(finished);
+    }
+    final onPage = [
+      for (final section
+          in sections
+              .skip(finished)
+              .takeWhile(
+                (section) =>
+                    spineIndexOf(spine, section.href ?? '') ==
+                    start.sectionIndex,
+              ))
+        section.id,
+    ];
+    if (onPage.isEmpty) return StoryReadingProgress(finished);
+    final path = await _storePath(book);
+    final epub = book.epubPath;
+    final selector = start.cssSelector;
+    return Isolate.run(
+      () => readStoryProgress(
+        path,
+        epub,
+        finished: finished,
+        sectionsOnPage: onPage,
+        cssSelector: selector,
+      ),
+    );
   }
 
   @override

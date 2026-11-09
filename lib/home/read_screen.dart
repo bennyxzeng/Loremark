@@ -11,6 +11,7 @@ import '../notes/highlight_colors.dart';
 import '../notes/note.dart';
 import '../notes/note_list.dart';
 import '../reader/epub_reader_service.dart';
+import '../reader/page_start.dart';
 import '../reader/reader_position.dart';
 import '../reader/reading_position_store.dart';
 import '../reading/text_position.dart';
@@ -102,6 +103,7 @@ class _ReadScreenState extends State<ReadScreen> {
   Widget? _view;
   StreamSubscription<ReaderPosition>? _positionSubscription;
   StreamSubscription<TextPosition>? _pageTextSubscription;
+  StreamSubscription<PageStart>? _pageStartSubscription;
   StreamSubscription<TocEntry>? _chapterSubscription;
   StreamSubscription<PassageSelection>? _selectionSubscription;
   StreamSubscription<String>? _highlightTapSubscription;
@@ -255,6 +257,7 @@ class _ReadScreenState extends State<ReadScreen> {
       _restoring = position;
       _positionSubscription = session.positions.listen(_onPosition);
       _pageTextSubscription = session.pageTextEnds.listen(_onPageTextEnd);
+      _pageStartSubscription = session.pageStarts.listen(_onPageStart);
       _chapterSubscription = session.chapterChanges.listen(
         (chapter) => setState(() => _chapter = chapter),
       );
@@ -416,6 +419,8 @@ class _ReadScreenState extends State<ReadScreen> {
     _positionSubscription = null;
     unawaited(_pageTextSubscription?.cancel());
     _pageTextSubscription = null;
+    unawaited(_pageStartSubscription?.cancel());
+    _pageStartSubscription = null;
     unawaited(_chapterSubscription?.cancel());
     _chapterSubscription = null;
     unawaited(_selectionSubscription?.cancel());
@@ -533,6 +538,30 @@ class _ReadScreenState extends State<ReadScreen> {
     final furthest = _furthestPageText;
     if (furthest == null || end > furthest) _furthestPageText = end;
     _updateCutoff();
+  }
+
+  /// Keeps where this page starts, for the Story Map. It follows the page being
+  /// looked at, so it isn't kept from a page the book only opened on on its way
+  /// back to the saved position.
+  void _onPageStart(PageStart start) {
+    final store = _store;
+    if (store == null ||
+        _restoring != null ||
+        start.sectionIndex != _position?.sectionIndex) {
+      return;
+    }
+    unawaited(_savePageStart(store, start));
+  }
+
+  Future<void> _savePageStart(
+    ReadingPositionStore store,
+    PageStart start,
+  ) async {
+    try {
+      await store.savePageStart(widget.book.id, start);
+    } on Object catch (error) {
+      debugPrint('Could not save where the page starts: $error');
+    }
   }
 
   Future<void> _save(

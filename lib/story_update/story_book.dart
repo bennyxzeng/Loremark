@@ -7,6 +7,7 @@ import 'package:unorm_dart/unorm_dart.dart' as unorm;
 import 'package:xml/xml.dart';
 
 import '../library/epub_package.dart';
+import '../reader/css_selector.dart';
 import '../reader/epub_sections.dart';
 
 /// A JSON object, as stored in a story model and sent to the provider.
@@ -393,34 +394,7 @@ class StoryBook {
   /// Throws a [StorySectionEmptyError] if it has no text, and a
   /// [StoryEpubError] if it can't be cut from its document reliably.
   JsonMap extract(StoryBookSection section) {
-    if (section.problem != null) {
-      throw StoryEpubError(
-        '${section.sectionId} cannot be extracted reliably: ${section.problem}',
-      );
-    }
-    final document = _document(section.href);
-    if (document == null) {
-      throw StoryEpubError(_documentErrors[section.href]!);
-    }
-    final start = _anchorElement(document, section.fragment);
-    XmlElement? end;
-    final next = _nextInSameDocument(section);
-    if (next != null) {
-      end = _anchorElement(document, next.fragment);
-      final ordinals = _elementOrdinals(document);
-      final startPosition = start == null ? _documentStart : ordinals[start]!;
-      if (end == null || ordinals[end]! <= startPosition) {
-        throw StoryEpubError(
-          '${section.sectionId} has no end boundary after its start: '
-          '${next.sectionId} starts at ${next.href}'
-          '${next.fragment == null ? '' : '#${next.fragment}'}',
-        );
-      }
-    }
-
-    final collector = _RangeCollector(start, end);
-    collector.walk(_bodyOf(document));
-    collector.flush();
+    final collector = _collect(section);
     if (collector.paragraphs.isEmpty) {
       throw StorySectionEmptyError(
         '${section.sectionId} ("${section.title}") contains no body text',
@@ -450,6 +424,63 @@ class StoryBook {
       'omitted_image_count': collector.images,
       'extraction_notes': [...section.notes],
     };
+  }
+
+  /// How many of [section]'s paragraphs end before the element [cssSelector]
+  /// finds, the first one showing on the reader's page. A paragraph that element
+  /// is in isn't counted, since it may carry on to the page. All of them if the
+  /// element comes after the section, and none if it comes before.
+  ///
+  /// Null if the selector doesn't find an element in the body. Throws a
+  /// [StoryEpubError] if the section can't be cut from its document reliably.
+  int? paragraphsBefore(StoryBookSection section, String cssSelector) {
+    final document = _documentOf(section);
+    final target = firstElementMatching(document, cssSelector);
+    final body = _bodyOf(document);
+    if (target == null || !target.ancestors.any((a) => identical(a, body))) {
+      return null;
+    }
+    final collector = _collect(section, target: target);
+    return collector.beforeTarget ?? collector.paragraphs.length;
+  }
+
+  XmlDocument _documentOf(StoryBookSection section) {
+    if (section.problem != null) {
+      throw StoryEpubError(
+        '${section.sectionId} cannot be extracted reliably: ${section.problem}',
+      );
+    }
+    final document = _document(section.href);
+    if (document == null) {
+      throw StoryEpubError(_documentErrors[section.href]!);
+    }
+    return document;
+  }
+
+  /// Walks [section] of its document. Throws a [StoryEpubError] if it can't be
+  /// cut reliably. Notes where [target] falls among the paragraphs, if given.
+  _RangeCollector _collect(StoryBookSection section, {XmlElement? target}) {
+    final document = _documentOf(section);
+    final start = _anchorElement(document, section.fragment);
+    XmlElement? end;
+    final next = _nextInSameDocument(section);
+    if (next != null) {
+      end = _anchorElement(document, next.fragment);
+      final ordinals = _elementOrdinals(document);
+      final startPosition = start == null ? _documentStart : ordinals[start]!;
+      if (end == null || ordinals[end]! <= startPosition) {
+        throw StoryEpubError(
+          '${section.sectionId} has no end boundary after its start: '
+          '${next.sectionId} starts at ${next.href}'
+          '${next.fragment == null ? '' : '#${next.fragment}'}',
+        );
+      }
+    }
+
+    final collector = _RangeCollector(start, end, target);
+    collector.walk(_bodyOf(document));
+    collector.flush();
+    return collector;
   }
 }
 
@@ -705,10 +736,17 @@ bool _isPageBreak(XmlElement element) =>
 /// Collects paragraph texts between a start element and an end element, in
 /// document order.
 class _RangeCollector {
-  _RangeCollector(this.start, this.end) : active = start == null;
+  _RangeCollector(this.start, this.end, this.target) : active = start == null;
 
   final XmlElement? start;
   final XmlElement? end;
+
+  /// An element to find among the paragraphs.
+  final XmlElement? target;
+
+  /// How many paragraphs were complete when the walk reached [target], or null
+  /// if it never did.
+  int? beforeTarget;
   bool active;
   bool done = false;
   int suppressed = 0;
@@ -747,13 +785,16 @@ class _RangeCollector {
     }
     final name = _tagName(element);
     if (_imageTags.contains(name) && active) images++;
+    final block = _blockTags.contains(name);
+    if (block) flush();
+    // After that flush, which ends a paragraph before a block; text waiting in
+    // the buffer before an inline element is the paragraph it is in.
+    if (identical(element, target)) beforeTarget = paragraphs.length;
     if (name == 'br') {
       if (active && suppressed == 0) _buffer.write(' ');
       return;
     }
     final skipped = _skipTags.contains(name) || _isPageBreak(element);
-    final block = _blockTags.contains(name);
-    if (block) flush();
     if (skipped) suppressed++;
     walk(element);
     if (skipped) suppressed--;
