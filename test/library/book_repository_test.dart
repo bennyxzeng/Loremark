@@ -50,6 +50,24 @@ void main() {
     expect(reopened.lastOpened?.id, book.id);
   });
 
+  test('finds its files after the app’s folder moves', () async {
+    final source = await writeFile('harbor.epub', buildEpub());
+    final (:book, isNew: _) = await repository.importEpub(source);
+    await repository.saved;
+
+    // As iOS does when the app is reinstalled or updated.
+    final moved = Directory('${temp.path}/moved/library');
+    await moved.parent.create();
+    await repository.root.rename(moved.path);
+    final reopened = BookRepository(moved);
+    await reopened.load();
+
+    final found = reopened.books.single;
+    expect(found.epubPath, isNot(book.epubPath));
+    expect(await File(found.epubPath).exists(), isTrue);
+    expect(await File(found.coverPath!).readAsBytes(), coverBytes);
+  });
+
   test('imports the same file only once', () async {
     final first = await writeFile('a.epub', buildEpub());
     final copy = await writeFile('b.epub', buildEpub());

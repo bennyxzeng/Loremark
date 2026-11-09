@@ -7,6 +7,7 @@ import 'package:flutter_readium/flutter_readium.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loremark/reader/epub_reader_service.dart';
 import 'package:loremark/reader/readium_reader_service.dart';
+import 'package:loremark/reader/page_start.dart';
 import 'package:loremark/reader/reader_position.dart';
 import 'package:loremark/reading/text_position.dart';
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
@@ -254,6 +255,86 @@ void main() {
 
       expect(session.sectionCount, _hrefs.length);
       expect(fake.openBook, 'a.epub');
+    });
+  });
+
+  group('pageStarts', () {
+    const first = ':root > :nth-child(2) > :nth-child(3)';
+    const second = ':root > :nth-child(2) > :nth-child(9)';
+
+    Locator page(
+      String? selector, {
+      double progression = 0.1,
+      bool full = true,
+    }) => Locator(
+      href: _hrefs[1],
+      type: _xhtml,
+      locations: Locations(
+        progression: progression,
+        cssSelector: selector,
+        additionalProperties: {if (full) 'currentPage': 0, 'totalPages': 5},
+      ),
+    );
+
+    Future<List<PageStart>> collect(String book) async {
+      final session = await open(book);
+      final starts = <PageStart>[];
+      session.pageStarts.listen(starts.add);
+      return starts;
+    }
+
+    test('reports the first element on each page', () async {
+      final book = await writeBook('starts.epub');
+      final starts = await collect(book);
+
+      await send([page(first), page(second, progression: 0.3)]);
+      await pumpEventQueue();
+
+      expect(starts, const [PageStart(1, first), PageStart(1, second)]);
+    });
+
+    test('takes it from the full locator only', () async {
+      final book = await writeBook('bare.epub');
+      final starts = await collect(book);
+
+      await send([page(first, full: false)]);
+      await pumpEventQueue();
+      expect(starts, isEmpty);
+
+      await send([page(second)]);
+      await pumpEventQueue();
+      expect(starts, const [PageStart(1, second)]);
+    });
+
+    test('reports a page once however often Readium repeats it', () async {
+      final book = await writeBook('repeats.epub');
+      final starts = await collect(book);
+
+      await send([page(first), page(first)]);
+      await pumpEventQueue();
+
+      expect(starts, hasLength(1));
+    });
+
+    test('reports going back to a page', () async {
+      final book = await writeBook('back.epub');
+      final starts = await collect(book);
+
+      await send([page(first), page(second, progression: 0.3), page(first)]);
+      await pumpEventQueue();
+
+      expect(starts, hasLength(3));
+      expect(starts.last, const PageStart(1, first));
+    });
+
+    test('says nothing for a page with no selector', () async {
+      final book = await writeBook('none.epub');
+      final starts = await collect(book);
+
+      await send([page(null), page('')]);
+      await pumpEventQueue();
+
+      expect(starts, isEmpty);
     });
   });
 

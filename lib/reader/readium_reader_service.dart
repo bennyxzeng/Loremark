@@ -11,6 +11,7 @@ import '../reading/text_position.dart';
 import '../theme/loremark_theme.dart';
 import 'epub_reader_service.dart';
 import 'epub_sections.dart';
+import 'page_start.dart';
 import 'position_normalizer.dart';
 import 'reader_position.dart';
 import 'toc_builder.dart';
@@ -207,6 +208,7 @@ class _ReadiumSession implements EpubReaderSession {
   // listens, which it does once. A broadcast stream would drop them.
   final _positions = StreamController<ReaderPosition>();
   final _pageTextEnds = StreamController<TextPosition>();
+  final _pageStarts = StreamController<PageStart>();
   final _chapterChanges = StreamController<TocEntry>();
   final _selections = StreamController<PassageSelection>();
   final _highlightTaps = StreamController<String>();
@@ -222,6 +224,9 @@ class _ReadiumSession implements EpubReaderSession {
 
   @override
   Stream<TextPosition> get pageTextEnds => _pageTextEnds.stream;
+
+  @override
+  Stream<PageStart> get pageStarts => _pageStarts.stream;
 
   @override
   Stream<TocEntry> get chapterChanges => _chapterChanges.stream;
@@ -277,11 +282,30 @@ class _ReadiumSession implements EpubReaderSession {
     }
     // Readium reports every page twice, a bare locator and then a full one
     // with the same position.
-    if (raw == null || raw == _lastRaw) return;
-    _lastRaw = raw;
-    // With page info the last page already reached 1.0, so leaving a section
-    // below it is a jump, not a page turn through its end.
-    _emit(_normalizer.normalize(raw, mayFinishPrevious: !previousHadPageInfo));
+    if (raw == null) return;
+    if (raw != _lastRaw) {
+      _lastRaw = raw;
+      // With page info the last page already reached 1.0, so leaving a section
+      // below it is a jump, not a page turn through its end.
+      _emit(
+        _normalizer.normalize(raw, mayFinishPrevious: !previousHadPageInfo),
+      );
+    }
+    // After the position, which the Read tab checks a page start against. Only
+    // the full locator's selector is the plugin's look at the page as it shows.
+    if (_hasPageInfo(locator.locations)) {
+      _reportPageStart(raw.sectionIndex, locator.locations?.cssSelector);
+    }
+  }
+
+  PageStart? _lastPageStart;
+
+  void _reportPageStart(int section, String? cssSelector) {
+    if (cssSelector == null || cssSelector.isEmpty || _closed) return;
+    final start = PageStart(section, cssSelector);
+    if (start == _lastPageStart) return;
+    _lastPageStart = start;
+    _pageStarts.add(start);
   }
 
   void _onStatus(ReadiumReaderStatus status) {
@@ -528,6 +552,7 @@ class _ReadiumSession implements EpubReaderSession {
     // completes.
     unawaited(_positions.close());
     unawaited(_pageTextEnds.close());
+    unawaited(_pageStarts.close());
     unawaited(_chapterChanges.close());
     unawaited(_selections.close());
     unawaited(_highlightTaps.close());
