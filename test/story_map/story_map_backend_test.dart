@@ -95,9 +95,21 @@ void main() {
     expect(model.sections.single.quotesChecked, isFalse);
     expect((await backend.inspect(book)).nextSectionId, 'section-003');
 
+    // The paragraphs its evidence cites can be read back, up to a boundary.
+    final evidence = model.allRecords.expand((record) => record.evidence);
+    final visible = await backend.paragraphs(book, visibleSections: 1);
+    expect(visible.forEvidence(evidence), isNotEmpty);
+    final hidden = await backend.paragraphs(book, visibleSections: 0);
+    expect(hidden.forEvidence(evidence), isEmpty);
+
     // Nothing read yet: not even this section counts as finished.
     expect(await backend.finishedSections(book, model.sections), 0);
+    expect(await backend.reachedSections(book, model.sections), 0);
     final positions = await ReadingPositionStore.open();
+    // Partway through it: reached for answering, but not finished for the map.
+    await positions.save(book.id, const ReaderPosition(1, 0.5));
+    expect(await backend.finishedSections(book, model.sections), 0);
+    expect(await backend.reachedSections(book, model.sections), 1);
     await positions.save(book.id, const ReaderPosition(1, 1));
     expect(await backend.finishedSections(book, model.sections), 1);
 
