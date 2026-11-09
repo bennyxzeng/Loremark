@@ -5,12 +5,18 @@ import 'package:flutter/material.dart';
 import '../library/book.dart';
 import '../notes/annotation_service.dart';
 import '../notes/note_list.dart';
+import '../reader/epub_sections.dart';
+import '../reader/reader_position.dart';
 import '../reader/readium_reader_service.dart';
+import '../search/search_cutoff.dart';
 import '../settings/ai_lock.dart';
+import '../settings/ai_settings.dart';
+import '../settings/connection_status.dart';
 import '../search/search_index_store.dart';
 import '../story_map/story_map_backend.dart';
 import '../story_map/story_map_tab.dart';
 import '../theme/loremark_theme.dart';
+import '../theories/theory_checker.dart';
 import 'ask_screen.dart';
 import 'notes_screen.dart';
 import 'offline_banner.dart';
@@ -19,9 +25,22 @@ import 'reader_header.dart';
 
 /// One open book: the Read, Ask, Notes, and Story Map tabs for [book].
 class BookScreen extends StatefulWidget {
-  const BookScreen({super.key, required this.book, this.storyMapBackend});
+  const BookScreen({
+    super.key,
+    required this.book,
+    this.storyMapBackend,
+    this.checkerFactory,
+    this.openNotes,
+  });
 
   final Book book;
+
+  /// Makes the theory checker for the book's notes; tests replace the one
+  /// that reads the book file and calls the reader's AI provider.
+  final TheoryChecker Function(AnnotationService notes)? checkerFactory;
+
+  /// Opens the book's notes; tests replace the device's files.
+  final Future<AnnotationService> Function(String bookId)? openNotes;
 
   /// Where the Story Map tab gets its data; tests replace the device's.
   final StoryMapBackend? storyMapBackend;
@@ -40,9 +59,8 @@ class _BookScreenState extends State<BookScreen> {
 
   /// The book's notes, shared by the Read tab, which adds and draws them, and
   /// the Notes tab, which lists them.
-  late final Future<AnnotationService> _notes = AnnotationService.openForBook(
-    widget.book.id,
-  );
+  late final Future<AnnotationService> _notes =
+      (widget.openNotes ?? AnnotationService.openForBook)(widget.book.id);
 
   /// Sends the Read tab to a note tapped in the Notes tab.
   final _noteJumps = NoteJumpController();
@@ -57,8 +75,106 @@ class _BookScreenState extends State<BookScreen> {
     _noteFocus.focus(noteId);
   }
 
+  late AiSettings _ai;
+  late ConnectionStatus _connection;
+  AnnotationService? _notesService;
+  TheoryChecker? _checker;
+  StreamSubscription<TheoryStatusChange>? _changes;
+
+  /// Where the reader is and the furthest they got this session, for the
+  /// theory checker's spoiler boundary.
+  ReaderPosition? _current;
+  ReaderPosition? _furthest;
+  int _finishedSections = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_startTheoryChecks());
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _ai = AiSettingsScope.of(context);
+    _connection = ConnectionScope.of(context);
+  }
+
+  /// Creates the theory checker once the notes open, and runs it. If the
+  /// notes fail to open, reading is unaffected and nothing is checked.
+  Future<void> _startTheoryChecks() async {
+    final AnnotationService notes;
+    try {
+      notes = await _notes;
+    } on Object {
+      return;
+    }
+    if (!mounted) return;
+    final checker =
+        widget.checkerFactory?.call(notes) ??
+        TheoryChecker(
+          annotations: notes,
+          loadSectionTexts: () => readSectionTexts(widget.book.epubPath),
+          credentials: () => _ai.credentials,
+          isOnline: () => _connection.isOnline,
+        );
+    _notesService = notes;
+    _checker = checker;
+    _changes = checker.changes.listen(_showTheoryBanner);
+    notes.addListener(_onNotesChanged);
+    _runChecker();
+  }
+
+  void _runChecker() {
+    unawaited(_checker?.run(current: _current, furthest: _furthest));
+  }
+
+  /// A theory that was just saved or edited has no sub-theories yet, so it is
+  /// split. The checker's own saves never leave one unsplit, so they don't
+  /// start another run.
+  void _onNotesChanged() {
+    final notes = _notesService;
+    if (notes != null &&
+        notes.theories.any((note) => note.theory!.subTheories.isEmpty)) {
+      _runChecker();
+    }
+  }
+
+  /// Runs a check when a section was finished since the last one.
+  void _onPosition(ReaderPosition position) {
+    _current = position;
+    _furthest = searchCutoff(current: position, furthest: _furthest);
+    final finished = finishedSectionCount(
+      current: _current,
+      furthest: _furthest,
+    );
+    if (finished > _finishedSections) {
+      _finishedSections = finished;
+      _runChecker();
+    }
+  }
+
+  void _showTheoryBanner(TheoryStatusChange change) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(change.bannerText),
+        // Floating, so it sits above the tab bar instead of covering it.
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 8),
+        action: SnackBarAction(
+          label: 'View',
+          onPressed: () => showNoteInNotesTab(change.noteId),
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
+    unawaited(_changes?.cancel());
+    _notesService?.removeListener(_onNotesChanged);
+    _checker?.dispose();
     _noteFocus.dispose();
     super.dispose();
   }
@@ -95,6 +211,7 @@ class _BookScreenState extends State<BookScreen> {
                         ),
                         notes: _notes,
                         noteJumps: _noteJumps,
+                        onPositionChanged: _onPosition,
                       ),
                       const AiLock(
                         feature: 'Ask',
