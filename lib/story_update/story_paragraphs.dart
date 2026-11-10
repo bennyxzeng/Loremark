@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:math';
 
 import '../story_model/story_model.dart';
+import '../story_model/story_snapshot.dart';
 import 'story_book.dart';
 import 'story_store.dart';
 import 'story_updater.dart';
@@ -28,10 +29,10 @@ class StoryParagraph {
   final String text;
 }
 
-/// The paragraphs of the sections a reader may see, for answering from them.
+/// The paragraphs a reader has read, for answering from them.
 ///
-/// Later sections aren't left out by a check on each call: they were never
-/// loaded, so nothing here can reach them. See [readStoryParagraphs].
+/// What they haven't read isn't left out by a check on each call: it isn't in
+/// here, so nothing can reach it. See [readStoryParagraphs].
 class StoryParagraphs {
   /// [_sections] holds each section's paragraphs, in reading order.
   StoryParagraphs(this._sections)
@@ -44,14 +45,20 @@ class StoryParagraphs {
   final Map<String, List<StoryParagraph>> _sections;
   final Map<String, Map<String, StoryParagraph>> _byId;
 
-  /// The paragraph called [paragraphId], or null if there is none or its
-  /// section isn't visible.
+  /// The paragraph called [paragraphId], or null if there is none or it isn't
+  /// visible.
   StoryParagraph? paragraph(String sectionId, String paragraphId) =>
       _byId[sectionId]?[paragraphId];
 
+  /// The visible paragraphs of the section called [sectionId], in reading order.
+  /// Empty if none are.
+  List<StoryParagraph> ofSection(String sectionId) =>
+      _sections[sectionId] ?? const [];
+
   /// The paragraphs [evidence] cites, each with [context] neighbors on either
-  /// side from its own section. No paragraph appears twice, they come in reading
-  /// order, and evidence from a section that isn't visible is skipped.
+  /// side from its own section, as far as they are visible. No paragraph appears
+  /// twice, they come in reading order, and evidence naming a paragraph that
+  /// isn't visible is skipped.
   ///
   /// With the quote check off a quote may not match its paragraph, but the
   /// paragraph it names is always real, so answer from this text, not the quote.
@@ -82,26 +89,44 @@ class StoryParagraphs {
   }
 }
 
-/// The paragraphs of the first [visibleSections] sections of the Story Map at
-/// [storePath]. Empty if there is no map.
+/// The paragraphs of the Story Map at [storePath] that a reader at [progress] has
+/// read: all of the sections they have finished, and the start of the one they
+/// are partway through. Empty if there is no map.
 ///
-/// [visibleSections] is the spoiler boundary. For answering a reader, that is
-/// `StoryMapBackend.reachedSections`. A map can hold sections the reader hasn't
+/// [progress] is the spoiler boundary, the same one the map shows up to: see
+/// `StoryMapBackend.readingProgress`. A map can hold sections the reader hasn't
 /// reached, since updating isn't tied to reading progress.
+///
+/// Throws a [StoryStoreError] or a [StoryEpubError] if a section's text can't be
+/// had, rather than returning part of what is visible.
+StoryParagraphs readStoryParagraphs(
+  String storePath,
+  String epubPath,
+  StoryReadingProgress progress,
+) {
+  final sections = _readSections(storePath, epubPath, progress.shown);
+  if (progress.hiddenInNext != null && sections.length == progress.shown) {
+    final partway = sections.keys.last;
+    sections[partway] = sections[partway]!
+        .take(progress.paragraphsReadInNext)
+        .toList();
+  }
+  return StoryParagraphs(sections);
+}
+
+/// Every paragraph of the first [count] sections of the Story Map at
+/// [storePath], in reading order. Empty if there is no map.
 ///
 /// A section comes from its saved text. A map loaded from a single
 /// `story_model.json` has none, so its text comes from the EPUB at [epubPath],
 /// and is used only if it hashes to what the model recorded.
-///
-/// Throws a [StoryStoreError] or a [StoryEpubError] if a section's text can't be
-/// had either way, rather than returning part of what is visible.
-StoryParagraphs readStoryParagraphs(
+Map<String, List<StoryParagraph>> _readSections(
   String storePath,
-  String epubPath, {
-  required int visibleSections,
-}) {
+  String epubPath,
+  int count,
+) {
   final model = readStoryModel(storePath);
-  if (model == null) return StoryParagraphs(const {});
+  if (model == null) return {};
   final store = StoryStore(Directory(storePath));
   final processed = (model['processed_sections'] as List)
       .cast<JsonMap>()
@@ -113,13 +138,179 @@ StoryParagraphs readStoryParagraphs(
   StoryBook? book;
   StoryBook openBook() => book ??= _openBookOf(model, epubPath);
 
-  return StoryParagraphs({
-    for (final section in processed.take(max(visibleSections, 0)))
+  return {
+    for (final section in processed.take(max(count, 0)))
       section['section_id'] as String: _paragraphsOf(
         section['section_id'] as String,
         _savedInput(store, section) ?? _extractedInput(openBook(), section),
       ),
-  });
+  };
+}
+
+/// Past every paragraph: known only once the section is finished.
+const _sectionEnd = 0x7fffffff;
+
+/// The IDs of [section]'s records and transitions a reader who has read its first
+/// [paragraphsRead] paragraphs shouldn't see yet. [paragraphs] is all of them.
+///
+/// The model read the whole section before writing any of this, so these rules
+/// lean towards showing a fact late:
+///
+/// 1. A citation is at the paragraph it names, if its quote is there. If not, at
+///    the last paragraph holding the quote, and if none does, at the section's
+///    end. With the quote check off, the paragraph named may be wrong.
+/// 2. A fact is known at its last citation, and a name or an alias at its first,
+///    the first time the book uses it.
+/// 3. A fact the model inferred waits for the end of the section, since what it
+///    was inferred from can be later than what it cites.
+/// 4. A fact waits for the first name of each entity it mentions, or it would
+///    show with no name to show it by.
+/// 5. A transition and the record replacing a fact change over together.
+Set<String> hiddenWithinSection(
+  StoryModel model,
+  StorySection section,
+  List<StoryParagraph> paragraphs, {
+  required int paragraphsRead,
+}) {
+  final byId = {for (final item in paragraphs) item.id: item};
+
+  int citedAt(Evidence evidence) {
+    final named = byId[evidence.paragraphId];
+    if (named != null && named.text.contains(evidence.quote)) {
+      return named.number;
+    }
+    final holding = paragraphs.where(
+      (item) => item.text.contains(evidence.quote),
+    );
+    return holding.isEmpty ? _sectionEnd : holding.last.number;
+  }
+
+  final records = [
+    for (final record in model.allRecords)
+      if (record.learnedInSectionId == section.id) record,
+  ];
+  final points = <String, int>{};
+  final firstLabels = <String, int>{};
+  for (final record in records) {
+    final cited = record.evidence.map(citedAt);
+    if (record.payload case EntityText(:final entityId)) {
+      final point = cited.reduce(min);
+      points[record.id] = point;
+      firstLabels[entityId] = min(firstLabels[entityId] ?? point, point);
+    } else {
+      points[record.id] = _isInferred(record.payload)
+          ? _sectionEnd
+          : cited.reduce(max);
+    }
+  }
+
+  final labelledBefore = {
+    for (final record in [...model.names, ...model.aliases])
+      if ((model.sectionById(record.learnedInSectionId)?.order ??
+              section.order) <
+          section.order)
+        record.payload.entityId,
+  };
+  for (final record in records) {
+    if (record.payload is EntityText) continue;
+    for (final entityId in record.payload.entityIds) {
+      final label = firstLabels[entityId];
+      if (label != null && !labelledBefore.contains(entityId)) {
+        points[record.id] = max(points[record.id]!, label);
+      }
+    }
+  }
+
+  for (final transition in model.transitions) {
+    if (transition.learnedInSectionId != section.id) continue;
+    final replacement = transition.replacementRecordId;
+    final point = [
+      ...transition.evidence.map(citedAt),
+      ?points[replacement],
+    ].reduce(max);
+    points[transition.id] = point;
+    if (replacement != null && points.containsKey(replacement)) {
+      points[replacement] = point;
+    }
+  }
+
+  return {
+    for (final MapEntry(key: id, value: point) in points.entries)
+      if (point > paragraphsRead) id,
+  };
+}
+
+bool _isInferred(RecordPayload payload) => switch (payload) {
+  Attribute(:final assertion) ||
+  Relationship(:final assertion) ||
+  StoryEvent(:final assertion) ||
+  IdentityLink(:final assertion) => assertion == Assertion.inferred,
+  _ => false,
+};
+
+/// How far a reader has got in the Story Map at [storePath], given that [finished]
+/// sections are behind them by position alone, and that their page starts at the
+/// element [cssSelector] finds in the document holding [sectionsOnPage]: the
+/// sections, from the first unfinished one, that are in that document.
+///
+/// Anything unexpected leaves the count at what position alone says, which never
+/// shows too much.
+StoryReadingProgress readStoryProgress(
+  String storePath,
+  String epubPath, {
+  required int finished,
+  required List<String> sectionsOnPage,
+  required String cssSelector,
+}) {
+  final unmeasured = StoryReadingProgress(finished);
+  try {
+    final json = readStoryModel(storePath);
+    if (json == null) return unmeasured;
+    final book = StoryBook.open(File(epubPath).readAsBytesSync());
+    checkStoryContinues(json, book);
+    final model = StoryModel.fromJson(json);
+    final processed = {
+      for (final section
+          in (json['processed_sections'] as List).cast<JsonMap>())
+        section['section_id'] as String: section,
+    };
+    var done = finished;
+    for (final id in sectionsOnPage) {
+      final source = book.sections.firstWhere((s) => s.sectionId == id);
+      final saved = processed[id]!;
+      // Paragraph numbers only mean the same if the text was cut the same way.
+      if (book.extract(source)['text_sha256'] != saved['text_sha256']) {
+        return StoryReadingProgress(done);
+      }
+      final read = book.paragraphsBefore(source, cssSelector);
+      if (read == null) return StoryReadingProgress(done);
+      if (read >= (saved['paragraph_count'] as int)) {
+        done++;
+        continue;
+      }
+      if (read == 0) return StoryReadingProgress(done);
+      return StoryReadingProgress(
+        done,
+        hiddenInNext: hiddenWithinSection(
+          model,
+          model.sectionById(id)!,
+          // All of the section: finding a quote takes the paragraphs ahead too.
+          _readSections(storePath, epubPath, done + 1)[id] ?? const [],
+          paragraphsRead: read,
+        ),
+        paragraphsReadInNext: read,
+      );
+    }
+    return StoryReadingProgress(done);
+  } on StoryEpubError {
+    return unmeasured;
+  } on StoryStoreError {
+    return unmeasured;
+  } on FileSystemException {
+    return unmeasured;
+  } on FormatException {
+    return unmeasured;
+  }
 }
 
 /// The saved text of [section], or null if it can't be trusted: missing, not
