@@ -77,6 +77,8 @@ class _BookScreenState extends State<BookScreen> {
 
   late AiSettings _ai;
   late ConnectionStatus _connection;
+  ScaffoldMessengerState? _messenger;
+  Timer? _bannerTimer;
   AnnotationService? _notesService;
   TheoryChecker? _checker;
   StreamSubscription<TheoryStatusChange>? _changes;
@@ -98,6 +100,7 @@ class _BookScreenState extends State<BookScreen> {
     super.didChangeDependencies();
     _ai = AiSettingsScope.of(context);
     _connection = ConnectionScope.of(context);
+    _messenger = ScaffoldMessenger.of(context);
   }
 
   /// Creates the theory checker once the notes open, and runs it. If the
@@ -154,24 +157,45 @@ class _BookScreenState extends State<BookScreen> {
     }
   }
 
+  /// Shows the banner at the top, under the app bar, so it never covers the
+  /// page arrows, the progress row or the tab bar. A MaterialBanner has no
+  /// timeout of its own, so a timer hides it after 8 seconds. A new banner
+  /// replaces the one on screen, so there is never more than one.
   void _showTheoryBanner(TheoryStatusChange change) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
+    final messenger = ScaffoldMessenger.of(context);
+    _bannerTimer?.cancel();
+    messenger.removeCurrentMaterialBanner();
+    void hide() {
+      _bannerTimer?.cancel();
+      _bannerTimer = null;
+      messenger.removeCurrentMaterialBanner();
+    }
+
+    messenger.showMaterialBanner(
+      MaterialBanner(
         content: Text(change.bannerText),
-        // Floating, so it sits above the tab bar instead of covering it.
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 8),
-        action: SnackBarAction(
-          label: 'View',
-          onPressed: () => showNoteInNotesTab(change.noteId),
-        ),
+        backgroundColor: LoremarkColors.card,
+        contentTextStyle: const TextStyle(color: LoremarkColors.ink),
+        actions: [
+          TextButton(
+            onPressed: () {
+              hide();
+              showNoteInNotesTab(change.noteId);
+            },
+            child: const Text('View'),
+          ),
+          TextButton(onPressed: hide, child: const Text('Dismiss')),
+        ],
       ),
     );
+    _bannerTimer = Timer(const Duration(seconds: 8), hide);
   }
 
   @override
   void dispose() {
+    _bannerTimer?.cancel();
+    _messenger?.removeCurrentMaterialBanner();
     unawaited(_changes?.cancel());
     _notesService?.removeListener(_onNotesChanged);
     _checker?.dispose();
