@@ -1,11 +1,13 @@
 import 'dart:math';
 
+import '../reader/epub_sections.dart' show pageLines;
 import '../reading/text_position.dart';
 import '../story_model/story_model.dart';
 import '../story_model/story_snapshot.dart';
 import '../story_update/story_paragraphs.dart';
 
-/// The text of the reader's page, with a little of what came before it.
+/// The text of the reader's recent pages: the page they are on, with a little
+/// of what came before it.
 class AskPage {
   const AskPage(this.text, this.end);
 
@@ -14,6 +16,10 @@ class AskPage {
 
   /// Where the page ends.
   final TextPosition end;
+
+  /// [text] line by line, as the model sees it numbered from 1 and cites it:
+  /// see `pageLines`.
+  List<String> get lines => [for (final line in pageLines(text)) line.text];
 }
 
 /// How far Ask may go, as the device measures it: the whole page the reader is

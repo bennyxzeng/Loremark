@@ -48,7 +48,7 @@ These are our six use cases and where each one stands in this beta.
 | **4 · Look up a character** | **Operational** | A searchable character list, and a card for each character showing what is known as of the chosen chapter. Opening a card by tapping a name in the reader isn't in yet. |
 | **1 · Get a recap when you come back** | In progress | |
 | **2 · Track a theory** | In progress | |
-| **6 · Ask about the story** | **Operational** | Ask a question in the Ask tab. The AI sees the page you are on and looks the rest up in the Story Map, up to the end of that page and no further. Answers stream in and cite their paragraphs: tap a number to read it, then **Open in book** to go there. Pick Ask's model and effort in Settings, apart from Story Map updates. See [docs/ask.md](docs/ask.md). |
+| **6 · Ask about the story** | **Operational** | Ask a question in the Ask tab. The AI sees the page you are on and the few before it, and looks the rest up in the Story Map, up to the end of that page and no further. Answers stream in and cite the paragraphs they come from: tap a number to read it, then **Open in book** to go there. Pick Ask's model and effort in Settings, apart from Story Map updates. See [docs/ask.md](docs/ask.md). |
 
 These features support the use cases above, and all of them work in the beta:
 

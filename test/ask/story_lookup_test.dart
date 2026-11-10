@@ -122,7 +122,7 @@ void main() {
     test('with nothing reached, there are no tools, only the page', () {
       final lookup = at(0);
       expect(lookup.tools, isEmpty);
-      expect(lookup.overview(), contains('The current page is all you have'));
+      expect(lookup.overview(), contains('The recent pages are all you have'));
       expect(lookup.run('get_entity', '{"entity_id":"c001"}'), contains('no'));
       final noMap = StoryLookup(AskBoundary(reach: AskReach.none));
       expect(noMap.overview(), contains('no Story Map yet'));

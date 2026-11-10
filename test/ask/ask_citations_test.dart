@@ -12,19 +12,46 @@ void main() {
           'A [section-004/p0012]. B [section-004/p9999]. '
           'C [section-004/p0001, section-007/p0002]. D [page].',
           exists,
+          pageLines: 3,
         ),
         'A [section-004/p0012]. B. C [section-004/p0001]. D [page].',
       );
     });
 
+    test('keeps lines of the recent pages that were sent', () {
+      expect(
+        cleanCitations(
+          'A [page/1]. B [page/3, section-004/p0012]. C [page/4]. D [page/0]. '
+          'E [page/99999999999999999999999].',
+          exists,
+          pageLines: 3,
+        ),
+        'A [page/1]. B [page/3, section-004/p0012]. C. D. E.',
+      );
+    });
+
+    test('drops the recent pages when none were sent', () {
+      expect(
+        cleanCitations(
+          'A [page/1]. B [page]. C [section-004/p0012].',
+          exists,
+          pageLines: 0,
+        ),
+        'A. B. C [section-004/p0012].',
+      );
+    });
+
     test('leaves brackets that aren\'t citations alone', () {
-      expect(cleanCitations('He said [sic] so.', exists), 'He said [sic] so.');
+      expect(
+        cleanCitations('He said [sic] so.', exists, pageLines: 0),
+        'He said [sic] so.',
+      );
     });
 
     test('takes the separators a Chinese answer uses', () {
       expect(
-        cleanCitations('甲[section-004/p0001，section-004/p0002]。', exists),
-        '甲 [section-004/p0001, section-004/p0002]。'.replaceFirst(' ', ''),
+        cleanCitations('甲[section-004/p0001，page/2]。', exists, pageLines: 2),
+        '甲 [section-004/p0001, page/2]。'.replaceFirst(' ', ''),
       );
     });
   });
@@ -44,6 +71,18 @@ void main() {
       expect(citesAnything(parts), isTrue);
     });
 
+    test('reads lines of the recent pages', () {
+      final parts = splitAnswer('Mara [page/12, s1/p0001] left [page/3].');
+      expect((parts[1] as AnswerCitation).refs, const [
+        AskRef.page(12),
+        AskRef('s1', 'p0001'),
+      ]);
+      expect((parts[3] as AnswerCitation).refs.single, const AskRef.page(3));
+      expect(const AskRef.page(3), isNot(const AskRef.page()));
+      expect('${const AskRef.page(3)}', 'page/3');
+      expect('${const AskRef.page()}', 'page');
+    });
+
     test('holds back a citation still arriving', () {
       final parts = splitAnswer('Mara left [s1/p00', streaming: true);
       expect(parts, hasLength(1));
@@ -51,6 +90,11 @@ void main() {
       expect(
         (splitAnswer('Mara left [s1/p00').single as AnswerText).text,
         'Mara left [s1/p00',
+      );
+      expect(
+        (splitAnswer('Mara left [page/1', streaming: true).single as AnswerText)
+            .text,
+        'Mara left ',
       );
     });
 

@@ -327,6 +327,23 @@ class DeviceStoryMapBackend implements StoryMapBackend, AskBackend {
   }
 
   @override
+  Future<RecentPages?> recentPages(Book book, TextPosition end) async {
+    // A page end that wasn't measured sent no page.
+    if (end.progression <= 0) return null;
+    final spine = await (_spines[book.id] ??= readSpine(book.epubPath));
+    if (end.sectionIndex >= spine.length) return null;
+    final xhtml = await readSectionMarkup(
+      book.epubPath,
+      spine[end.sectionIndex].path,
+    );
+    if (xhtml == null) return null;
+    final progression = end.progression;
+    final page = await Isolate.run(() => pageTextBefore(xhtml, progression));
+    if (page == null || page.lines.isEmpty) return null;
+    return RecentPages(end.sectionIndex, page);
+  }
+
+  @override
   Future<StoryParagraphs> paragraphs(
     Book book,
     StoryReadingProgress progress,

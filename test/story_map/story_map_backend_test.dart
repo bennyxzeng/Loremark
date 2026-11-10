@@ -187,6 +187,16 @@ void main() {
     expect(ask.page!.text, endsWith('No one'));
     expect(ask.limit, TextPosition(1, end));
     expect(ask.pastMap, isFalse);
+    // An answer's recent pages come back from its limit, line for line as
+    // they were sent, and each line can be found in the book.
+    final recent = (await backend.recentPages(book, ask.limit))!;
+    expect([for (final line in recent.lines) line.text], ask.page!.lines);
+    expect(recent.sectionIndex, 1);
+    final first = recent.target(1);
+    expect(first.sectionIndex, 1);
+    expect(recent.lines.first.text, startsWith(first.highlight));
+    expect(recent.target(recent.lines.length).highlight, 'No one');
+    expect(await backend.recentPages(book, const TextPosition(1, 0)), isNull);
     // An end kept from another file says nothing about this page.
     await positions.savePageEnd(book.id, const PageEnd(2, 1, 0.5));
     expect((await reach()).page, isNull);

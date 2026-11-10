@@ -56,14 +56,14 @@ class StoryLookup {
     ];
     if (boundary.model == null) {
       lines.add(
-        'This book has no Story Map yet. The current page is all you have.',
+        'This book has no Story Map yet. The recent pages are all you have.',
       );
       return lines.join('\n');
     }
     if (snapshot == null) {
       lines.add(
         'The Story Map has nothing from the part of the book the reader has '
-        'read. The current page is all you have.',
+        'read. The recent pages are all you have.',
       );
       if (boundary.reach.pastMap) lines.add(_pastMapNote);
       return lines.join('\n');

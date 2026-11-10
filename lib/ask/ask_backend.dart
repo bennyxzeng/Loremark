@@ -2,6 +2,8 @@ import 'dart:math';
 
 import '../library/book.dart';
 import '../reader/epub_reader_service.dart';
+import '../reader/epub_sections.dart';
+import '../reading/text_position.dart';
 import '../search/snippet.dart';
 import '../story_model/story_model.dart';
 import '../story_model/story_snapshot.dart';
@@ -29,6 +31,39 @@ abstract interface class AskBackend {
     StorySection section,
     StoryParagraph paragraph,
   );
+
+  /// The recent pages Ask sent when the reader's page ended at [end], as an
+  /// answer's `limit` keeps it, line by line. Null if none were sent then, or
+  /// they can't be read now.
+  Future<RecentPages?> recentPages(Book book, TextPosition end);
+}
+
+/// The recent pages an answer was given, to show the lines it cites and find
+/// them in the book.
+class RecentPages {
+  const RecentPages(this.sectionIndex, this.page);
+
+  /// The spine item they are in.
+  final int sectionIndex;
+  final PageText page;
+
+  /// Line n, as the model saw it numbered, is `lines[n - 1]`.
+  List<PageLine> get lines => page.lines;
+
+  /// Where line [line] is, numbered from 1, for the renderer to find and
+  /// highlight. Never reaches past the end of the page they end at.
+  PassageTarget target(int line) {
+    final at = page.lines[line - 1];
+    return buildPassageTarget(
+      sectionIndex: sectionIndex,
+      sectionText: page.sectionText,
+      paragraphStart: at.start,
+      paragraphEnd: at.end,
+      matchStart: at.start,
+      matchEnd: min(at.end, at.start + maxQuoteLength),
+      visibleEnd: page.end,
+    );
+  }
 }
 
 /// Everything a question about [book] may draw on, as it is now.

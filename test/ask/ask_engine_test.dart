@@ -397,6 +397,54 @@ void main() {
     expect(answer!.error!['category'], 'timeout');
   });
 
+  group('recent pages', () {
+    test('go numbered a line at a time, for citing as [page/N]', () async {
+      final provider = FakeAskProvider([
+        (
+          200,
+          sse([
+            completed([message('At the water [page/1] [page/2].')]),
+          ]),
+        ),
+      ]);
+      const twoLines = AskPage(
+        'Mara looked out at the water.\n\n  The tide was in.',
+        TextPosition(2, 0.5),
+      );
+      final answer = await ask(
+        provider,
+        at: boundaryAt(
+          model,
+          all,
+          finished: 1,
+          page: twoLines,
+          limit: const TextPosition(2, 0.5),
+        ),
+      );
+      final input = provider.bodies.single['input'] as List;
+      final sent = (input.last as Map)['content'] as String;
+      expect(
+        sent,
+        contains('[1] Mara looked out at the water.\n[2] The tide was in.\n'),
+      );
+      expect(sent, contains('[page/N]'));
+      expect(answer.text, 'At the water [page/1] [page/2].');
+    });
+
+    test('a line that wasn\'t sent is taken out of the answer', () async {
+      final provider = FakeAskProvider([
+        (
+          200,
+          sse([
+            completed([message('At the water [page/1] [page/2].')]),
+          ]),
+        ),
+      ]);
+      final answer = await ask(provider);
+      expect(answer.text, 'At the water [page/1].');
+    });
+  });
+
   group('history', () {
     AskTurn turn(String question) =>
         AskTurn(question: question, answer: 'A to $question');

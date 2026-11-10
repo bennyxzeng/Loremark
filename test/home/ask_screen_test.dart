@@ -170,7 +170,7 @@ void main() {
   testWidgets('says what answers can use, before any question', (tester) async {
     await pumpAsk(tester);
     expect(
-      find.text('Sees this page · Story Map to Chapter 1: Arrival'),
+      find.text('Sees your recent pages · Story Map to Chapter 1: Arrival'),
       findsOne,
     );
     expect(find.text('Ask about what you’ve read.'), findsOne);
@@ -189,7 +189,8 @@ void main() {
     expect(find.text('Who is Mara?'), findsOne);
     expect(find.textContaining('Mara is a dock clerk'), findsOne);
     expect(find.text('1'), findsOne);
-    expect(find.text('this page'), findsOne);
+    // An older kind of citation: the recent pages, with no line.
+    expect(find.text('recent pages'), findsOne);
     expect(find.text('No passage cited.'), findsNothing);
 
     // The citation opens the paragraph, without moving the reader...
@@ -246,7 +247,7 @@ void main() {
         page: page,
       );
     await pumpAsk(tester);
-    expect(find.text('Sees this page · No Story Map yet'), findsOne);
+    expect(find.text('Sees your recent pages · No Story Map yet'), findsOne);
     expect(find.textContaining('Build a Story Map'), findsOne);
     await tester.tap(find.text('Story Map'));
     expect(openedMap, hasLength(1));
@@ -338,6 +339,106 @@ void main() {
       find.byKey(const ValueKey('ask-input')),
     );
     expect(input.controller!.text, 'Half a');
+  });
+
+  group('recent pages', () {
+    const fourLines = AskPage(
+      'First line.\n\nSecond line.\n\nThird line.\n\nFourth line.',
+      TextPosition(2, 0.5),
+    );
+
+    setUp(() {
+      backend.reach = const AskReach(
+        progress: StoryReadingProgress(1),
+        limit: TextPosition(2, 0.5),
+        page: fourLines,
+      );
+    });
+
+    testWidgets('a line is numbered with the paragraphs, and opens', (
+      tester,
+    ) async {
+      await pumpAsk(
+        tester,
+        replies: [(200, answer('Mara waited [page/2] by it [s1/p0001].'))],
+      );
+      await askQuestion(tester, 'What did Mara do?');
+      expect(find.text('recent pages'), findsNothing);
+
+      await tester.tap(find.text('1'));
+      await tester.pumpAndSettle();
+      expect(find.text('RECENT PAGES'), findsOne);
+      expect(find.textContaining('What Ask saw'), findsOne);
+      expect(find.text('First line.'), findsOne);
+      expect(find.text('Second line.'), findsOne);
+      expect(find.text('Third line.'), findsOne);
+      expect(find.text('Fourth line.'), findsNothing);
+      expect(backend.pagesAsked.single, const TextPosition(2, 0.5));
+      expect(jumps, isEmpty);
+
+      await tester.tap(find.text('Open in book'));
+      await tester.pumpAndSettle();
+      expect(jumps.single.sectionIndex, 2);
+      expect(jumps.single.highlight, 'Second line.');
+      expect(find.text('RECENT PAGES'), findsNothing);
+
+      // The paragraph is the next number.
+      await tester.tap(find.text('2'));
+      await tester.pumpAndSettle();
+      expect(find.text('Chapter 1: Arrival'), findsOne);
+    });
+
+    testWidgets('with no line, all of them show, ending at the page', (
+      tester,
+    ) async {
+      final controller = await pumpAsk(
+        tester,
+        history: _MemoryHistory({
+          'c1': [
+            AskExchange(
+              question: 'Where?',
+              answer: 'By the water [page].',
+              limit: const TextPosition(2, 0.5),
+              askedAt: DateTime.utc(2026),
+            ),
+          ],
+        }),
+      );
+      controller.open('c1');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('recent pages'));
+      await tester.pumpAndSettle();
+      for (final line in fourLines.lines) {
+        expect(find.text(line), findsOne);
+      }
+      await tester.tap(find.text('Open in book'));
+      await tester.pumpAndSettle();
+      expect(jumps.single.highlight, 'Fourth line.');
+    });
+
+    testWidgets('can\'t be opened when the page end wasn\'t measured', (
+      tester,
+    ) async {
+      final controller = await pumpAsk(
+        tester,
+        history: _MemoryHistory({
+          'c1': [
+            AskExchange(
+              question: 'Where?',
+              answer: 'By the water [page].',
+              limit: const TextPosition(2, 0),
+              askedAt: DateTime.utc(2026),
+            ),
+          ],
+        }),
+      );
+      controller.open('c1');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('recent pages'));
+      await tester.pumpAndSettle();
+      expect(find.text('RECENT PAGES'), findsNothing);
+      expect(backend.pagesAsked, isEmpty);
+    });
   });
 
   group('conversations', () {

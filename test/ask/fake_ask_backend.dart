@@ -2,6 +2,8 @@ import 'package:loremark/ask/ask_backend.dart';
 import 'package:loremark/ask/ask_boundary.dart';
 import 'package:loremark/library/book.dart';
 import 'package:loremark/reader/epub_reader_service.dart';
+import 'package:loremark/reader/epub_sections.dart';
+import 'package:loremark/reading/text_position.dart';
 import 'package:loremark/story_model/story_model.dart';
 import 'package:loremark/story_model/story_snapshot.dart';
 import 'package:loremark/story_update/story_paragraphs.dart';
@@ -23,6 +25,9 @@ class FakeAskBackend implements AskBackend {
   final placed = <StoryParagraph>[];
 
   int reaches = 0;
+
+  /// The page ends [recentPages] was asked about.
+  final pagesAsked = <TextPosition>[];
 
   @override
   Future<StoryModel?> loadModel(Book book) async => model;
@@ -61,6 +66,18 @@ class FakeAskBackend implements AskBackend {
       sectionIndex: section.order,
       progression: 0,
       highlight: paragraph.text,
+    );
+  }
+
+  /// The recent pages in [reach], wherever [end] says they ended.
+  @override
+  Future<RecentPages?> recentPages(Book book, TextPosition end) async {
+    pagesAsked.add(end);
+    final text = reach.page?.text;
+    if (text == null) return null;
+    return RecentPages(
+      end.sectionIndex,
+      PageText(text, pageLines(text), text.length),
     );
   }
 }

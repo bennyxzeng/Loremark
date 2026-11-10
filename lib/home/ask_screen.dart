@@ -1,12 +1,15 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 
+import '../ask/ask_backend.dart' show RecentPages;
 import '../ask/ask_boundary.dart';
 import '../ask/ask_citations.dart';
 import '../ask/ask_controller.dart';
 import '../ask/ask_history.dart' show AskConversation;
 import '../reader/epub_reader_service.dart';
+import '../reading/text_position.dart';
 import '../settings/ai_settings.dart';
 import '../story_map/story_facts.dart';
 import '../story_model/story_model.dart';
@@ -221,8 +224,13 @@ class _AskScreenState extends State<AskScreen> {
     if (confirmed == true) await _ask.deleteConversation(conversation.id);
   }
 
-  /// Shows the paragraph [ref] names, with one on either side.
-  Future<void> _openCitation(AskRef ref) async {
+  /// Shows what [ref] cites, in an answer given when the reader's page ended
+  /// at [limit].
+  Future<void> _openCitation(AskRef ref, TextPosition? limit) async {
+    if (ref.isPage) {
+      if (limit != null) await _openRecentPages(ref.line, limit);
+      return;
+    }
     final boundary = _ask.boundary;
     final section = boundary?.model?.sectionById(ref.sectionId!);
     final cited = boundary?.paragraphs.paragraph(
@@ -235,48 +243,63 @@ class _AskScreenState extends State<AskScreen> {
     ], context: 1);
     await showFactSheet(
       context,
-      builder: (sheetContext, scrollController) => ListView(
-        controller: scrollController,
-        padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
-        children: [
-          Text(section.name, style: kicker()),
-          const SizedBox(height: 12),
+      builder: (sheetContext, scrollController) => _PassageSheet(
+        scrollController: scrollController,
+        heading: section.name,
+        passages: [
           for (final paragraph in shown)
-            Container(
-              margin: const EdgeInsets.only(bottom: 10),
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-              decoration: paragraph.id == cited.id
-                  ? const BoxDecoration(
-                      color: LoremarkColors.noteQuote,
-                      border: Border(
-                        left: BorderSide(
-                          color: LoremarkColors.noteBorder,
-                          width: 3,
-                        ),
-                      ),
-                    )
-                  : null,
-              child: Text(
-                paragraph.text,
-                style: serif(
-                  15,
-                  height: 1.6,
-                  color: paragraph.id == cited.id
-                      ? LoremarkColors.readerText
-                      : LoremarkColors.muted,
-                ),
-              ),
-            ),
-          const SizedBox(height: 6),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: FilledButton.icon(
-              onPressed: () => _openInBook(sheetContext, section, cited),
-              icon: const Icon(Icons.menu_book_outlined, size: 18),
-              label: const Text('Open in book'),
-            ),
-          ),
+            (paragraph.text, paragraph.id == cited.id),
         ],
+        onOpen: () => _openInBook(sheetContext, section, cited),
+      ),
+    );
+  }
+
+  /// Shows line [line] of the recent pages an answer was given when the
+  /// reader's page ended at [limit], with one on either side; or all of them
+  /// if [line] is null.
+  Future<void> _openRecentPages(int? line, TextPosition limit) async {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    RecentPages? pages;
+    try {
+      pages = await _ask.backend.recentPages(_ask.book, limit);
+    } on Object catch (error) {
+      debugPrint('Could not read the recent pages: $error');
+    }
+    if (!mounted) return;
+    if (pages == null) {
+      messenger?.showSnackBar(
+        const SnackBar(content: Text('Couldn’t find those pages in the book.')),
+      );
+      return;
+    }
+    final lines = pages.lines;
+    final cited = line != null && line >= 1 && line <= lines.length
+        ? line
+        : null;
+    final target = pages.target(cited ?? lines.length);
+    await showFactSheet(
+      context,
+      builder: (sheetContext, scrollController) => _PassageSheet(
+        scrollController: scrollController,
+        heading: 'RECENT PAGES',
+        intro:
+            'What Ask saw: the page you were on when you asked, and a few '
+            'pages before it.',
+        passages: cited == null
+            ? [for (final at in lines) (at.text, false)]
+            : [
+                for (
+                  var n = max(1, cited - 1);
+                  n <= min(lines.length, cited + 1);
+                  n++
+                )
+                  (lines[n - 1].text, n == cited),
+              ],
+        onOpen: () async {
+          Navigator.of(sheetContext).pop();
+          await widget.onOpenPassage(target);
+        },
       ),
     );
   }
@@ -313,10 +336,13 @@ class _AskScreenState extends State<AskScreen> {
     final pending = _ask.pending;
     final canAsk = boundary != null && !boundary.isEmpty;
 
-    bool visible(AskRef ref) =>
-        !ref.isPage &&
-        boundary?.paragraphs.paragraph(ref.sectionId!, ref.paragraphId!) !=
-            null;
+    // Recent pages can be shown when the answer's page end was measured;
+    // paragraphs while the reader is still past them.
+    bool Function(AskRef) visibleAt(TextPosition? limit) =>
+        (ref) => ref.isPage
+        ? limit != null && limit.progression > 0
+        : boundary?.paragraphs.paragraph(ref.sectionId!, ref.paragraphId!) !=
+              null;
 
     final Widget conversation;
     if (exchanges.isEmpty && pending == null) {
@@ -341,8 +367,8 @@ class _AskScreenState extends State<AskScreen> {
             _Answer(
               text: exchange.answer,
               cutOff: exchange.cutOff,
-              visible: visible,
-              onCite: _openCitation,
+              visible: visibleAt(exchange.limit),
+              onCite: (ref) => _openCitation(ref, exchange.limit),
             ),
           ],
           if (pending != null) ...[
@@ -350,8 +376,8 @@ class _AskScreenState extends State<AskScreen> {
             if (pending.running)
               _Working(
                 pending: pending,
-                visible: visible,
-                onCite: _openCitation,
+                visible: visibleAt(boundary?.reach.limit),
+                onCite: (ref) => _openCitation(ref, boundary?.reach.limit),
               )
             else
               _Failed(
@@ -417,7 +443,7 @@ class _Coverage extends StatelessWidget {
     } else {
       summary = '${_pageSummary(boundary)} · ${_mapSummary(boundary)}';
       if (boundary.model == null) {
-        advice = 'Build a Story Map to ask about more than this page.';
+        advice = 'Build a Story Map to ask about more than your recent pages.';
       } else if (boundary.reach.pastMap) {
         advice =
             'You’re past what the Story Map covers. Update it to ask about '
@@ -492,8 +518,9 @@ class _Coverage extends StatelessWidget {
     );
   }
 
-  static String _pageSummary(AskBoundary boundary) =>
-      boundary.page == null ? 'Can’t see this page' : 'Sees this page';
+  static String _pageSummary(AskBoundary boundary) => boundary.page == null
+      ? 'Can’t see your recent pages'
+      : 'Sees your recent pages';
 
   static String _mapSummary(AskBoundary boundary) {
     if (boundary.model == null) return 'No Story Map yet';
@@ -625,8 +652,10 @@ class _AnswerText extends StatelessWidget {
           spans.add(TextSpan(text: text));
         case AnswerCitation(:final refs):
           for (final ref in refs) {
-            final label = ref.isPage
-                ? 'this page'
+            // Lines of the recent pages are numbered with the paragraphs;
+            // the recent pages as a whole, from older answers, aren't.
+            final label = ref.isPage && ref.line == null
+                ? 'recent pages'
                 : '${numbers.putIfAbsent(ref, () => numbers.length + 1)}';
             final enabled = visible(ref);
             spans.add(
@@ -635,7 +664,7 @@ class _AnswerText extends StatelessWidget {
                 child: _CitationChip(
                   label: label,
                   tooltip: ref.isPage
-                      ? 'From the page you’re on'
+                      ? 'From your recent pages'
                       : enabled
                       ? 'Show the passage'
                       : 'Past where you are now',
@@ -649,6 +678,81 @@ class _AnswerText extends StatelessWidget {
     return Text.rich(
       TextSpan(children: spans),
       style: serif(15.5, height: 1.6, color: LoremarkColors.readerText),
+    );
+  }
+}
+
+/// What a citation points to: the cited passage marked, the ones around it
+/// faded, and a way into the book. With none marked, all are shown plainly.
+class _PassageSheet extends StatelessWidget {
+  const _PassageSheet({
+    required this.scrollController,
+    required this.heading,
+    required this.passages,
+    required this.onOpen,
+    this.intro,
+  });
+
+  final ScrollController scrollController;
+  final String heading;
+  final String? intro;
+
+  /// Each passage's text, and whether it is the one cited.
+  final List<(String, bool)> passages;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final anyCited = passages.any((passage) => passage.$2);
+    return ListView(
+      controller: scrollController,
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
+      children: [
+        Text(heading, style: kicker()),
+        if (intro case final intro?) ...[
+          const SizedBox(height: 6),
+          Text(
+            intro,
+            style: const TextStyle(fontSize: 12.5, color: LoremarkColors.muted),
+          ),
+        ],
+        const SizedBox(height: 12),
+        for (final (text, cited) in passages)
+          Container(
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+            decoration: cited
+                ? const BoxDecoration(
+                    color: LoremarkColors.noteQuote,
+                    border: Border(
+                      left: BorderSide(
+                        color: LoremarkColors.noteBorder,
+                        width: 3,
+                      ),
+                    ),
+                  )
+                : null,
+            child: Text(
+              text,
+              style: serif(
+                15,
+                height: 1.6,
+                color: cited || !anyCited
+                    ? LoremarkColors.readerText
+                    : LoremarkColors.muted,
+              ),
+            ),
+          ),
+        const SizedBox(height: 6),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: FilledButton.icon(
+            onPressed: onOpen,
+            icon: const Icon(Icons.menu_book_outlined, size: 18),
+            label: const Text('Open in book'),
+          ),
+        ),
+      ],
     );
   }
 }

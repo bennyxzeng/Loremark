@@ -1,12 +1,15 @@
-/// A place an answer cites: a paragraph of the Story Map, or the reader's page.
+/// A place an answer cites: a paragraph of the Story Map, or a line of the
+/// reader's recent pages.
 class AskRef {
-  const AskRef(this.sectionId, this.paragraphId);
+  const AskRef(this.sectionId, this.paragraphId) : line = null;
 
-  /// The current page, which has no paragraph numbers.
-  const AskRef.page() : sectionId = null, paragraphId = null;
+  /// The reader's recent pages: line [line] of them, numbered from 1 as the
+  /// model saw them, or anywhere in them if null.
+  const AskRef.page([this.line]) : sectionId = null, paragraphId = null;
 
   final String? sectionId;
   final String? paragraphId;
+  final int? line;
 
   bool get isPage => sectionId == null;
 
@@ -14,13 +17,16 @@ class AskRef {
   bool operator ==(Object other) =>
       other is AskRef &&
       other.sectionId == sectionId &&
-      other.paragraphId == paragraphId;
+      other.paragraphId == paragraphId &&
+      other.line == line;
 
   @override
-  int get hashCode => Object.hash(sectionId, paragraphId);
+  int get hashCode => Object.hash(sectionId, paragraphId, line);
 
   @override
-  String toString() => isPage ? 'page' : '$sectionId/$paragraphId';
+  String toString() => isPage
+      ? (line == null ? 'page' : 'page/$line')
+      : '$sectionId/$paragraphId';
 }
 
 /// A piece of an answer: some text, or the citations that come after a claim.
@@ -40,10 +46,11 @@ class AnswerCitation extends AnswerPart {
   final List<AskRef> refs;
 }
 
-const _ref = r'(?:page|[\w.-]+/[\w.-]+)';
+const _ref = r'(?:page(?:/\d+)?|[\w.-]+/[\w.-]+)';
 
-/// A citation as the prompt asks for it: `[section-004/p0012]`, `[page]`, or
-/// several in one bracket, separated by commas.
+/// A citation as the prompt asks for it: `[section-004/p0012]`, `[page/12]`,
+/// or several in one bracket, separated by commas. `[page]` is the recent
+/// pages with no line, as answers gave them before lines were numbered.
 final _citation = RegExp('\\[\\s*($_ref(?:\\s*[,，;；]\\s*$_ref)*)\\s*\\]');
 
 /// The start of a citation that hasn't finished arriving.
@@ -51,22 +58,37 @@ final _openCitation = RegExp(r'\[[\w./,，;；\s-]*$');
 
 List<AskRef> _refsIn(String inside) => [
   for (final raw in inside.split(RegExp(r'[,，;；]')))
-    if (raw.trim() case final ref when ref.isNotEmpty)
-      ref == 'page'
-          ? const AskRef.page()
-          : AskRef(ref.split('/')[0], ref.split('/')[1]),
+    if (raw.trim() case final ref when ref.isNotEmpty) _parseRef(ref),
 ];
 
-/// [text] without the references [exists] says aren't real, and without a
-/// citation left with none. Run once on a finished answer, against the
-/// paragraphs it was answered from, so that what is kept was real then.
+AskRef _parseRef(String ref) {
+  final [section, paragraph] = ref == 'page' ? ['page', ''] : ref.split('/');
+  if (section != 'page') return AskRef(section, paragraph);
+  // A number too long to parse is no line, and is cleaned away.
+  return AskRef.page(paragraph.isEmpty ? null : int.tryParse(paragraph) ?? 0);
+}
+
+/// [text] without the references that weren't real, and without a citation
+/// left with none. A paragraph is real if [exists] says so; a line of the
+/// recent pages if it is one of the [pageLines] sent, so none is when no page
+/// was. Run once on a finished answer, against what it was answered from, so
+/// that what is kept was real then.
 String cleanCitations(
   String text,
-  bool Function(String sectionId, String paragraphId) exists,
-) => text.replaceAllMapped(RegExp('\\s?${_citation.pattern}'), (match) {
+  bool Function(String sectionId, String paragraphId) exists, {
+  required int pageLines,
+}) => text.replaceAllMapped(RegExp('\\s?${_citation.pattern}'), (match) {
+  bool real(AskRef ref) => switch (ref) {
+    AskRef(isPage: true, :final line) =>
+      pageLines > 0 && (line == null || (line >= 1 && line <= pageLines)),
+    AskRef(:final sectionId!, :final paragraphId!) => exists(
+      sectionId,
+      paragraphId,
+    ),
+  };
   final kept = [
     for (final ref in _refsIn(match[1]!))
-      if (ref.isPage || exists(ref.sectionId!, ref.paragraphId!)) ref,
+      if (real(ref)) ref,
   ];
   if (kept.isEmpty) return '';
   final space = match[0]!.startsWith(RegExp(r'\s')) ? ' ' : '';
