@@ -226,29 +226,39 @@ class _AddNoteSheetState extends State<_AddNoteSheet> {
               if (_errorText != null) setState(() => _errorText = null);
             },
           ),
-          // A theory can build on one of the reader's older theories.
-          if (_kind == NoteKind.theory && widget.olderTheories.isNotEmpty) ...[
+          // A theory can build on one of the reader's older theories. The sheet
+          // sits at the bottom of the screen, so adding this box only when
+          // Theory is chosen would push everything above it up and move the
+          // text box away from where the reader tapped. Its space is kept
+          // whenever there are older theories, and it is only hidden.
+          if (widget.olderTheories.isNotEmpty) ...[
             const SizedBox(height: 16),
-            DropdownButtonFormField<String?>(
-              initialValue: _dependsOnId,
-              isExpanded: true,
-              decoration: const InputDecoration(
-                labelText: 'Builds on',
-                border: OutlineInputBorder(),
-              ),
-              items: [
-                const DropdownMenuItem<String?>(child: Text('None')),
-                for (final theory in widget.olderTheories)
-                  DropdownMenuItem<String?>(
-                    value: theory.id,
-                    child: Text(
-                      shortenTheoryText(theory.body),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+            Visibility(
+              visible: _kind == NoteKind.theory,
+              maintainSize: true,
+              maintainAnimation: true,
+              maintainState: true,
+              child: DropdownButtonFormField<String?>(
+                initialValue: _dependsOnId,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  labelText: 'Builds on',
+                  border: OutlineInputBorder(),
+                ),
+                items: [
+                  const DropdownMenuItem<String?>(child: Text('None')),
+                  for (final theory in widget.olderTheories)
+                    DropdownMenuItem<String?>(
+                      value: theory.id,
+                      child: Text(
+                        shortenTheoryText(theory.body),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                  ),
-              ],
-              onChanged: (id) => setState(() => _dependsOnId = id),
+                ],
+                onChanged: (id) => setState(() => _dependsOnId = id),
+              ),
             ),
           ],
           const SizedBox(height: 16),
