@@ -89,6 +89,12 @@ class _BookScreenState extends State<BookScreen> {
   ReaderPosition? _furthest;
   int _finishedSections = 0;
 
+  /// The index of the book's last linear section, or null until the spine is
+  /// read (or if it can't be). The last section has nothing to turn to, so
+  /// reaching its last page counts as finishing it; without this that
+  /// exception stays off, which is the safe direction.
+  int? _lastSection;
+
   @override
   void initState() {
     super.initState();
@@ -125,10 +131,29 @@ class _BookScreenState extends State<BookScreen> {
     _changes = checker.changes.listen(_showTheoryBanner);
     notes.addListener(_onNotesChanged);
     _runChecker();
+    unawaited(_readLastSection());
+  }
+
+  Future<void> _readLastSection() async {
+    try {
+      final spine = await readSpine(widget.book.epubPath);
+      if (!mounted) return;
+      _lastSection = spine.lastIndexWhere((item) => item.linear);
+      // The reader may already be on the book's last page.
+      _runIfSectionFinished();
+    } on Object {
+      // No spine: the book-end exception stays off.
+    }
   }
 
   void _runChecker() {
-    unawaited(_checker?.run(current: _current, furthest: _furthest));
+    unawaited(
+      _checker?.run(
+        current: _current,
+        furthest: _furthest,
+        lastSection: _lastSection,
+      ),
+    );
   }
 
   /// A theory that was just saved or edited has no sub-theories yet, so it is
@@ -146,9 +171,14 @@ class _BookScreenState extends State<BookScreen> {
   void _onPosition(ReaderPosition position) {
     _current = position;
     _furthest = searchCutoff(current: position, furthest: _furthest);
+    _runIfSectionFinished();
+  }
+
+  void _runIfSectionFinished() {
     final finished = finishedSectionCount(
       current: _current,
       furthest: _furthest,
+      lastSection: _lastSection,
     );
     if (finished > _finishedSections) {
       _finishedSections = finished;

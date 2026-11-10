@@ -3,8 +3,11 @@
 /// book with the reader's own API key.
 ///
 /// Spoiler and privacy rules it keeps (see docs/theories.md, part 2):
-/// - Only whole sections the reader has finished are sent
-///   ([completedSectionCutoff]), never the section in progress or a later one.
+/// - Only whole sections the reader has finished are sent ([finishedSectionCount]):
+///   a section is finished once the reader has turned past its end, never
+///   while they are still on its last page. Only the last section of the book,
+///   which has nothing to turn to, counts when its last page is reached.
+///   The section in progress and later ones are never sent.
 /// - One section per request, and no personal notes.
 /// - A verdict counts only when its quote is really in that section's text.
 /// - A failed request changes no note and never stops the reader reading.
@@ -58,9 +61,26 @@ class TheoryStatusChange {
 
 /// This tells how many sections count as finished for the given positions.
 /// Section indexes below the returned number are finished; the rest are not.
-int finishedSectionCount({ReaderPosition? current, ReaderPosition? furthest}) {
-  final cutoff = completedSectionCutoff(current: current, furthest: furthest);
-  return cutoff.progression == 1 ? cutoff.sectionIndex + 1 : 0;
+///
+/// A section counts as finished only after the reader has turned past its end,
+/// because a page just turned to has not been read yet. So every section
+/// before the one being read is finished, and the one being read is not, even
+/// on its last page. The one exception is [lastSection], the index of the
+/// book's last linear section: it has nothing to turn to, so reaching its
+/// last page (progression 1) is enough. Without [lastSection] there is no
+/// exception.
+int finishedSectionCount({
+  ReaderPosition? current,
+  ReaderPosition? furthest,
+  int? lastSection,
+}) {
+  final reached = searchCutoff(current: current, furthest: furthest);
+  if (reached.sectionIndex < 0) return 0;
+  final atBookEnd =
+      lastSection != null &&
+      reached.sectionIndex == lastSection &&
+      reached.progression == 1;
+  return atBookEnd ? reached.sectionIndex + 1 : reached.sectionIndex;
 }
 
 /// This class checks theories against the book. It is created once per open
@@ -95,7 +115,7 @@ class TheoryChecker {
   final DateTime Function() _clock;
 
   final _changes = StreamController<TheoryStatusChange>.broadcast();
-  (ReaderPosition?, ReaderPosition?)? _pending;
+  (ReaderPosition?, ReaderPosition?, int?)? _pending;
   Future<void>? _active;
   List<String>? _sections;
 
@@ -113,8 +133,12 @@ class TheoryChecker {
   /// are not split yet, then checks every finished section no theory has seen.
   /// A call made while a run is going is merged into one follow-up run.
   /// It never throws; a failure is in [lastError].
-  Future<void> run({ReaderPosition? current, ReaderPosition? furthest}) {
-    _pending = (current, furthest);
+  Future<void> run({
+    ReaderPosition? current,
+    ReaderPosition? furthest,
+    int? lastSection,
+  }) {
+    _pending = (current, furthest, lastSection);
     return _active ??= _drain();
   }
 
@@ -129,9 +153,9 @@ class TheoryChecker {
   Future<void> _drain() async {
     try {
       while (_pending != null && !_disposed) {
-        final (current, furthest) = _pending!;
+        final (current, furthest, lastSection) = _pending!;
         _pending = null;
-        await _runOnce(current, furthest);
+        await _runOnce(current, furthest, lastSection);
       }
     } finally {
       _active = null;
@@ -150,6 +174,7 @@ class TheoryChecker {
   Future<void> _runOnce(
     ReaderPosition? current,
     ReaderPosition? furthest,
+    int? lastSection,
   ) async {
     final key = credentials();
     if (key == null || !isOnline()) return;
@@ -166,7 +191,11 @@ class TheoryChecker {
         key,
         model,
         effort,
-        finishedSectionCount(current: current, furthest: furthest),
+        finishedSectionCount(
+          current: current,
+          furthest: furthest,
+          lastSection: lastSection,
+        ),
       );
     } on _CheckFailure catch (failure) {
       lastError = failure.category;

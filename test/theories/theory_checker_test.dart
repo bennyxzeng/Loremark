@@ -447,12 +447,54 @@ void main() {
       },
     );
 
-    test('a section that was just finished is sent', () async {
-      await newChecker().run(current: const ReaderPosition(1, 1));
+    test('a section the reader turned past is sent', () async {
+      await newChecker().run(current: const ReaderPosition(2, 0));
 
       expect(bodies, hasLength(2));
       expect(jsonEncode(bodies), contains('MARK-1'));
       expect(jsonEncode(bodies), isNot(contains('MARK-2')));
+    });
+
+    test(
+      'the last page of a section is not sent until it is turned past',
+      () async {
+        final theory = await addTheory('Elian burns the ledger');
+        await presplit(theory, ['Elian burns the ledger']);
+        handler = (body) async => reply(
+          verdicts({
+            '${theory.id}/s1': ('confirmed', 'Elian burned the ledger.'),
+          }),
+        );
+        final checker = newChecker();
+        final changes = <TheoryStatusChange>[];
+        checker.changes.listen(changes.add);
+
+        // On the last page of section 1: it is not finished.
+        await checker.run(current: const ReaderPosition(1, 1));
+        await Future<void>.delayed(Duration.zero);
+        expect(jsonEncode(bodies), isNot(contains('MARK-1')));
+        expect(changes, isEmpty);
+        expect(notes.statusOf(theory.id), TheoryStatus.unconfirmed);
+
+        // Turning into section 2 finishes it, and it is sent once.
+        await checker.run(current: const ReaderPosition(2, 0));
+        await Future<void>.delayed(Duration.zero);
+        expect(
+          bodies.where((body) => jsonEncode(body).contains('MARK-1')),
+          hasLength(1),
+        );
+        expect(notes.statusOf(theory.id), TheoryStatus.confirmed);
+        expect(changes, hasLength(1));
+      },
+    );
+
+    test('the last section of the book is sent on its last page', () async {
+      await newChecker().run(
+        current: const ReaderPosition(4, 1),
+        lastSection: 4,
+      );
+
+      expect(jsonEncode(bodies), contains('IN-PROGRESS-MARKER'));
     });
 
     test('at the start of the book nothing is sent', () async {
@@ -743,17 +785,59 @@ void main() {
     });
   });
 
-  test('finishedSectionCount follows the finished-section cutoff', () {
-    expect(finishedSectionCount(), 0);
-    expect(finishedSectionCount(current: const ReaderPosition(0, 0.9)), 0);
-    expect(finishedSectionCount(current: const ReaderPosition(0, 1)), 1);
-    expect(finishedSectionCount(current: const ReaderPosition(4, 0.1)), 4);
-    expect(
-      finishedSectionCount(
-        current: const ReaderPosition(1, 0.1),
-        furthest: const ReaderPosition(5, 1),
-      ),
-      6,
-    );
+  group('finishedSectionCount', () {
+    test('arriving on the last page of a section does not finish it', () {
+      expect(finishedSectionCount(current: const ReaderPosition(3, 1)), 3);
+    });
+
+    test('turning into the next section finishes the one before', () {
+      expect(finishedSectionCount(current: const ReaderPosition(4, 0)), 4);
+      expect(finishedSectionCount(current: const ReaderPosition(4, 0.1)), 4);
+    });
+
+    test('the last section counts once its last page is reached', () {
+      expect(
+        finishedSectionCount(
+          current: const ReaderPosition(3, 1),
+          lastSection: 3,
+        ),
+        4,
+      );
+      expect(
+        finishedSectionCount(
+          current: const ReaderPosition(3, 0.9),
+          lastSection: 3,
+        ),
+        3,
+      );
+    });
+
+    test('without a known last section there is no exception', () {
+      expect(finishedSectionCount(current: const ReaderPosition(3, 1)), 3);
+    });
+
+    test('the furthest position is respected', () {
+      expect(
+        finishedSectionCount(
+          current: const ReaderPosition(1, 0.1),
+          furthest: const ReaderPosition(5, 1),
+        ),
+        5,
+      );
+      expect(
+        finishedSectionCount(
+          current: const ReaderPosition(1, 0.1),
+          furthest: const ReaderPosition(5, 1),
+          lastSection: 5,
+        ),
+        6,
+      );
+    });
+
+    test('no position, or a negative one, finishes nothing', () {
+      expect(finishedSectionCount(), 0);
+      expect(finishedSectionCount(current: const ReaderPosition(-1, 1)), 0);
+      expect(finishedSectionCount(lastSection: 3), 0);
+    });
   });
 }
