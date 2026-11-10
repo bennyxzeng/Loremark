@@ -1325,4 +1325,68 @@ void main() {
       );
     });
   });
+
+  group('past the end of the map', () {
+    // two.xhtml was left out between the map's two sections, for good.
+    final sections = [
+      for (final (id, order, href) in const [
+        ('section-002', 2, 'OEBPS/one.xhtml'),
+        ('section-004', 4, 'OEBPS/three.xhtml'),
+      ])
+        StorySection(
+          id: id,
+          order: order,
+          chapterNumber: null,
+          title: id,
+          href: href,
+        ),
+    ];
+    const spine = [
+      SpineItem(path: 'OEBPS/cover.xhtml', linear: true),
+      SpineItem(path: 'OEBPS/one.xhtml', linear: true),
+      SpineItem(path: 'OEBPS/two.xhtml', linear: true),
+      SpineItem(path: 'OEBPS/three.xhtml', linear: true),
+      SpineItem(path: 'OEBPS/four.xhtml', linear: true),
+    ];
+    // As Ask counts: the page being read is read.
+    bool past(ReaderPosition position, {List<StorySection>? of}) {
+      final mapped = of ?? sections;
+      return pastStoryMapEnd(
+        mapped,
+        spine,
+        StoryReadingProgress(
+          finishedStorySections(mapped, spine, position, wholePage: true),
+        ),
+        position.sectionIndex,
+      );
+    }
+
+    test('not before the map starts', () {
+      expect(past(const ReaderPosition(0, 0.5)), isFalse);
+    });
+    test('not in a stretch the map left out, which can\'t be added', () {
+      expect(past(const ReaderPosition(2, 0.5)), isFalse);
+    });
+    test('not partway through the last section', () {
+      expect(past(const ReaderPosition(3, 0.5)), isFalse);
+      expect(
+        pastStoryMapEnd(
+          sections,
+          spine,
+          const StoryReadingProgress(1, hiddenInNext: {}),
+          3,
+        ),
+        isFalse,
+      );
+    });
+    test('not on the last page of the last section, which is still in it', () {
+      expect(past(const ReaderPosition(3, 1)), isFalse);
+    });
+    test('after the last section', () {
+      expect(past(const ReaderPosition(4, 0.3)), isTrue);
+    });
+    test('not without a map', () {
+      expect(past(const ReaderPosition(4, 0.3), of: const []), isFalse);
+    });
+  });
 }

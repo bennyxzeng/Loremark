@@ -48,9 +48,10 @@ class AskReach {
   /// The text of the page, or null if its end couldn't be measured.
   final AskPage? page;
 
-  /// Whether the reader's page is in a part of the book the Story Map has no
-  /// section for, after one it has: past its end, or in chapters it skipped.
-  /// Something not found may then just not be in the map yet.
+  /// Whether the reader's page is past the end of the Story Map, where updating
+  /// it would reach. Something not found may then just not be in the map yet.
+  /// A stretch the map left out between two of its sections doesn't count: it
+  /// can never be added (see `pastStoryMapEnd`).
   final bool pastMap;
 }
 

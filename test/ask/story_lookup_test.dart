@@ -128,7 +128,7 @@ void main() {
       expect(noMap.overview(), contains('no Story Map yet'));
     });
 
-    test('marks chapters the map skipped', () {
+    test('says nothing about sections the map left out', () {
       final json = storyModelFixtureJson();
       for (final section in json['processed_sections'] as List) {
         if (section['section_id'] == 's2') section['section_order'] = 4;
@@ -146,7 +146,13 @@ void main() {
           finished: 2,
         ),
       );
-      expect(lookup.overview(), contains('leaves out'));
+      // Sections between s1 and s2 can never be added, so the map is complete
+      // as far as it goes, and updating it isn't suggested.
+      final overview = lookup.overview();
+      expect(overview, contains('- s1 · '));
+      expect(overview, contains('- s2 · '));
+      expect(overview, isNot(contains('leaves out')));
+      expect(overview, isNot(contains('doesn\'t cover')));
     });
   });
 

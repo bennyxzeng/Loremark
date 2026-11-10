@@ -8,7 +8,7 @@ import 'ask_stream.dart';
 import 'story_lookup.dart';
 
 /// The prompt Ask sends, in `assets/chat/`.
-const askPromptName = 'answer_v2.txt';
+const askPromptName = 'answer_v3.txt';
 
 /// The most requests one question may take. The last one must answer.
 const maxAskRounds = 10;

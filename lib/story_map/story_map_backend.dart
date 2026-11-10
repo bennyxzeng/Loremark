@@ -60,6 +60,24 @@ int finishedStorySections(
   return count;
 }
 
+/// Whether the spine item at [sectionIndex] comes after the last of
+/// [sections], all of which the reader has finished at [progress], so updating
+/// the map would reach it.
+///
+/// A stretch between two of [sections] doesn't count: whatever is there has no
+/// text, or was skipped when a later section was added, and sections only go in
+/// in reading order, so it can never be added.
+bool pastStoryMapEnd(
+  List<StorySection> sections,
+  List<SpineItem> spine,
+  StoryReadingProgress progress,
+  int sectionIndex,
+) {
+  if (sections.isEmpty || progress.finished < sections.length) return false;
+  final last = spineIndexOf(spine, sections.last.href ?? '');
+  return last != null && sectionIndex > last;
+}
+
 /// How exporting a book's Story Map files ended.
 enum StoryExportOutcome { saved, cancelled, nothing }
 
@@ -285,28 +303,13 @@ class DeviceStoryMapBackend implements StoryMapBackend, AskBackend {
       // Unmeasured, only the section is sure.
       limit: through ?? TextPosition(position.sectionIndex, 0),
       page: page,
-      pastMap: _outsideMap(sections, spine, progress, position.sectionIndex),
+      pastMap: pastStoryMapEnd(
+        sections,
+        spine,
+        progress,
+        position.sectionIndex,
+      ),
     );
-  }
-
-  /// Whether the spine item at [sectionIndex] comes after the last of
-  /// [sections] the reader has finished and isn't the next one's, so the
-  /// reader is somewhere the map doesn't cover.
-  bool _outsideMap(
-    List<StorySection> sections,
-    List<SpineItem> spine,
-    StoryReadingProgress progress,
-    int sectionIndex,
-  ) {
-    if (progress.finished == 0 || progress.hiddenInNext != null) return false;
-    final last = spineIndexOf(
-      spine,
-      sections[progress.finished - 1].href ?? '',
-    );
-    final next = progress.finished < sections.length
-        ? spineIndexOf(spine, sections[progress.finished].href ?? '')
-        : null;
-    return last != null && sectionIndex > last && next != sectionIndex;
   }
 
   @override

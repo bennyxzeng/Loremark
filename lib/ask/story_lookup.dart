@@ -70,13 +70,11 @@ class StoryLookup {
     }
 
     lines.add('Chapters the reader has reached (section id · chapter):');
+    // Sections the map left out between these (no text, or skipped when a
+    // later one was added) aren't mentioned: they can never be added, so the
+    // map is complete as far as it goes.
     final sections = boundary.sections;
-    StorySection? previous;
     for (final section in sections) {
-      if (previous != null && section.order > previous.order + 1) {
-        lines.add(_skippedNote);
-      }
-      previous = section;
       var line = '- ${section.id} · ${section.name}';
       if (identical(section, sections.last) && boundary.partway) {
         final last = boundary.paragraphs.ofSection(section.id).lastOrNull;
@@ -123,9 +121,6 @@ class StoryLookup {
   static const _pastMapNote =
       '\nThe reader is now in a part of the book the Story Map doesn\'t cover. '
       'Something you can\'t find may be there.';
-
-  static const _skippedNote =
-      '- (the reader has read chapters here that the Story Map leaves out)';
 
   /// The known entities, or the ones mentioned most if there are too many, in
   /// order of first appearance.
