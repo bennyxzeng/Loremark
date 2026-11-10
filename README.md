@@ -18,6 +18,8 @@
   &nbsp; · &nbsp;
   <a href="#the-story-model">The story model</a>
   &nbsp; · &nbsp;
+  <a href="#ask-the-ai-chat">Ask</a>
+  &nbsp; · &nbsp;
   <a href="#the-team">Team</a>
 </p>
 
@@ -93,7 +95,7 @@ flowchart LR
 | Part | What we use |
 | :--- | :--- |
 | **App** | Flutter 3.47.7 and Dart: one codebase for Android and iOS. |
-| **Book rendering** | Readium, through the [`flutter_readium`](https://pub.dev/packages/flutter_readium) 0.8.0 plugin. |
+| **Book rendering** | Readium, through the [`flutter_readium`](https://pub.dev/packages/flutter_readium) 0.8.0 plugin, with one fix so its page script runs on iOS (`third_party/flutter_readium`). |
 | **On-device storage** | JSON files in the app's private folder: the library, reading positions, each book's notes, and search indexes. |
 | **AI provider** | OpenAI or DeepSeek, called straight from the app with the reader's own key. The key is kept with `flutter_secure_storage`. There is no Loremark server. |
 | **[Story model](#the-story-model)** | Versioned JSON of characters, relationships and events, each linked to the chapter it comes from. The app shows the snapshot for the chosen chapter. |
@@ -105,7 +107,7 @@ flowchart LR
 - **Earlier snapshots don't change.** A later reveal adds a new snapshot instead of rewriting an earlier one.
 - **Your notes stay yours.** Notes and highlights are stored on the phone and are never used as facts about the story.
 - **Reading works offline.** The book, your place in it and your notes are all on the device.
-- **Your books stay on the phone.** Requests go only to your AI provider: the API key check, Story Map updates you start, and questions you ask in Ask, which carry the page you are on and the parts of the Story Map the AI looks up. [docs/acceptance.md](docs/acceptance.md) describes the privacy audit.
+- **Your books stay on the phone.** Requests go only to your AI provider: the API key check, Story Map updates you start, and questions you ask in Ask, which carry the page you are on, the conversation so far, and the parts of the Story Map the AI looks up. [docs/acceptance.md](docs/acceptance.md) describes the privacy audit.
 
 ## What's next
 
@@ -164,6 +166,12 @@ Have feedback? [Open an issue](https://github.com/bennyxzeng/Loremark/issues) wi
 [![The story model at a glance: entities, seven kinds of claims, evidence, two labels, and supersede/retract/resolve as the book goes on, all with Chapters 1–2 of 86 as the example](docs/assets/story-model-at-a-glance.svg)](docs/story-model-format.md)
 
 Every field and label is explained in [Story Model: file structure and labels](docs/story-model-format.md), in English and Chinese.
+
+## Ask: the AI chat
+
+[![Ask at a glance: what the AI is given and never sees, one question step by step, the same question asked at Chapter 1 and Chapter 2 of 86, and how conversations work](docs/assets/ask-at-a-glance.svg)](docs/ask.md)
+
+How Ask works, from this picture down to each request it sends, is in [Ask: how the AI chat works](docs/ask.md), in English and Chinese.
 
 ## Meet your reading companion
 
