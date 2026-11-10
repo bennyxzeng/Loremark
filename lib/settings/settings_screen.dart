@@ -76,7 +76,7 @@ class SettingsScreen extends StatelessWidget {
                               const SizedBox(height: 6),
                               const Text(
                                 'Ask and Story Map are locked until you add an '
-                                'OpenAI or DeepSeek API key.',
+                                'OpenAI, DeepSeek or OpenRouter API key.',
                                 style: TextStyle(
                                   fontSize: 13,
                                   height: 1.5,

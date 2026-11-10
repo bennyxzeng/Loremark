@@ -6,7 +6,7 @@ import '../theme/decor.dart';
 import '../theme/loremark_theme.dart';
 import 'ai_settings.dart';
 
-/// Asks for the reader's OpenAI or DeepSeek API key.
+/// Asks for the reader's OpenAI, DeepSeek or OpenRouter API key.
 ///
 /// On first run ([onboarding]) it is the whole app until the reader saves a
 /// key or skips; otherwise it is pushed from Settings or a locked tab and
@@ -184,7 +184,7 @@ class _ApiKeyScreenState extends State<ApiKeyScreen> {
                     const SizedBox(height: 14),
                     const _Body(
                       'Ask and Story Map use an AI model that you pay for with your '
-                      'own API key. Loremark supports OpenAI and DeepSeek keys only.',
+                      'own API key. Loremark supports OpenAI, DeepSeek and OpenRouter keys only.',
                     ),
                     const SizedBox(height: 22),
                     Text(

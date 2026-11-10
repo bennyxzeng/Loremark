@@ -19,6 +19,14 @@ enum AiProvider {
     keysUrl: 'https://platform.deepseek.com/api_keys',
     keysUrlLabel: 'platform.deepseek.com/api_keys',
     modelsUrl: 'https://api.deepseek.com/models',
+  ),
+  openrouter(
+    label: 'OpenRouter',
+    keysUrl: 'https://openrouter.ai/settings/keys',
+    keysUrlLabel: 'openrouter.ai/settings/keys',
+    // Its model list is public, so it can't tell a bad key. This one needs a
+    // valid key and answers 401 otherwise.
+    modelsUrl: 'https://openrouter.ai/api/v1/key',
   );
 
   const AiProvider({

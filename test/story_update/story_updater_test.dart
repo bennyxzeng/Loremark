@@ -862,6 +862,18 @@ void main() {
       ]);
     });
 
+    test('OpenRouter offers DeepSeek Flash and Terra by their router ids', () {
+      expect(StoryModelChoice.forProvider('openrouter').map((m) => m.id), [
+        'deepseek/deepseek-v4-flash',
+        'openai/gpt-6.1-terra',
+      ]);
+      expect(
+        StoryProvider.named('openrouter').responsesUrl,
+        'https://openrouter.ai/api/v1/responses',
+      );
+      expect(StoryProvider.named('openrouter').sendsStoreAndTruncation, false);
+    });
+
     test('a choice made for another provider falls back', () {
       expect(
         StoryModelChoice.resolve('deepseek', 'gpt-6.1-sol'),
