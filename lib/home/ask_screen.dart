@@ -49,6 +49,9 @@ class AskScreen extends StatefulWidget {
 class _AskScreenState extends State<AskScreen> {
   final _scroll = ScrollController();
 
+  /// The question box's focus, to put the keyboard away.
+  final _input = FocusNode();
+
   /// Leaving the app counts as leaving Ask, for how long the reader is away.
   /// Null only in a state kept by a hot reload from before it existed.
   AppLifecycleListener? _lifecycle;
@@ -83,7 +86,12 @@ class _AskScreenState extends State<AskScreen> {
         ..draft.addListener(_draftChanged);
     }
     if (widget.active && !oldWidget.active) unawaited(_ask.refresh());
-    if (!widget.active && oldWidget.active) _ask.leave();
+    if (!widget.active && oldWidget.active) {
+      // The tabs are stacked, so the box would keep the keyboard up over
+      // whichever one the reader went to.
+      _input.unfocus();
+      _ask.leave();
+    }
   }
 
   @override
@@ -93,6 +101,7 @@ class _AskScreenState extends State<AskScreen> {
       ..draft.removeListener(_draftChanged);
     _lifecycle?.dispose();
     _scroll.dispose();
+    _input.dispose();
     super.dispose();
   }
 
@@ -453,6 +462,7 @@ class _AskScreenState extends State<AskScreen> {
           Expanded(child: conversation),
           _Composer(
             draft: _ask.draft,
+            focus: _input,
             enabled: canAsk,
             busy: _ask.busy,
             onSend: _send,
@@ -1059,6 +1069,7 @@ class _Failed extends StatelessWidget {
 class _Composer extends StatelessWidget {
   const _Composer({
     required this.draft,
+    required this.focus,
     required this.enabled,
     required this.busy,
     required this.onSend,
@@ -1066,6 +1077,7 @@ class _Composer extends StatelessWidget {
   });
 
   final TextEditingController draft;
+  final FocusNode focus;
   final bool enabled;
   final bool busy;
   final VoidCallback onSend;
@@ -1088,6 +1100,11 @@ class _Composer extends StatelessWidget {
               child: TextField(
                 key: const ValueKey('ask-input'),
                 controller: draft,
+                focusNode: focus,
+                // On phones a field keeps the keyboard up until told
+                // otherwise: a touch anywhere else puts it away, the way the
+                // keyboard's own send key does.
+                onTapOutside: (_) => focus.unfocus(),
                 enabled: enabled,
                 minLines: 1,
                 maxLines: 4,

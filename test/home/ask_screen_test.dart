@@ -471,6 +471,35 @@ void main() {
     expect(input.controller!.text, 'Half a');
   });
 
+  group('the keyboard', () {
+    testWidgets('goes away on a touch outside the question box', (
+      tester,
+    ) async {
+      await pumpAsk(tester);
+      await tester.tap(find.byKey(const ValueKey('ask-input')));
+      await tester.pump();
+      expect(tester.testTextInput.isVisible, isTrue);
+
+      await tester.tap(find.text('Ask about what you’ve read.'));
+      await tester.pump();
+      expect(tester.testTextInput.isVisible, isFalse);
+    });
+
+    testWidgets('goes away when the reader goes to another tab', (
+      tester,
+    ) async {
+      final active = ValueNotifier(true);
+      await pumpAsk(tester, active: active);
+      await tester.tap(find.byKey(const ValueKey('ask-input')));
+      await tester.pump();
+      expect(tester.testTextInput.isVisible, isTrue);
+
+      active.value = false;
+      await tester.pump();
+      expect(tester.testTextInput.isVisible, isFalse);
+    });
+  });
+
   group('recent pages', () {
     const fourLines = AskPage(
       'First line.\n\nSecond line.\n\nThird line.\n\nFourth line.',
