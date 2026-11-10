@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 
 import '../reading/text_position.dart';
+import 'page_end.dart';
 import 'page_start.dart';
 import 'reader_position.dart';
 
@@ -42,6 +43,11 @@ abstract interface class EpubReaderSession {
   /// plain text (`readSectionTexts`), counted in characters, not of its
   /// pages. A page the renderer can't measure reports nothing.
   Stream<TextPosition> get pageTextEnds;
+
+  /// Where each page the reader lands on ends, as [pageTextEnds] reports it
+  /// and with the text block it ends in. The last page of a spine item, and a
+  /// page the renderer can't measure, report nothing.
+  Stream<PageEnd> get pageEnds;
 
   /// Where each page the reader lands on starts. A page the renderer can't
   /// place reports nothing.

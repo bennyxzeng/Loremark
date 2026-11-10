@@ -146,10 +146,10 @@ the store is always the old one or the new. The replaced store is deleted, and i
 
 Every update saves its section's paragraphs in the store's `inputs/`, each with an ID such as `p0012`,
 and every record's evidence names a `section_id` and a `paragraph_id`. So answering from the map goes
-from the facts to the text behind them:
+from the facts to the text behind them. Ask does this: see [ask.md](ask.md).
 
 ```dart
-final progress = await backend.readingProgress(book, model.sections);
+final progress = (await backend.askReach(book, model.sections)).progress;
 final paragraphs = await backend.paragraphs(book, progress);
 final snapshot = StorySnapshot( // if progress.shown > 0
   model,
@@ -167,10 +167,12 @@ final context = paragraphs.forEvidence(
 - **`StoryReadingProgress` is the spoiler boundary**, and it is required. Finished sections come
   whole, and of the section being read only the paragraphs turned past. Nothing else is kept, so a
   lookup can't reach it, and neither can `forEvidence`'s neighbors.
-- **Answers stop where the map does.** Don't work out another boundary for a feature that answers
-  the reader: take it from `readingProgress`. A page just turned to hasn't been read, so on a
-  section's first page nothing of that section can be used, and if a page can't be placed, only
-  finished sections can.
+- **Answers go to the end of the page; the map stops at its start.** A reader asks about what they
+  are looking at, so Ask counts the whole page as read: `askReach` measures to the first text block
+  not wholly on the page (`PageEnd`), and a paragraph that carries on to the next page isn't
+  counted. The map keeps to `readingProgress`, where a page just turned to hasn't been read. Both
+  go through the same `hiddenWithinSection`, and if the page's end can't be measured, Ask falls back
+  to the map's boundary. Don't work out a third.
 - **Evidence always comes from the section its record was learned in**, so records from a snapshot
   never lead past it. A citation ahead of the page just isn't found: a name shows at its first
   citation, so its later ones can be further on.

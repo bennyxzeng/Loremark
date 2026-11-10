@@ -122,6 +122,44 @@ void main() {
     });
   });
 
+  group('textBeforePageEnd', () {
+    const paragraphs = [
+      'One two three.',
+      'Four five six.',
+      'Seven eight nine.',
+    ];
+    final xhtml = _page([for (final p in paragraphs) '<p>$p</p>'].join());
+
+    test('ends where the page does, inside a paragraph', () {
+      final end = textProgressionOfBlock(xhtml, 1, characters: 4)!;
+      expect(textBeforePageEnd(xhtml, end), 'One two three.\n\nFour');
+    });
+
+    test('takes all of a page that ends between paragraphs', () {
+      final end = textProgressionOfBlock(xhtml, 2)!;
+      expect(textBeforePageEnd(xhtml, end), 'One two three.\n\nFour five six.');
+    });
+
+    test('reaches the end on the last page', () {
+      expect(textBeforePageEnd(xhtml, 1), paragraphs.join('\n\n'));
+    });
+
+    test('keeps to a window that starts at a line', () {
+      final long = _page(
+        [for (var i = 0; i < 200; i++) '<p>Paragraph $i of it.</p>'].join(),
+      );
+      final text = textBeforePageEnd(long, 1, window: 100)!;
+      expect(text.length, lessThanOrEqualTo(100));
+      expect(text, startsWith('Paragraph '));
+      expect(text, endsWith('Paragraph 199 of it.'));
+    });
+
+    test('is empty before any text and null for bad markup', () {
+      expect(textBeforePageEnd(xhtml, 0), '');
+      expect(textBeforePageEnd('<p>', 1), isNull);
+    });
+  });
+
   group('textProgressionOfBlock inside a paragraph', () {
     // One long paragraph whose last sentences are on the next page.
     const sentences = [

@@ -72,6 +72,10 @@ class StorySection {
 
   /// A short label such as "Chapter 2", or the title if there is no number.
   String get label => chapterNumber == null ? title : 'Chapter $chapterNumber';
+
+  /// The label and the title, without saying the number twice when the title
+  /// already does, such as "Chapter 2: The Letter".
+  String get name => title.startsWith(label) ? title : '$label: $title';
 }
 
 /// A character, location or organization. Its names and facts are records.

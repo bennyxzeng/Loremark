@@ -78,6 +78,8 @@ flutter:
   assets:
     # The prompt and schema Story Map updates send to the AI provider.
     - assets/story_update/
+    # The prompt Ask sends with each question.
+    - assets/chat/
     # Companion illustrations, cropped and compressed from assets/images/.
     - assets/app/
     - assets/reader/page_end.js

@@ -234,14 +234,16 @@ Future<StoryCallResult> _send(
   final text = redactStoryKey(response.body, apiKey);
   final result = response.statusCode >= 200 && response.statusCode < 300
       ? _interpret(text)
-      : _apiError(response.statusCode, text);
+      : storyApiError(response.statusCode, text);
   return result
     ..requestId = response.requestId
     ..responseBody = text
     ..httpStatus = response.statusCode;
 }
 
-StoryCallResult _apiError(int code, String text) {
+/// A provider's refusal with HTTP status [code] and body [text], with the
+/// category its status falls in and the provider's own message if it gave one.
+StoryCallResult storyApiError(int code, String text) {
   String? message;
   try {
     final body = jsonDecode(text);
@@ -292,7 +294,7 @@ StoryCallResult _interpret(String text) {
   final StoryCallResult result;
   try {
     status = decoded['status'];
-    (texts, refusals) = _finalMessageParts(decoded);
+    (texts, refusals) = finalMessageParts(decoded);
     result = StoryCallResult('completed')
       ..responseId = decoded['id'] as String?
       ..responseModel = decoded['model'] as String?
@@ -350,8 +352,9 @@ StoryCallResult _interpret(String text) {
   return result;
 }
 
-/// Output texts and refusals of final-answer messages, in order.
-(List<String>, List<String>) _finalMessageParts(JsonMap body) {
+/// Output texts and refusals of final-answer messages of a response [body],
+/// in order.
+(List<String>, List<String>) finalMessageParts(JsonMap body) {
   final texts = <String>[];
   final refusals = <String>[];
   for (final raw in (body['output'] as List?) ?? const []) {

@@ -144,6 +144,41 @@ double? textProgressionOfBlock(
   return (at + 0.25) / text.length;
 }
 
+/// How many characters of text before the end of the reader's page Ask sees:
+/// the page itself and usually the two or three before it.
+const pageTextWindow = 2500;
+
+/// The plain text of a section with markup [xhtml] that comes before
+/// [progression] of it, at most the last [window] characters of it, starting
+/// at a line if the window cuts into the text.
+///
+/// [progression] is where the reader's page ends (`PageEnd.textProgression`,
+/// or 1.0 on the section's last page), so all of this was on the page or an
+/// earlier one. Null if the markup is not well-formed XML; empty if there is no
+/// text before that point.
+String? textBeforePageEnd(
+  String xhtml,
+  double progression, {
+  int window = pageTextWindow,
+}) {
+  final XmlDocument document;
+  try {
+    document = parseXhtml(xhtml);
+  } on XmlException {
+    return null;
+  }
+  final text = _walkBody(document).text;
+  // `textProgressionOfBlock` puts the end a quarter of a character past the
+  // last one on the page, so flooring finds that character exactly.
+  final end = (progression.clamp(0.0, 1.0) * text.length).floor();
+  var start = max(0, end - window);
+  if (start > 0) {
+    final line = text.indexOf('\n', start);
+    if (line != -1 && line < end) start = line + 1;
+  }
+  return text.substring(start, end).trim();
+}
+
 /// How many characters of the end of the page the page script sends back.
 const tailLength = 12;
 
@@ -221,13 +256,19 @@ String _sectionText(EpubPackage package, String path) {
   try {
     final xhtml = _markup(package, path);
     if (xhtml == null) return '';
-    try {
-      return _walkBody(parseXhtml(xhtml)).text;
-    } on XmlException {
-      return _stripTags(xhtml);
-    }
+    return sectionPlainText(xhtml);
   } on Object {
     return '';
+  }
+}
+
+/// The plain text of a section with markup [xhtml], the same text
+/// [sectionTextsFromBytes] gives for it.
+String sectionPlainText(String xhtml) {
+  try {
+    return _walkBody(parseXhtml(xhtml)).text;
+  } on XmlException {
+    return _stripTags(xhtml);
   }
 }
 

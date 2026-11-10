@@ -1,0 +1,323 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:loremark/ask/ask_boundary.dart';
+import 'package:loremark/ask/ask_controller.dart';
+import 'package:loremark/ask/ask_history.dart';
+import 'package:loremark/ask/ask_stream.dart';
+import 'package:loremark/home/ask_screen.dart';
+import 'package:loremark/library/book.dart';
+import 'package:loremark/reader/epub_reader_service.dart';
+import 'package:loremark/reading/text_position.dart';
+import 'package:loremark/settings/ai_lock.dart';
+import 'package:loremark/settings/ai_settings.dart';
+import 'package:loremark/settings/connection_status.dart';
+import 'package:loremark/story_model/story_snapshot.dart';
+import 'package:loremark/theme/loremark_theme.dart';
+
+import '../ask/ask_test_support.dart';
+import '../ask/fake_ask_backend.dart';
+import '../story_model/story_model_fixture.dart';
+
+/// The conversation in memory.
+class _MemoryHistory extends AskHistoryStore {
+  _MemoryHistory([List<AskExchange>? saved])
+    : saved = saved ?? [],
+      super(Directory('unused'));
+
+  List<AskExchange> saved;
+
+  @override
+  Future<List<AskExchange>> load(String bookId) async => List.of(saved);
+
+  @override
+  Future<void> save(String bookId, List<AskExchange> exchanges) async =>
+      saved = List.of(exchanges);
+
+  @override
+  Future<void> delete(String bookId) async => saved = [];
+}
+
+void main() {
+  final book = Book(
+    id: 'book',
+    title: 'The Glass Harbor',
+    author: null,
+    epubPath: 'book.epub',
+    coverPath: null,
+    importedAt: DateTime.utc(2026),
+  );
+  const page = AskPage('Mara looked out at the water.', TextPosition(2, 0.5));
+  final model = storyModelFixture();
+  final all = paragraphsOf(
+    model.sections,
+    count: 3,
+    firstId: 1,
+    textOf: (section, number) => 'Text of ${section.id} $number.',
+  );
+  const atChapterOne = AskReach(
+    progress: StoryReadingProgress(1),
+    limit: TextPosition(2, 0.5),
+    page: page,
+  );
+
+  late FakeAskBackend backend;
+  late List<String> openedMap;
+  late List<PassageTarget> jumps;
+
+  setUp(() {
+    backend = FakeAskBackend(model: model, reach: atChapterOne, all: all);
+    openedMap = [];
+    jumps = [];
+  });
+
+  Future<AskController> pumpAsk(
+    WidgetTester tester, {
+    AskHttpPost? post,
+    List<(int, String)> replies = const [],
+    _MemoryHistory? history,
+    ConnectionStatus? connection,
+  }) async {
+    final settings = AiSettings(
+      MemorySecretStore({
+        'ai_onboarding_seen': 'true',
+        'ai_provider': 'openai',
+        'ai_api_key': 'sk-test',
+      }),
+    );
+    await settings.load();
+    final controller = AskController(
+      book: book,
+      backend: backend,
+      openHistory: () async => history ?? _MemoryHistory(),
+      post: post ?? FakeAskProvider(replies).post,
+      loadPrompt: () async => 'PROMPT',
+    );
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      AiSettingsScope(
+        settings: settings,
+        child: ConnectionScope(
+          status: connection ?? ConnectionStatus(),
+          child: MaterialApp(
+            theme: buildLoremarkTheme(),
+            home: Scaffold(
+              body: AiLock(
+                feature: 'Ask',
+                needsConnection: true,
+                child: AskScreen(
+                  controller: controller,
+                  active: true,
+                  onOpenStoryMap: () => openedMap.add('opened'),
+                  onOpenPassage: (target) async => jumps.add(target),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    return controller;
+  }
+
+  Future<void> askQuestion(WidgetTester tester, String question) async {
+    await tester.enterText(find.byKey(const ValueKey('ask-input')), question);
+    await tester.pump();
+    await tester.tap(find.byTooltip('Ask'));
+    await tester.pumpAndSettle();
+  }
+
+  String answer(String text) => sse([
+    completed([message(text)]),
+  ]);
+
+  testWidgets('says what answers can use, before any question', (tester) async {
+    await pumpAsk(tester);
+    expect(
+      find.text('Sees this page · Story Map to Chapter 1: Arrival'),
+      findsOne,
+    );
+    expect(find.text('Ask about what you’ve read.'), findsOne);
+    expect(find.byTooltip('Clear conversation'), findsNothing);
+  });
+
+  testWidgets('asks, and shows the answer with where it comes from', (
+    tester,
+  ) async {
+    await pumpAsk(
+      tester,
+      replies: [(200, answer('Mara is a dock clerk [s1/p0001, page].'))],
+    );
+    await askQuestion(tester, 'Who is Mara?');
+
+    expect(find.text('Who is Mara?'), findsOne);
+    expect(find.textContaining('Mara is a dock clerk'), findsOne);
+    expect(find.text('1'), findsOne);
+    expect(find.text('this page'), findsOne);
+    expect(find.text('No passage cited.'), findsNothing);
+
+    // The citation opens the paragraph, without moving the reader...
+    await tester.tap(find.text('1'));
+    await tester.pumpAndSettle();
+    expect(find.text('Text of s1 1.'), findsOne);
+    expect(find.text('Text of s1 2.'), findsOne);
+    expect(find.text('Chapter 1: Arrival'), findsOne);
+    expect(jumps, isEmpty);
+    // ...until the reader asks to go there.
+    await tester.tap(find.text('Open in book'));
+    await tester.pumpAndSettle();
+    expect(jumps.single.highlight, 'Text of s1 1.');
+    expect(backend.placed.single.id, 'p0001');
+    expect(find.text('Text of s1 2.'), findsNothing);
+  });
+
+  testWidgets('a citation past where the reader is now can\'t be opened', (
+    tester,
+  ) async {
+    await pumpAsk(
+      tester,
+      history: _MemoryHistory([
+        AskExchange(
+          question: 'Later?',
+          answer: 'Elian came [s2/p0001].',
+          limit: const TextPosition(9, 0),
+          askedAt: DateTime.utc(2026),
+        ),
+      ]),
+    );
+    expect(find.byTooltip('Past where you are now'), findsOne);
+    await tester.tap(find.text('1'));
+    await tester.pumpAndSettle();
+    expect(find.text('Open in book'), findsNothing);
+  });
+
+  testWidgets('says so when an answer cites nothing', (tester) async {
+    await pumpAsk(tester, replies: [(200, answer('Just words.'))]);
+    await askQuestion(tester, 'Who?');
+    expect(find.text('No passage cited.'), findsOne);
+  });
+
+  testWidgets('without a map, says the page is all it has', (tester) async {
+    backend
+      ..model = null
+      ..reach = const AskReach(
+        progress: StoryReadingProgress(0),
+        limit: TextPosition(2, 0.5),
+        page: page,
+      );
+    await pumpAsk(tester);
+    expect(find.text('Sees this page · No Story Map yet'), findsOne);
+    expect(find.textContaining('Build a Story Map'), findsOne);
+    await tester.tap(find.text('Story Map'));
+    expect(openedMap, hasLength(1));
+  });
+
+  testWidgets('says when the reader is past what the map covers', (
+    tester,
+  ) async {
+    backend.reach = const AskReach(
+      progress: StoryReadingProgress(1),
+      limit: TextPosition(4, 0.2),
+      page: page,
+      pastMap: true,
+    );
+    await pumpAsk(tester);
+    expect(find.textContaining('past what the Story Map covers'), findsOne);
+  });
+
+  testWidgets('with nothing read, there is nothing to ask', (tester) async {
+    backend
+      ..model = null
+      ..reach = AskReach.none;
+    await pumpAsk(tester);
+    expect(find.textContaining('Read a page first.'), findsOne);
+    final input = tester.widget<TextField>(
+      find.byKey(const ValueKey('ask-input')),
+    );
+    expect(input.enabled, isFalse);
+  });
+
+  testWidgets('a failed question can be tried again', (tester) async {
+    await pumpAsk(
+      tester,
+      replies: [
+        (401, '{"error":{"message":"bad key"}}'),
+        (200, answer('Mara [s1/p0001].')),
+      ],
+    );
+    await askQuestion(tester, 'Who?');
+    expect(
+      find.text('Your API key was rejected. Check it in Settings.'),
+      findsOne,
+    );
+    await tester.tap(find.text('Try again'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Mara'), findsWidgets);
+    expect(find.text('Try again'), findsNothing);
+  });
+
+  testWidgets('shows what it is doing, and can be stopped', (tester) async {
+    final body = StreamController<String>();
+    await pumpAsk(
+      tester,
+      post: (url, headers, sent) async =>
+          AskHttpReply(200, body.stream, () => body.close()),
+    );
+    await askQuestion(tester, 'Who?');
+    expect(find.text('Thinking…'), findsOne);
+    expect(find.byTooltip('Stop'), findsOne);
+
+    body.add(
+      sse([
+        {'type': 'response.output_text.delta', 'item_id': 'm', 'delta': 'Ma'},
+      ]),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Ma'), findsWidgets);
+
+    await tester.tap(find.byTooltip('Stop'));
+    await tester.pumpAndSettle();
+    expect(find.text('Stopped. Nothing was kept.'), findsOne);
+    expect(find.byTooltip('Ask'), findsOne);
+  });
+
+  testWidgets('a question being written survives going offline', (
+    tester,
+  ) async {
+    final connection = ConnectionStatus();
+    await pumpAsk(tester, connection: connection);
+    await tester.enterText(find.byKey(const ValueKey('ask-input')), 'Half a');
+
+    connection.isOnline = false;
+    await tester.pumpAndSettle();
+    expect(find.text('Ask needs a connection'), findsOne);
+    connection.isOnline = true;
+    await tester.pumpAndSettle();
+
+    final input = tester.widget<TextField>(
+      find.byKey(const ValueKey('ask-input')),
+    );
+    expect(input.controller!.text, 'Half a');
+  });
+
+  testWidgets('clears the conversation once the reader agrees', (tester) async {
+    final history = _MemoryHistory([
+      AskExchange(
+        question: 'Who?',
+        answer: 'Mara.',
+        limit: const TextPosition(1, 0),
+        askedAt: DateTime.utc(2026),
+      ),
+    ]);
+    await pumpAsk(tester, history: history);
+    await tester.tap(find.byTooltip('Clear conversation'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Clear'));
+    await tester.pumpAndSettle();
+    expect(find.text('Ask about what you’ve read.'), findsOne);
+    expect(history.saved, isEmpty);
+  });
+}

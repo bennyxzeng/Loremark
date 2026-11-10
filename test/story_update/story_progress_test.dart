@@ -186,6 +186,31 @@ void main() {
       expect(extracted, hasLength(4));
       expect(book.paragraphsBefore(one, _child(4)), extracted.length - 1);
     });
+
+    // Where a page ends, by the text block the page script names: the first
+    // one not wholly on the page.
+    test('by block, counts the paragraphs before the block past the page', () {
+      for (var block = 0; block < 4; block++) {
+        expect(
+          book.paragraphsBeforeBlock(one, block),
+          book.paragraphsBefore(one, _child(block + 1)),
+          reason: 'block $block',
+        );
+      }
+    });
+
+    test('by block, sorts out sections that share a document', () {
+      // Chapter 2, Delta, Chapter 3, Epsilon, Zeta.
+      expect(book.paragraphsBeforeBlock(two, 3), 2);
+      expect(book.paragraphsBeforeBlock(three, 3), 1);
+      expect(book.paragraphsBeforeBlock(two, 1), 1);
+      expect(book.paragraphsBeforeBlock(three, 1), 0);
+    });
+
+    test('by block, says so when there is no such block', () {
+      expect(book.paragraphsBeforeBlock(one, 4), isNull);
+      expect(book.paragraphsBeforeBlock(one, -1), isNull);
+    });
   });
 
   group('hiddenWithinSection', () {
@@ -455,6 +480,53 @@ void main() {
           ).hiddenInNext ??
           const {};
       expect(hiddenAt(paragraphCount()).difference(hiddenAt(2)), isEmpty);
+    });
+
+    // Chapter 1's file is a heading and eight paragraphs, one block each, so
+    // the page ending at block n starts the same as one starting at child n+1.
+    test('to the end of the page, takes everything wholly on it', () {
+      for (var block = 1; block <= 8; block++) {
+        final toEnd = readStoryProgressToPageEnd(
+          storePath,
+          epub,
+          finished: 0,
+          sectionsOnPage: const ['section-002'],
+          endBlock: block,
+        );
+        final fromStart = readStoryProgress(
+          storePath,
+          epub,
+          finished: 0,
+          sectionsOnPage: const ['section-002'],
+          cssSelector: _child(block + 1),
+        );
+        expect(toEnd.paragraphsReadInNext, block, reason: 'block $block');
+        expect(toEnd.paragraphsReadInNext, fromStart.paragraphsReadInNext);
+        expect(toEnd.hiddenInNext, fromStart.hiddenInNext);
+      }
+    });
+
+    test('to the end of a page past the first block, shows none of it', () {
+      final progress = readStoryProgressToPageEnd(
+        storePath,
+        epub,
+        finished: 0,
+        sectionsOnPage: const ['section-002'],
+        endBlock: 0,
+      );
+      expect(progress.shown, 0);
+    });
+
+    test('a page end that names no block leaves it at position alone', () {
+      final progress = readStoryProgressToPageEnd(
+        storePath,
+        epub,
+        finished: 0,
+        sectionsOnPage: const ['section-002'],
+        endBlock: 99,
+      );
+      expect(progress.shown, 0);
+      expect(progress.hiddenInNext, isNull);
     });
 
     test('on the first paragraph, shows nothing of the section', () {

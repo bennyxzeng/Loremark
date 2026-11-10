@@ -11,6 +11,7 @@ import '../reading/text_position.dart';
 import '../theme/loremark_theme.dart';
 import 'epub_reader_service.dart';
 import 'epub_sections.dart';
+import 'page_end.dart';
 import 'page_start.dart';
 import 'position_normalizer.dart';
 import 'reader_position.dart';
@@ -208,6 +209,7 @@ class _ReadiumSession implements EpubReaderSession {
   // listens, which it does once. A broadcast stream would drop them.
   final _positions = StreamController<ReaderPosition>();
   final _pageTextEnds = StreamController<TextPosition>();
+  final _pageEnds = StreamController<PageEnd>();
   final _pageStarts = StreamController<PageStart>();
   final _chapterChanges = StreamController<TocEntry>();
   final _selections = StreamController<PassageSelection>();
@@ -224,6 +226,9 @@ class _ReadiumSession implements EpubReaderSession {
 
   @override
   Stream<TextPosition> get pageTextEnds => _pageTextEnds.stream;
+
+  @override
+  Stream<PageEnd> get pageEnds => _pageEnds.stream;
 
   @override
   Stream<PageStart> get pageStarts => _pageStarts.stream;
@@ -372,6 +377,7 @@ class _ReadiumSession implements EpubReaderSession {
     }
     if (progression == null || _closed) return;
     _pageTextEnds.add(TextPosition(section, progression));
+    _pageEnds.add(PageEnd(section, block, progression));
   }
 
   void _emit(List<ReaderPosition> positions) {
@@ -552,6 +558,7 @@ class _ReadiumSession implements EpubReaderSession {
     // completes.
     unawaited(_positions.close());
     unawaited(_pageTextEnds.close());
+    unawaited(_pageEnds.close());
     unawaited(_pageStarts.close());
     unawaited(_chapterChanges.close());
     unawaited(_selections.close());

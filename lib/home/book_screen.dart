@@ -2,8 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../ask/ask_backend.dart';
+import '../ask/ask_controller.dart';
 import '../library/book.dart';
 import '../notes/annotation_service.dart';
+import '../reader/epub_reader_service.dart';
 import '../reader/readium_reader_service.dart';
 import '../settings/ai_lock.dart';
 import '../search/search_index_store.dart';
@@ -18,23 +21,51 @@ import 'reader_header.dart';
 
 /// One open book: the Read, Ask, Notes, and Story Map tabs for [book].
 class BookScreen extends StatefulWidget {
-  const BookScreen({super.key, required this.book, this.storyMapBackend});
+  const BookScreen({
+    super.key,
+    required this.book,
+    this.storyMapBackend,
+    this.askBackend,
+  });
 
   final Book book;
 
   /// Where the Story Map tab gets its data; tests replace the device's.
   final StoryMapBackend? storyMapBackend;
 
+  /// Where the Ask tab gets its data; tests replace the device's.
+  final AskBackend? askBackend;
+
   @override
   State<BookScreen> createState() => _BookScreenState();
 }
 
 class _BookScreenState extends State<BookScreen> {
+  static const _readTab = 0;
+  static const _askTab = 1;
   static const _storyMapTab = 3;
 
   int _selectedTab = 0;
   late final StoryMapBackend _storyMapBackend =
       widget.storyMapBackend ?? DeviceStoryMapBackend();
+
+  /// The Ask conversation. Kept here, above the lock, so going offline and
+  /// back doesn't lose a question under way or one being written.
+  late final AskController _ask = AskController(
+    book: widget.book,
+    backend: widget.askBackend ?? DeviceStoryMapBackend(),
+  );
+
+  @override
+  void dispose() {
+    _ask.dispose();
+    super.dispose();
+  }
+
+  Future<void> _openPassage(PassageTarget target) async {
+    _selectTab(_readTab);
+    await _noteJumps.showPassage(target);
+  }
 
   /// The book's notes, shared by the Read tab, which adds and draws them, and
   /// the Notes tab, which lists them.
@@ -78,10 +109,15 @@ class _BookScreenState extends State<BookScreen> {
                         notes: _notes,
                         noteJumps: _noteJumps,
                       ),
-                      const AiLock(
+                      AiLock(
                         feature: 'Ask',
                         needsConnection: true,
-                        child: AskScreen(),
+                        child: AskScreen(
+                          controller: _ask,
+                          active: _selectedTab == _askTab,
+                          onOpenStoryMap: () => _selectTab(_storyMapTab),
+                          onOpenPassage: _openPassage,
+                        ),
                       ),
                       // Tapping a note goes back to the Read tab, at its passage.
                       NotesScreen(

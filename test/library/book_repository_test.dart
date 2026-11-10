@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:loremark/ask/ask_history.dart';
 import 'package:loremark/library/book_repository.dart';
 import 'package:loremark/story_update/story_import.dart';
 import 'package:loremark/story_update/story_updater.dart';
@@ -109,6 +110,8 @@ void main() {
     for (final folder in sideFolders) {
       await File('${folder.path}/kept.json').create(recursive: true);
     }
+    final chat = AskHistoryStore(repository.root).file(book.id);
+    await chat.create(recursive: true);
 
     await repository.remove(book);
 
@@ -120,6 +123,7 @@ void main() {
     for (final folder in sideFolders) {
       expect(await folder.exists(), isFalse, reason: folder.path);
     }
+    expect(await chat.exists(), isFalse);
   });
 
   test('rejects a file that is not an EPUB', () async {
