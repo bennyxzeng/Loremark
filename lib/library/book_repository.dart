@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'book.dart';
 import 'epub_metadata.dart';
+import '../ask/ask_history.dart';
 import '../story_update/story_import.dart';
 import '../story_update/story_updater.dart';
 
@@ -141,6 +142,7 @@ class BookRepository {
       final folder = Directory(path);
       if (await folder.exists()) await folder.delete(recursive: true);
     }
+    await AskHistoryStore(root).deleteBook(book.id);
   }
 
   /// Queues a write, so two saves never share the temporary file. A failed

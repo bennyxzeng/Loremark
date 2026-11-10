@@ -11,6 +11,7 @@ import '../reading/text_position.dart';
 import '../theme/loremark_theme.dart';
 import 'epub_reader_service.dart';
 import 'epub_sections.dart';
+import 'page_end.dart';
 import 'page_start.dart';
 import 'position_normalizer.dart';
 import 'reader_position.dart';
@@ -208,6 +209,7 @@ class _ReadiumSession implements EpubReaderSession {
   // listens, which it does once. A broadcast stream would drop them.
   final _positions = StreamController<ReaderPosition>();
   final _pageTextEnds = StreamController<TextPosition>();
+  final _pageEnds = StreamController<PageEnd>();
   final _pageStarts = StreamController<PageStart>();
   final _chapterChanges = StreamController<TocEntry>();
   final _selections = StreamController<PassageSelection>();
@@ -224,6 +226,9 @@ class _ReadiumSession implements EpubReaderSession {
 
   @override
   Stream<TextPosition> get pageTextEnds => _pageTextEnds.stream;
+
+  @override
+  Stream<PageEnd> get pageEnds => _pageEnds.stream;
 
   @override
   Stream<PageStart> get pageStarts => _pageStarts.stream;
@@ -372,6 +377,7 @@ class _ReadiumSession implements EpubReaderSession {
     }
     if (progression == null || _closed) return;
     _pageTextEnds.add(TextPosition(section, progression));
+    _pageEnds.add(PageEnd(section, block, progression));
   }
 
   void _emit(List<ReaderPosition> positions) {
@@ -507,13 +513,10 @@ class _ReadiumSession implements EpubReaderSession {
     if (locator == null) return;
     // Readium draws a decoration only where the text quote is found, and finds
     // it again whichever page loads, so the order of the two calls is free.
-    await _decorate(passageHighlightGroup, [
-      ReaderDecoration(
-        id: 'hit',
-        locator: locator,
-        style: passageHighlightStyle,
-      ),
-    ]);
+    await _decorate(
+      passageHighlightGroup,
+      passageDecorations(target, _publication.readingOrder, _indexOf),
+    );
     await _go(locator);
   }
 
@@ -552,6 +555,7 @@ class _ReadiumSession implements EpubReaderSession {
     // completes.
     unawaited(_positions.close());
     unawaited(_pageTextEnds.close());
+    unawaited(_pageEnds.close());
     unawaited(_pageStarts.close());
     unawaited(_chapterChanges.close());
     unawaited(_selections.close());
@@ -744,6 +748,23 @@ Locator? locatorForPassage(
     ),
   );
 }
+
+/// The decorations that highlight [target] and what it [PassageTarget.also]
+/// highlights, each where its text quote is. One whose section isn't in
+/// [readingOrder] is left out.
+List<ReaderDecoration> passageDecorations(
+  PassageTarget target,
+  List<Link> readingOrder,
+  int? Function(String href) indexOf,
+) => [
+  for (final (i, part) in [target, ...target.also].indexed)
+    if (locatorForPassage(part, readingOrder, indexOf) case final locator?)
+      ReaderDecoration(
+        id: i == 0 ? 'hit' : 'hit-$i',
+        locator: locator,
+        style: passageHighlightStyle,
+      ),
+];
 
 /// The menu over selected text, one action per [SelectionCommand], each with
 /// the command's name as its id.

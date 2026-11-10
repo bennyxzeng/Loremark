@@ -144,6 +144,108 @@ double? textProgressionOfBlock(
   return (at + 0.25) / text.length;
 }
 
+/// How many characters of text before the end of the reader's page Ask sees:
+/// the page itself and usually the two or three before it.
+const pageTextWindow = 2500;
+
+/// The plain text of a section with markup [xhtml] that comes before
+/// [progression] of it, at most the last [window] characters of it, starting
+/// at a line if the window cuts into the text.
+///
+/// [progression] is where the reader's page ends (`PageEnd.textProgression`,
+/// or 1.0 on the section's last page), so all of this was on the page or an
+/// earlier one. Null if the markup is not well-formed XML; empty if there is no
+/// text before that point.
+String? textBeforePageEnd(
+  String xhtml,
+  double progression, {
+  int window = pageTextWindow,
+}) {
+  final XmlDocument document;
+  try {
+    document = parseXhtml(xhtml);
+  } on XmlException {
+    return null;
+  }
+  final text = _walkBody(document).text;
+  final (start, end) = _pageWindow(text, progression, window);
+  return text.substring(start, end).trim();
+}
+
+/// Where in [text] the window [textBeforePageEnd] takes ends and starts.
+(int, int) _pageWindow(String text, double progression, int window) {
+  // `textProgressionOfBlock` puts the end a quarter of a character past the
+  // last one on the page, so flooring finds that character exactly.
+  final end = (progression.clamp(0.0, 1.0) * text.length).floor();
+  var start = max(0, end - window);
+  if (start > 0) {
+    final line = text.indexOf('\n', start);
+    if (line != -1 && line < end) start = line + 1;
+  }
+  return (start, end);
+}
+
+/// The lines of [text] as Ask numbers them, from 1: each line trimmed, and
+/// empty ones left out. [text] starts at [offset] of its section's plain text,
+/// so each line's place is in that text. [text] is what [textBeforePageEnd]
+/// gives, or the window it was cut from.
+List<PageLine> pageLines(String text, [int offset = 0]) {
+  final lines = <PageLine>[];
+  var at = offset;
+  for (final piece in text.split('\n')) {
+    final trimmed = piece.trim();
+    if (trimmed.isNotEmpty) {
+      final from = at + piece.indexOf(trimmed);
+      lines.add(PageLine(from, from + trimmed.length, trimmed));
+    }
+    at += piece.length + 1;
+  }
+  return lines;
+}
+
+/// One of the lines Ask numbers, and where it is in its section's plain text.
+class PageLine {
+  const PageLine(this.start, this.end, this.text);
+
+  /// From [start], up to but not including [end].
+  final int start;
+  final int end;
+  final String text;
+}
+
+/// The text [textBeforePageEnd] gives, line by line as [pageLines] numbers it,
+/// with [sectionText] they are in, to find them in the book.
+class PageText {
+  const PageText(this.sectionText, this.lines, this.end);
+
+  /// The plain text of the whole section.
+  final String sectionText;
+
+  /// Line n is `lines[n - 1]`.
+  final List<PageLine> lines;
+
+  /// Where the page ends in [sectionText].
+  final int end;
+}
+
+/// What [textBeforePageEnd] gives for the same arguments, line by line. Null
+/// when it gives null.
+PageText? pageTextBefore(
+  String xhtml,
+  double progression, {
+  int window = pageTextWindow,
+}) {
+  final XmlDocument document;
+  try {
+    document = parseXhtml(xhtml);
+  } on XmlException {
+    return null;
+  }
+  final text = _walkBody(document).text;
+  final (start, end) = _pageWindow(text, progression, window);
+  return PageText(text, pageLines(text.substring(start, end), start), end);
+}
+
 /// How many characters of the end of the page the page script sends back.
 const tailLength = 12;
 
@@ -221,13 +323,19 @@ String _sectionText(EpubPackage package, String path) {
   try {
     final xhtml = _markup(package, path);
     if (xhtml == null) return '';
-    try {
-      return _walkBody(parseXhtml(xhtml)).text;
-    } on XmlException {
-      return _stripTags(xhtml);
-    }
+    return sectionPlainText(xhtml);
   } on Object {
     return '';
+  }
+}
+
+/// The plain text of a section with markup [xhtml], the same text
+/// [sectionTextsFromBytes] gives for it.
+String sectionPlainText(String xhtml) {
+  try {
+    return _walkBody(parseXhtml(xhtml)).text;
+  } on XmlException {
+    return _stripTags(xhtml);
   }
 }
 

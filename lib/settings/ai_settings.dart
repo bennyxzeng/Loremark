@@ -104,6 +104,8 @@ class AiSettings extends ChangeNotifier {
   static const _storyModelKey = 'story_model';
   static const _storyEffortKey = 'story_effort';
   static const _storyQuotesKey = 'story_check_quotes';
+  static const _chatModelKey = 'chat_model';
+  static const _chatEffortKey = 'chat_effort';
 
   /// Settings kept in the system keychain.
   static Future<AiSettings> open() async {
@@ -122,6 +124,8 @@ class AiSettings extends ChangeNotifier {
   String? _storyModelId;
   String? _storyEffortName;
   bool _checkStoryQuotes = false;
+  String? _chatModelId;
+  String? _chatEffortName;
 
   AiCredentials? get credentials => _credentials;
   bool get hasKey => _credentials != null;
@@ -144,11 +148,23 @@ class AiSettings extends ChangeNotifier {
   /// it is only flagged, since a rejected update has already been paid for.
   bool get checkStoryQuotes => _checkStoryQuotes;
 
+  /// The model Ask answers with, chosen apart from [storyModel]: the reader's
+  /// choice if the current provider has it, or else the provider's default.
+  StoryModelChoice get chatModel => StoryModelChoice.resolve(
+    (_credentials?.provider ?? AiProvider.openai).name,
+    _chatModelId,
+  );
+
+  /// The reasoning effort for [chatModel], resolved as [storyEffort] is.
+  StoryEffort get chatEffort => chatModel.resolveEffort(_chatEffortName);
+
   Future<void> load() async {
     _onboardingSeen = await _store.read(_onboardedKey) == 'true';
     _storyModelId = await _store.read(_storyModelKey);
     _storyEffortName = await _store.read(_storyEffortKey);
     _checkStoryQuotes = await _store.read(_storyQuotesKey) == 'true';
+    _chatModelId = await _store.read(_chatModelKey);
+    _chatEffortName = await _store.read(_chatEffortKey);
     final providerName = await _store.read(_providerKey);
     final apiKey = await _store.read(_apiKeyKey);
     final provider = AiProvider.values
@@ -184,6 +200,18 @@ class AiSettings extends ChangeNotifier {
   Future<void> setStoryEffort(StoryEffort effort) async {
     await _store.write(_storyEffortKey, effort.name);
     _storyEffortName = effort.name;
+    notifyListeners();
+  }
+
+  Future<void> setChatModel(StoryModelChoice model) async {
+    await _store.write(_chatModelKey, model.id);
+    _chatModelId = model.id;
+    notifyListeners();
+  }
+
+  Future<void> setChatEffort(StoryEffort effort) async {
+    await _store.write(_chatEffortKey, effort.name);
+    _chatEffortName = effort.name;
     notifyListeners();
   }
 

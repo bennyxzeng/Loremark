@@ -444,6 +444,26 @@ class StoryBook {
     return collector.beforeTarget ?? collector.paragraphs.length;
   }
 
+  /// How many of [section]'s paragraphs end before text block number [block] of
+  /// its document, counted from 0 the way the page script counts them (see
+  /// `textBlocks`). That block is the first one not wholly on the reader's page,
+  /// so these paragraphs are all on the page or an earlier one. All of them if
+  /// the block comes after the section, and none if it comes before.
+  ///
+  /// Null if the document has no such block. Throws a [StoryEpubError] if the
+  /// section can't be cut from its document reliably.
+  int? paragraphsBeforeBlock(StoryBookSection section, int block) {
+    if (block < 0) return null;
+    final document = _documentOf(section);
+    // Found the way `textProgressionOfBlock` finds it, so the numbers agree.
+    final body = document.findAllElements('body').firstOrNull;
+    if (body == null) return null;
+    final target = textBlocks(body).skip(block).firstOrNull;
+    if (target == null) return null;
+    final collector = _collect(section, target: target);
+    return collector.beforeTarget ?? collector.paragraphs.length;
+  }
+
   XmlDocument _documentOf(StoryBookSection section) {
     if (section.problem != null) {
       throw StoryEpubError(

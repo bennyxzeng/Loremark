@@ -16,6 +16,10 @@
   &nbsp; · &nbsp;
   <a href="#how-it-works">How it works</a>
   &nbsp; · &nbsp;
+  <a href="#the-story-model">The story model</a>
+  &nbsp; · &nbsp;
+  <a href="#ask-the-ai-chat">Ask</a>
+  &nbsp; · &nbsp;
   <a href="#the-team">Team</a>
 </p>
 
@@ -44,7 +48,7 @@ These are our six use cases and where each one stands in this beta.
 | **4 · Look up a character** | **Operational** | A searchable character list, and a card for each character showing what is known as of the chosen chapter. Opening a card by tapping a name in the reader isn't in yet. |
 | **1 · Get a recap when you come back** | In progress | |
 | **2 · Track a theory** | In progress | |
-| **6 · Ask about the story** | In progress | The Ask tab is in the app and unlocks with an API key, but it doesn't answer questions yet. |
+| **6 · Ask about the story** | **Operational** | Ask a question in the Ask tab. The AI sees the page you are on and the few before it, and looks the rest up in the Story Map, up to the end of that page and no further. Answers stream in and cite the paragraphs they come from: tap a number to read it, then **Open in book** to go there. Pick Ask's model and effort in Settings, apart from Story Map updates. See [docs/ask.md](docs/ask.md). |
 
 These features support the use cases above, and all of them work in the beta:
 
@@ -79,38 +83,39 @@ flowchart LR
     R --> Q[Search up to your furthest page]
     M[Versioned story model] --> C[Snapshot at the chosen chapter]
     C --> G[Story Map and character cards]
+    P -->|to the end of your page| X[Ask]
+    M --> X
 
     classDef reading fill:#f7efdf,stroke:#b38a50,color:#332c24;
     classDef story fill:#edf0e5,stroke:#667052,color:#283328;
     class A,L,R,P,N,T,Q reading;
-    class K,S,M,C,G story;
+    class K,S,M,C,G,X story;
 ```
 
 | Part | What we use |
 | :--- | :--- |
 | **App** | Flutter 3.47.7 and Dart: one codebase for Android and iOS. |
-| **Book rendering** | Readium, through the [`flutter_readium`](https://pub.dev/packages/flutter_readium) 0.8.0 plugin. |
+| **Book rendering** | Readium, through the [`flutter_readium`](https://pub.dev/packages/flutter_readium) 0.8.0 plugin, with one fix so its page script runs on iOS (`third_party/flutter_readium`). |
 | **On-device storage** | JSON files in the app's private folder: the library, reading positions, each book's notes, and search indexes. |
 | **AI provider** | OpenAI or DeepSeek, called straight from the app with the reader's own key. The key is kept with `flutter_secure_storage`. There is no Loremark server. |
-| **Story model** | Versioned JSON of characters, relationships and events, each linked to the chapter it comes from. The app shows the snapshot for the chosen chapter. |
+| **[Story model](#the-story-model)** | Versioned JSON of characters, relationships and events, each linked to the chapter it comes from. The app shows the snapshot for the chosen chapter. |
 | **Connectivity** | `connectivity_plus` drives the offline banner and locks features that need the network. |
 
 ### Spoiler and privacy rules
 
-- **Only what you've read.** Search covers the book only up to your furthest page. The Story Map shows the chapter you choose and hides facts from later ones.
+- **Only what you've read.** Search covers the book only up to your furthest page. The Story Map shows the chapter you choose and hides facts from later ones. Ask can use nothing past the end of the page you are on: the app leaves the rest out of what it sends.
 - **Earlier snapshots don't change.** A later reveal adds a new snapshot instead of rewriting an earlier one.
 - **Your notes stay yours.** Notes and highlights are stored on the phone and are never used as facts about the story.
 - **Reading works offline.** The book, your place in it and your notes are all on the device.
-- **Your books stay on the phone.** In the beta, the only request the app makes is the API key check. [docs/acceptance.md](docs/acceptance.md) describes the privacy audit that checks this.
+- **Your books stay on the phone.** Requests go only to your AI provider: the API key check, Story Map updates you start, and questions you ask in Ask, which carry the page you are on, the conversation so far, and the parts of the Story Map the AI looks up. [docs/acceptance.md](docs/acceptance.md) describes the privacy audit.
 
 ## What's next
 
 **For the final release:**
 
-- Answers in the Ask tab, using only the chapters you have read (use case 6).
 - A recap when you come back to a book (use case 1).
 - A theory tracker that checks your guesses as the story reveals more (use case 2).
-- A Story Map that stops at your page, and character cards opened by tapping a name in the reader.
+- Character cards opened by tapping a name in the reader.
 
 **Stretch goals:** confusion detection that notices rereading and stalls and offers a nudge (in progress), an AI-generated map of the story's world, and, if time allows, training our own model.
 
@@ -119,7 +124,7 @@ flowchart LR
 - **Unit and widget tests.** About 900 tests cover 94% of the lines in `lib/`. Every pull request runs them with `dart format` and `flutter analyze` on GitHub Actions. See [docs/testing.md](docs/testing.md).
 - **Start-to-finish test.** `integration_test/app_test.dart` runs the real app on an Android emulator or iPhone simulator: first launch, API key, import, read, search, notes and offline mode. It follows the walkthrough above, except for creating a highlight, which needs native text selection and is covered by widget tests. It passes on an Android emulator and on an iPhone simulator.
 - **Acceptance checks.** 20 force-quit trials for restoring your place, an offline trial and a privacy audit run on an Android emulator. See [docs/acceptance.md](docs/acceptance.md).
-- **Spoiler safety.** Tests check that search and the story model never show text or facts from later chapters (`test/search/spoiler_property_test.dart`, `test/acceptance/story_model_spoiler_test.dart`).
+- **Spoiler safety.** Tests check that search, the story model and Ask never show or send text or facts from later chapters (`test/search/spoiler_property_test.dart`, `test/acceptance/story_model_spoiler_test.dart`, `test/ask/story_lookup_test.dart`, `test/ask/ask_engine_test.dart`).
 - **Scale and real books.** See [docs/benchmarks.md](docs/benchmarks.md) and [docs/corpus-testing.md](docs/corpus-testing.md).
 - **Bug tracking.** Bugs are GitHub issues with a P0, P1 or P2 label. There are 48 so far, listed with causes and fixes in [docs/bug-log.md](docs/bug-log.md).
 
@@ -155,6 +160,18 @@ flutter run
 Then follow the [walkthrough](#walkthrough-one-use-case-through-every-part-of-loremark). Any DRM-free EPUB works for reading and notes, for example one from [Project Gutenberg](https://www.gutenberg.org/). iOS builds from the same code and needs iOS 15 or later; so far we have tested on Android. See [docs/epub-reader.md](docs/epub-reader.md) for how the reader works and for Mac and iOS steps.
 
 Have feedback? [Open an issue](https://github.com/bennyxzeng/Loremark/issues) with the reading scenario, the chapter you were on, and what you expected Loremark to do. Clearly label any spoilers in examples.
+
+## The story model
+
+[![The story model at a glance: entities, seven kinds of claims, evidence, two labels, and supersede/retract/resolve as the book goes on, all with Chapters 1–2 of 86 as the example](docs/assets/story-model-at-a-glance.svg)](docs/story-model-format.md)
+
+Every field and label is explained in [Story Model: file structure and labels](docs/story-model-format.md), in English and Chinese.
+
+## Ask: the AI chat
+
+[![Ask at a glance: what the AI is given and never sees, one question step by step, the same question asked at Chapter 1 and Chapter 2 of 86, and how conversations work](docs/assets/ask-at-a-glance.svg)](docs/ask.md)
+
+How Ask works, from this picture down to each request it sends, is in [Ask: how the AI chat works](docs/ask.md), in English and Chinese.
 
 ## Meet your reading companion
 

@@ -4,14 +4,16 @@ import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
 
+import 'page_end.dart';
 import 'page_start.dart';
 import 'reader_position.dart';
 
 /// Each book's reading position, kept on the device next to the library.
 ///
 /// Every book has its own `reading_state/<book id>.json`, holding
-/// `{"version": 1, "current": <ReaderPosition JSON>}`, and `pageStart` beside it
-/// once a page has reported where it starts. `current` is the key
+/// `{"version": 1, "current": <ReaderPosition JSON>}`, and `pageStart` and
+/// `pageEnd` beside it once a page has reported where it starts and ends.
+/// `current` is the key
 /// `ReadingProgressTracker` uses for the same file, which lets it add
 /// `furthest` and `boundary` beside it later.
 ///
@@ -95,6 +97,19 @@ class ReadingPositionStore {
     }
   }
 
+  /// Where the page saved for [bookId] ends, or null if there is none or the
+  /// file can't be read. It may be from another section than [load]'s position,
+  /// or from an earlier page of it if this one couldn't be measured.
+  Future<PageEnd?> loadPageEnd(String bookId) async {
+    final saved = (await _readState(_file(bookId)))['pageEnd'];
+    if (saved is! Map<String, dynamic>) return null;
+    try {
+      return PageEnd.fromJson(saved);
+    } on FormatException {
+      return null;
+    }
+  }
+
   /// Writes [position] as the saved position for [bookId].
   ///
   /// Completes once [position], or a newer save for the same book, is on disk.
@@ -106,6 +121,11 @@ class ReadingPositionStore {
   /// and fails the way [save] does.
   Future<void> savePageStart(String bookId, PageStart start) async =>
       _enqueue(bookId, (save) => save.pageStart = start);
+
+  /// Writes [end] as where the reader's page in [bookId] ends, and completes
+  /// and fails the way [save] does.
+  Future<void> savePageEnd(String bookId, PageEnd end) async =>
+      _enqueue(bookId, (save) => save.pageEnd = end);
 
   Future<void> _enqueue(String bookId, void Function(_QueuedSave) change) {
     final file = _file(bookId);
@@ -143,6 +163,7 @@ class ReadingPositionStore {
       state['current'] = position.toJson();
     }
     if (save.pageStart case final start?) state['pageStart'] = start.toJson();
+    if (save.pageEnd case final end?) state['pageEnd'] = end.toJson();
     final temp = File('${file.path}.tmp');
     await temp.writeAsString(jsonEncode(state), flush: true);
     await temp.rename(file.path);
@@ -166,5 +187,6 @@ class ReadingPositionStore {
 class _QueuedSave {
   ReaderPosition? position;
   PageStart? pageStart;
+  PageEnd? pageEnd;
   final done = Completer<void>();
 }

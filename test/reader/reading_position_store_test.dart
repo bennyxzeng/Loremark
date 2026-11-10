@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:loremark/reader/page_end.dart';
 import 'package:loremark/reader/page_start.dart';
 import 'package:loremark/reader/reader_position.dart';
 import 'package:loremark/reader/reading_position_store.dart';
@@ -85,6 +86,40 @@ void main() {
       expect(await store.loadPageStart(bookA), isNull);
       await writeRaw(bookA, 'not json');
       expect(await store.loadPageStart(bookA), isNull);
+    });
+  });
+
+  group('where the page ends', () {
+    const end = PageEnd(3, 12, 0.4);
+
+    test('is kept across restarts, beside the rest', () async {
+      const position = ReaderPosition(3, 0.4);
+      const start = PageStart(3, 'p');
+      await Future.wait([
+        store.save(bookA, position),
+        store.savePageStart(bookA, start),
+        store.savePageEnd(bookA, end),
+      ]);
+      final restarted = ReadingPositionStore(store.root);
+      expect(await restarted.loadPageEnd(bookA), end);
+      expect(await restarted.loadPageStart(bookA), start);
+      expect(await restarted.load(bookA), position);
+    });
+
+    test('is null with none saved, or when it can\'t be read', () async {
+      expect(await store.loadPageEnd(bookA), isNull);
+      await writeRaw(
+        bookA,
+        '{"version":1,"pageEnd":{"sectionIndex":1,"block":-2,'
+        '"textProgression":0.5}}',
+      );
+      expect(await store.loadPageEnd(bookA), isNull);
+      await writeRaw(
+        bookA,
+        '{"version":1,"pageEnd":{"sectionIndex":1,"block":2,'
+        '"textProgression":1.5}}',
+      );
+      expect(await store.loadPageEnd(bookA), isNull);
     });
   });
 

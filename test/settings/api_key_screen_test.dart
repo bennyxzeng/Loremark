@@ -218,8 +218,22 @@ void main() {
       return settings;
     }
 
-    Future<void> pick(WidgetTester tester, String from, String to) async {
-      await tester.tap(find.text(from));
+    // Story Map and Ask each have a model and an effort to pick.
+    const storyModel = ValueKey('story-model');
+    const storyEffort = ValueKey('story-effort');
+    const askModel = ValueKey('ask-model');
+    const askEffort = ValueKey('ask-effort');
+
+    Finder shown(Key choice, String text) =>
+        find.descendant(of: find.byKey(choice), matching: find.text(text));
+
+    Finder dropdown(Key choice) => find.descendant(
+      of: find.byKey(choice),
+      matching: find.byWidgetPredicate((widget) => widget is DropdownButton),
+    );
+
+    Future<void> pick(WidgetTester tester, Key choice, String to) async {
+      await tester.tap(dropdown(choice));
       await tester.pumpAndSettle();
       await tester.tap(find.text(to).last);
       await tester.pumpAndSettle();
@@ -227,15 +241,15 @@ void main() {
 
     testWidgets('OpenAI offers Terra, by default, and Sol', (tester) async {
       final settings = await pumpSettings(tester);
-      expect(find.text('GPT-6.1 Terra'), findsOne);
-      await pick(tester, 'GPT-6.1 Terra', 'GPT-6.1 Sol');
+      expect(shown(storyModel, 'GPT-6.1 Terra'), findsOne);
+      await pick(tester, storyModel, 'GPT-6.1 Sol');
       expect(settings.storyModel, StoryModelChoice.gpt61Sol);
       expect(store.values['story_model'], 'gpt-6.1-sol');
     });
 
     testWidgets('DeepSeek offers its own model', (tester) async {
       await pumpSettings(tester, provider: 'deepseek');
-      expect(find.text('DeepSeek Flash'), findsOne);
+      expect(shown(storyModel, 'DeepSeek Flash'), findsOne);
       expect(find.text('GPT-6.1 Terra'), findsNothing);
     });
 
@@ -244,14 +258,14 @@ void main() {
     ) async {
       final settings = await pumpSettings(tester);
       expect(settings.storyEffort, StoryEffort.high);
-      await pick(tester, 'High', 'Max');
+      await pick(tester, storyEffort, 'Max');
       expect(settings.storyEffort, StoryEffort.max);
       expect(store.values['story_effort'], 'max');
     });
 
     testWidgets('efforts follow the model', (tester) async {
       await pumpSettings(tester, provider: 'deepseek');
-      await tester.tap(find.text('High'));
+      await tester.tap(dropdown(storyEffort));
       await tester.pumpAndSettle();
       expect(find.text('Medium'), findsNothing);
       expect(find.text('Extra high'), findsNothing);
@@ -262,10 +276,50 @@ void main() {
       tester,
     ) async {
       final settings = await pumpSettings(tester);
-      await pick(tester, 'High', 'None');
+      await pick(tester, storyEffort, 'None');
       expect(settings.storyEffort, StoryEffort.none);
-      await pick(tester, 'GPT-6.1 Terra', 'GPT-6.1 Sol');
+      await pick(tester, storyModel, 'GPT-6.1 Sol');
       expect(settings.storyEffort, StoryEffort.high);
+    });
+
+    testWidgets('Ask picks its own model and effort, apart from updates', (
+      tester,
+    ) async {
+      final settings = await pumpSettings(tester);
+      expect(settings.chatModel, StoryModelChoice.gpt61Terra);
+      expect(settings.chatEffort, StoryEffort.high);
+      expect(shown(askModel, 'GPT-6.1 Terra'), findsOne);
+
+      await pick(tester, askModel, 'GPT-6.1 Sol');
+      await pick(tester, askEffort, 'Low');
+      expect(settings.chatModel, StoryModelChoice.gpt61Sol);
+      expect(settings.chatEffort, StoryEffort.low);
+      expect(store.values['chat_model'], 'gpt-6.1-sol');
+      expect(store.values['chat_effort'], 'low');
+      // Story Map updates keep theirs.
+      expect(settings.storyModel, StoryModelChoice.gpt61Terra);
+      expect(settings.storyEffort, StoryEffort.high);
+
+      await pick(tester, storyModel, 'GPT-6.1 Sol');
+      await pick(tester, storyEffort, 'Max');
+      expect(settings.chatEffort, StoryEffort.low);
+
+      final reloaded = AiSettings(store);
+      await reloaded.load();
+      expect(reloaded.chatModel, StoryModelChoice.gpt61Sol);
+      expect(reloaded.chatEffort, StoryEffort.low);
+    });
+
+    testWidgets('Ask falls back the way updates do', (tester) async {
+      final settings = await pumpSettings(tester);
+      await settings.setChatModel(StoryModelChoice.gpt61Sol);
+      await settings.save(
+        const AiCredentials(provider: AiProvider.deepseek, apiKey: 'sk-new'),
+      );
+      expect(settings.chatModel, StoryModelChoice.deepseekFlash);
+      await settings.setChatEffort(StoryEffort.xhigh);
+      // DeepSeek treats Extra high as High, so it isn't offered.
+      expect(settings.chatEffort, StoryEffort.high);
     });
 
     testWidgets('changing provider falls back to its default model', (
@@ -306,6 +360,7 @@ void main() {
       );
       expect(find.text('Strict quote check'), findsOne);
       expect(find.text('Reasoning effort'), findsNothing);
+      expect(find.text('ASK'), findsNothing);
     });
 
     testWidgets('fits a small phone', (tester) async {
