@@ -69,8 +69,9 @@ class CompanionDirector {
 
   final Random _random;
 
-  /// How high she hops on each open mouth while talking.
-  static const talkHop = 3;
+  /// How high she hops on each open mouth while talking. She talks close up,
+  /// nearly as tall as the stage, so a little is plenty.
+  static const talkHop = 1;
 
   /// How high she rises when breathing in.
   static const breathHop = 1;
