@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:isolate';
 
 import 'package:file_picker/file_picker.dart';
@@ -125,6 +126,12 @@ abstract interface class StoryMapBackend {
 
   /// Throws [staged] away.
   Future<void> discardImport(StagedStoryImport staged);
+
+  /// Whether the reader has closed the Story Map intro, in any book.
+  Future<bool> introSeen();
+
+  /// Remembers that the reader closed the intro, so it doesn't show again.
+  Future<void> markIntroSeen();
 }
 
 /// The real thing: the store on disk, the reader's saved position, the provider.
@@ -296,4 +303,18 @@ class DeviceStoryMapBackend implements StoryMapBackend {
   @override
   Future<void> discardImport(StagedStoryImport staged) =>
       Isolate.run(() => discardStoryImport(staged));
+
+  /// An empty file whose presence means the intro was closed.
+  Future<File> _introSeenFile() async {
+    final support = await getApplicationSupportDirectory();
+    return File('${support.path}/story_map_intro_seen');
+  }
+
+  @override
+  Future<bool> introSeen() async => (await _introSeenFile()).exists();
+
+  @override
+  Future<void> markIntroSeen() async {
+    await (await _introSeenFile()).create(recursive: true);
+  }
 }

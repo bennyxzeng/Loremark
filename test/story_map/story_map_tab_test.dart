@@ -149,6 +149,16 @@ class _FakeBackend implements StoryMapBackend {
 
   @override
   Future<void> discardImport(StagedStoryImport staged) async => discards++;
+
+  /// Whether the reader closed the intro before. True unless a test says
+  /// otherwise, so the other tests don't see it.
+  bool seenIntro = true;
+
+  @override
+  Future<bool> introSeen() async => seenIntro;
+
+  @override
+  Future<void> markIntroSeen() async => seenIntro = true;
 }
 
 /// A map whose store can't be read.
@@ -1260,6 +1270,48 @@ void main() {
       await tester.tap(find.text('Export files…'));
       await tester.pumpAndSettle();
       expect(backend.exports, 1);
+    });
+  });
+
+  group('the intro', () {
+    const title = 'Tap Update to build the Story Map';
+
+    testWidgets('shows on the first visit and goes once closed', (
+      tester,
+    ) async {
+      final backend = _FakeBackend(model: storyModelFixture())
+        ..seenIntro = false;
+      await pumpTab(tester, backend);
+      expect(find.text(title), findsOne);
+
+      await tester.tap(find.byTooltip('Dismiss'));
+      await tester.pumpAndSettle();
+      expect(find.text(title), findsNothing);
+      expect(backend.seenIntro, isTrue);
+    });
+
+    testWidgets('doesn\'t come back once closed', (tester) async {
+      final backend = _FakeBackend(model: storyModelFixture())
+        ..seenIntro = false;
+      await pumpTab(tester, backend);
+      await tester.tap(find.byTooltip('Dismiss'));
+      await tester.pumpAndSettle();
+
+      // A new tab, as when the book is opened again.
+      await tester.pumpWidget(const SizedBox());
+      await pumpTab(tester, backend);
+      expect(find.text(title), findsNothing);
+    });
+
+    testWidgets('shows above Update before any map is built', (tester) async {
+      await pumpTab(tester, _FakeBackend(status: _newStore)..seenIntro = false);
+      expect(find.text(title), findsOne);
+      expect(
+        tester.getTopLeft(find.text(title)).dy,
+        lessThan(
+          tester.getTopLeft(find.widgetWithText(FilledButton, 'Update')).dy,
+        ),
+      );
     });
   });
 
