@@ -184,6 +184,8 @@ void main() {
       findsOne,
     );
     expect(find.text('Ask about what you’ve read.'), findsOne);
+    // The companion stands under the heading, with no card explaining Ask.
+    expect(find.textContaining('Ask about a person'), findsNothing);
     expect(newConversation(tester).onPressed, isNull);
   });
 
@@ -308,7 +310,7 @@ void main() {
       ..model = null
       ..reach = AskReach.none;
     await pumpAsk(tester);
-    expect(find.textContaining('Read a page first.'), findsOne);
+    expect(find.text('Read a page to start asking'), findsOne);
     final input = tester.widget<TextField>(
       find.byKey(const ValueKey('ask-input')),
     );
@@ -394,7 +396,7 @@ void main() {
             AskHttpReply(200, body.stream, () => body.close()),
       );
       await askQuestion(tester, 'Who?');
-      expect(speaker(tester).frame, CompanionFrame.bust);
+      expect(speaker(tester).frame, CompanionFrame.full);
       expect(speaker(tester).mood, CompanionMood.thinking);
 
       body.add(
@@ -430,7 +432,9 @@ void main() {
       expect(speaker(tester).mood, CompanionMood.idle);
     });
 
-    testWidgets('stands under the newest answer only', (tester) async {
+    testWidgets('stands behind the newest answer; the log has the rest', (
+      tester,
+    ) async {
       await pumpAsk(
         tester,
         replies: [
@@ -441,15 +445,86 @@ void main() {
       await askQuestion(tester, 'Who is Mara?');
       await askQuestion(tester, 'When does she work?');
 
+      // One of her, with the dialogue box over her legs.
       final companion = find.byKey(const ValueKey('companion'));
+      final dialogue = find.byKey(const ValueKey('dialogue'));
       expect(companion, findsOne);
+      expect(find.text('Loremark'), findsOne);
       expect(
-        tester.getTopLeft(companion).dy,
+        tester.getTopLeft(dialogue).dy,
+        lessThan(tester.getBottomLeft(companion).dy),
+      );
+      expect(
+        find.descendant(
+          of: dialogue,
+          matching: find.text('She works the night shift.'),
+        ),
+        findsOne,
+      );
+      expect(find.text('Mara is a dock clerk.'), findsNothing);
+
+      await tester.tap(find.text('LOG'));
+      await tester.pumpAndSettle();
+      expect(find.text('Who is Mara?'), findsOne);
+      expect(find.text('Mara is a dock clerk.'), findsOne);
+      // The newest answer is in the log too, as well as in the box.
+      expect(find.text('She works the night shift.'), findsNWidgets(2));
+    });
+
+    testWidgets('a conversation opens at its question, however long', (
+      tester,
+    ) async {
+      final controller = await pumpAsk(
+        tester,
+        history: _MemoryHistory({
+          'c1': [_exchange('Who?', 'Mara.')],
+          'c2': [_exchange('Long?', 'On and on. ' * 300)],
+        }),
+      );
+      controller.open('c1');
+      await tester.pumpAndSettle();
+      controller.open('c2');
+      await tester.pumpAndSettle();
+      expect(
+        tester.getTopLeft(find.text('Long?')).dy,
         greaterThan(
-          tester.getBottomLeft(find.text('She works the night shift.')).dy,
+          tester.getTopLeft(find.byKey(const ValueKey('dialogue'))).dy,
         ),
       );
     });
+
+    testWidgets('fits a short stage, as with the keyboard up', (tester) async {
+      tester.view.physicalSize = const Size(400, 420);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await pumpAsk(tester, replies: [(200, answer('Mara is a dock clerk.'))]);
+      await askQuestion(tester, 'Who is Mara?');
+      expect(tester.takeException(), isNull);
+      expect(find.text('Mara is a dock clerk.'), findsOne);
+    });
+  });
+
+  testWidgets('a passage opened from the log closes it', (tester) async {
+    await pumpAsk(
+      tester,
+      replies: [
+        (200, answer('Mara is a dock clerk [s1/p0001].')),
+        (200, answer('At night.')),
+      ],
+    );
+    await askQuestion(tester, 'Who is Mara?');
+    await askQuestion(tester, 'When?');
+    expect(find.text('1'), findsNothing);
+
+    await tester.tap(find.text('LOG'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('1'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Open in book'));
+    await tester.pumpAndSettle();
+    expect(jumps.single.highlight, 'Text of s1 1.');
+    expect(find.text('Text of s1 1.'), findsNothing);
+    expect(find.text('Who is Mara?'), findsNothing);
   });
 
   testWidgets('a question being written survives going offline', (

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math';
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 
@@ -17,8 +18,8 @@ import '../settings/ai_settings.dart';
 import '../story_map/story_facts.dart';
 import '../story_model/story_model.dart';
 import '../story_update/story_paragraphs.dart';
+import '../theme/decor.dart';
 import '../theme/loremark_theme.dart';
-import 'empty_state.dart';
 
 /// The Ask tab: questions about the book, answered from the page the reader is
 /// on and what they read before it, and nothing after.
@@ -105,11 +106,28 @@ class _AskScreenState extends State<AskScreen> {
     super.dispose();
   }
 
+  /// The conversation and question the dialogue box last showed, and whether
+  /// it was under way, to tell another one being opened from one finishing.
+  (String?, int)? _shown;
+  bool _wasPending = false;
+
   void _changed() {
     if (!mounted) return;
     setState(() {});
+    final pending = _ask.pending != null;
+    final shown = (_ask.conversationId, _ask.exchanges.length);
+    final opened = !pending && !_wasPending && shown != _shown;
+    _shown = shown;
+    _wasPending = pending;
+    // The box follows an answer as it arrives, and starts at the question
+    // when another conversation is opened.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
+      if (!_scroll.hasClients) return;
+      if (pending) {
+        _scroll.jumpTo(_scroll.position.maxScrollExtent);
+      } else if (opened) {
+        _scroll.jumpTo(0);
+      }
     });
   }
 
@@ -328,6 +346,7 @@ class _AskScreenState extends State<AskScreen> {
               ],
         onOpen: () async {
           Navigator.of(sheetContext).pop();
+          _closeLog();
           await widget.onOpenPassage(target);
         },
       ),
@@ -363,7 +382,67 @@ class _AskScreenState extends State<AskScreen> {
       return;
     }
     if (sheetContext.mounted) Navigator.of(sheetContext).pop();
+    _closeLog();
     await widget.onOpenPassage(target);
+  }
+
+  /// Where [ref]'s paragraph is among those read, or null if it is past them.
+  int? _paragraphNumber(AskRef ref) => _ask.boundary?.paragraphs
+      .paragraph(ref.sectionId!, ref.paragraphId!)
+      ?.number;
+
+  /// Whether a passage can be shown, for an answer given when the reader's
+  /// page ended at [limit]: recent pages when that end was measured,
+  /// paragraphs while the reader is still past them.
+  bool Function(List<AskRef>) _visibleAt(TextPosition? limit) =>
+      (passage) => passage.every(
+        (ref) => ref.isPage
+            ? limit != null && limit.progression > 0
+            : _paragraphNumber(ref) != null,
+      );
+
+  /// The log, while it's open, so going to a passage from it can close it.
+  BuildContext? _logSheet;
+
+  /// Every question of the conversation and its answer, as a visual novel's
+  /// backlog shows what was said before.
+  Future<void> _openLog() async {
+    await showFactSheet(
+      context,
+      builder: (sheetContext, scrollController) {
+        _logSheet = sheetContext;
+        return ListenableBuilder(
+          listenable: _ask,
+          builder: (context, _) => ListView(
+            controller: scrollController,
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 32),
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(6, 0, 6, 12),
+                child: Text('LOG', style: kicker()),
+              ),
+              for (final exchange in _ask.exchanges) ...[
+                _Question(exchange.question),
+                _Answer(
+                  text: exchange.answer,
+                  cutOff: exchange.cutOff,
+                  paragraphNumber: _paragraphNumber,
+                  visible: _visibleAt(exchange.limit),
+                  onCite: (passage) => _openCitation(passage, exchange.limit),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+    _logSheet = null;
+  }
+
+  /// Closes the log, if a passage opened from it is being shown in the book.
+  void _closeLog() {
+    final log = _logSheet;
+    if (log != null && log.mounted) Navigator.of(log).pop();
   }
 
   @override
@@ -373,80 +452,48 @@ class _AskScreenState extends State<AskScreen> {
     final pending = _ask.pending;
     final canAsk = boundary != null && !boundary.isEmpty;
 
-    int? paragraphNumber(AskRef ref) => boundary?.paragraphs
-        .paragraph(ref.sectionId!, ref.paragraphId!)
-        ?.number;
-
-    // Recent pages can be shown when the answer's page end was measured;
-    // paragraphs while the reader is still past them.
-    bool Function(List<AskRef>) visibleAt(TextPosition? limit) =>
-        (passage) => passage.every(
-          (ref) => ref.isPage
-              ? limit != null && limit.progression > 0
-              : paragraphNumber(ref) != null,
-        );
-
-    final Widget conversation;
-    if (exchanges.isEmpty && pending == null) {
-      conversation = EmptyState(
-        art: CompanionSprite(
-          frame: CompanionFrame.full,
-          height: 240,
-          active: widget.active,
-          greet: true,
-        ),
-        label: 'A THREAD BACK INTO THE STORY',
-        title: 'Ask about what you’ve read.',
-        icon: Icons.chat_bubble_outline,
-        message: boundary != null && boundary.isEmpty
-            ? 'Read a page first. Answers only use what you’ve read.'
-            : 'Ask about a person, a place, or what just happened. Answers '
-                  'use only what you’ve read, up to the end of this page, and '
-                  'show where in the book they come from.',
-      );
-    } else {
-      conversation = ListView(
-        controller: _scroll,
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 18),
-        children: [
-          for (final (index, exchange) in exchanges.indexed) ...[
-            _Question(exchange.question),
-            _Answer(
-              text: exchange.answer,
-              cutOff: exchange.cutOff,
-              paragraphNumber: paragraphNumber,
-              visible: visibleAt(exchange.limit),
-              onCite: (passage) => _openCitation(passage, exchange.limit),
-              speaking: pending == null && index == exchanges.length - 1,
-            ),
-          ],
-          if (pending != null) ...[
-            _Question(pending.question),
-            if (pending.running)
-              _Working(
+    // What she's saying: the question under way, or else the last one asked.
+    final last = exchanges.lastOrNull;
+    final Widget? said;
+    if (pending != null) {
+      said = _Said(
+        question: pending.question,
+        answer: pending.running
+            ? _WorkingBody(
                 pending: pending,
-                paragraphNumber: paragraphNumber,
-                visible: visibleAt(boundary?.reach.limit),
+                paragraphNumber: _paragraphNumber,
+                visible: _visibleAt(boundary?.reach.limit),
                 onCite: (passage) =>
                     _openCitation(passage, boundary?.reach.limit),
               )
-            else
-              _Failed(
+            : _FailedBody(
                 message: pending.failure ?? '',
                 onRetry: _retry,
                 onDismiss: _ask.dismiss,
               ),
-          ],
-          // Keyed, so she carries on as a question under way becomes an
-          // answer.
-          _Speaker(
-            key: const ValueKey('companion'),
-            pending: pending,
-            active: widget.active,
-          ),
-        ],
       );
+    } else if (last != null) {
+      said = _Said(
+        question: last.question,
+        answer: _AnswerBody(
+          text: last.answer,
+          cutOff: last.cutOff,
+          paragraphNumber: _paragraphNumber,
+          visible: _visibleAt(last.limit),
+          onCite: (passage) => _openCitation(passage, last.limit),
+        ),
+      );
+    } else {
+      said = null;
     }
+
+    final conversation = _Stage(
+      active: widget.active,
+      cue: _companionCue(pending),
+      scroll: _scroll,
+      said: said,
+      onLog: exchanges.isEmpty ? null : _openLog,
+    );
 
     return ColoredBox(
       color: LoremarkColors.paper,
@@ -470,6 +517,501 @@ class _AskScreenState extends State<AskScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// How the companion looks: her mood, what she's saying so far, and how many
+/// citations it has.
+typedef _Cue = ({CompanionMood mood, String speech, int citations});
+
+/// How she looks while [pending] is under way: thinking until its answer starts
+/// arriving, then saying it. Waiting otherwise.
+_Cue _companionCue(AskPending? pending) {
+  if (pending == null || !pending.running) {
+    return (mood: CompanionMood.idle, speech: '', citations: 0);
+  }
+  if (pending.stage != AskStage.writing) {
+    return (mood: CompanionMood.thinking, speech: '', citations: 0);
+  }
+  final speech = StringBuffer();
+  var citations = 0;
+  for (final part in splitAnswer(pending.text, streaming: true)) {
+    switch (part) {
+      case AnswerText(:final text):
+        speech.write(text);
+      case AnswerCitation():
+        citations++;
+    }
+  }
+  return (
+    mood: CompanionMood.talking,
+    speech: speech.toString(),
+    citations: citations,
+  );
+}
+
+enum _Slot { heading, companion, floor, dialogue }
+
+/// The Ask tab as a visual novel's scene. Before a first question the heading
+/// is shown, with the companion standing under it; once one is asked she steps
+/// up, and what she [said] is in a dialogue box in front of her.
+class _Stage extends StatefulWidget {
+  const _Stage({
+    required this.active,
+    required this.cue,
+    required this.scroll,
+    required this.said,
+    required this.onLog,
+  });
+
+  final bool active;
+  final _Cue cue;
+
+  /// Scrolls the dialogue box.
+  final ScrollController scroll;
+
+  /// The question and its answer, or null before a first question.
+  final Widget? said;
+
+  /// Opens the log of the conversation; null while nothing has been answered.
+  final VoidCallback? onLog;
+
+  @override
+  State<_Stage> createState() => _StageState();
+}
+
+class _StageState extends State<_Stage> with SingleTickerProviderStateMixin {
+  /// From the empty thread (0) to a conversation (1).
+  late final AnimationController _step = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 350),
+    value: widget.said == null ? 0 : 1,
+  );
+  late final CurvedAnimation _eased = CurvedAnimation(
+    parent: _step,
+    curve: Curves.easeOutCubic,
+  );
+
+  @override
+  void didUpdateWidget(_Stage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final talking = widget.said != null;
+    if (talking == (oldWidget.said != null)) return;
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _step.value = talking ? 1 : 0;
+    } else if (talking) {
+      _step.forward();
+    } else {
+      _step.reverse();
+    }
+  }
+
+  @override
+  void dispose() {
+    _eased.dispose();
+    _step.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PaperBackground(
+      child: ClipRect(
+        child: AnimatedBuilder(
+          animation: _eased,
+          builder: (context, _) {
+            final t = _eased.value;
+            final said = widget.said;
+            return CustomMultiChildLayout(
+              delegate: _StageLayout(t),
+              children: [
+                if (t < 1)
+                  LayoutId(
+                    id: _Slot.heading,
+                    child: Opacity(opacity: 1 - t, child: const _Heading()),
+                  ),
+                LayoutId(
+                  id: _Slot.companion,
+                  // Keyed, and always here, so she carries on from the empty
+                  // thread into a conversation.
+                  child: KeyedSubtree(
+                    key: const ValueKey('companion'),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) => Align(
+                        alignment: Alignment.bottomCenter,
+                        child: _Standing(
+                          height: constraints.maxHeight,
+                          shadow: 1 - t,
+                          active: widget.active,
+                          cue: widget.cue,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                // Paper over her legs under the dialogue box, so nothing of
+                // her shows in the gap below it.
+                if (said != null)
+                  LayoutId(
+                    id: _Slot.floor,
+                    child: Opacity(
+                      opacity: t,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              LoremarkColors.paper.withValues(alpha: 0),
+                              LoremarkColors.paper,
+                            ],
+                            stops: const [0, 0.7],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                if (said != null)
+                  LayoutId(
+                    id: _Slot.dialogue,
+                    child: Transform.translate(
+                      offset: Offset(0, 12 * (1 - t)),
+                      child: _DialogueBox(
+                        key: const ValueKey('dialogue'),
+                        reveal: t,
+                        scroll: widget.scroll,
+                        onLog: widget.onLog,
+                        child: said,
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+/// Places the stage's heading, companion and dialogue box, [t] of the way
+/// from the empty thread to a conversation.
+class _StageLayout extends MultiChildLayoutDelegate {
+  _StageLayout(this.t);
+
+  final double t;
+
+  static const _headingAt = Offset(22, 24);
+
+  // Standing under the heading: room over her head and under her feet, and
+  // never so tall she crowds a tablet.
+  static const _above = 20.0;
+  static const _below = 14.0;
+  static const _tallestStanding = 460.0;
+
+  // Close up: her head near the top, a little larger than the stage, her legs
+  // behind the dialogue box.
+  static const _top = 8.0;
+  static const _closeScale = 1.12;
+  static const _tallestClose = 620.0;
+
+  static const _boxMargin = 12.0;
+  static const _shortestBox = 132.0;
+
+  /// How far over the dialogue box's bottom edge her legs fade into the floor.
+  static const _floorFade = 28.0;
+
+  /// How much of the stage the dialogue box may cover, so her face shows.
+  static const _boxShare = 0.58;
+
+  @override
+  void performLayout(Size size) {
+    final close = Rect.fromLTWH(
+      0,
+      _top,
+      size.width,
+      ((size.height - _top) * _closeScale).clamp(0, _tallestClose),
+    );
+    var at = close;
+    if (hasChild(_Slot.heading)) {
+      final heading = layoutChild(
+        _Slot.heading,
+        BoxConstraints(maxWidth: max(0, size.width - 2 * _headingAt.dx)),
+      );
+      positionChild(_Slot.heading, _headingAt);
+      final room = size.height - _headingAt.dy - heading.height;
+      final height = (room - _above - _below).clamp(0.0, _tallestStanding);
+      final standing = Rect.fromLTWH(
+        0,
+        size.height - _below - height,
+        size.width,
+        height,
+      );
+      at = Rect.lerp(standing, close, t)!;
+    }
+    layoutChild(_Slot.companion, BoxConstraints.tight(at.size));
+    positionChild(_Slot.companion, at.topLeft);
+
+    if (hasChild(_Slot.floor)) {
+      final floor = Size(size.width, min(size.height, _boxMargin + _floorFade));
+      layoutChild(_Slot.floor, BoxConstraints.tight(floor));
+      positionChild(_Slot.floor, Offset(0, size.height - floor.height));
+    }
+
+    if (hasChild(_Slot.dialogue)) {
+      final width = max(0.0, size.width - 2 * _boxMargin);
+      final tallest = size.height * _boxShare;
+      final box = layoutChild(
+        _Slot.dialogue,
+        BoxConstraints(
+          minWidth: width,
+          maxWidth: width,
+          minHeight: min(_shortestBox, tallest),
+          maxHeight: tallest,
+        ),
+      );
+      positionChild(
+        _Slot.dialogue,
+        Offset(_boxMargin, size.height - _boxMargin - box.height),
+      );
+    }
+  }
+
+  @override
+  bool shouldRelayout(_StageLayout oldDelegate) => oldDelegate.t != t;
+}
+
+class _Heading extends StatelessWidget {
+  const _Heading();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('A THREAD BACK INTO THE STORY', style: kicker()),
+        const SizedBox(height: 9),
+        Text('Ask about what you’ve read.', style: serif(29, height: 1.18)),
+      ],
+    );
+  }
+}
+
+/// The whole companion, [height] tall, on a soft shadow that stays on the
+/// ground when she hops. The shadow is [shadow] opaque: it fades as she steps
+/// up behind the dialogue box.
+class _Standing extends StatelessWidget {
+  const _Standing({
+    required this.height,
+    required this.shadow,
+    required this.active,
+    required this.cue,
+  });
+
+  final double height;
+  final double shadow;
+  final bool active;
+  final _Cue cue;
+
+  @override
+  Widget build(BuildContext context) {
+    if (height < 1) return const SizedBox.shrink();
+    final shadowSize = Size(height * 0.3, height * 0.04);
+    return Stack(
+      alignment: Alignment.bottomCenter,
+      clipBehavior: Clip.none,
+      children: [
+        // Centred on the soles of her boots.
+        if (shadow > 0)
+          Positioned(
+            bottom: -shadowSize.height / 2,
+            child: CustomPaint(
+              size: shadowSize,
+              painter: _ShadowPainter(shadow),
+            ),
+          ),
+        CompanionSprite(
+          frame: CompanionFrame.full,
+          height: height,
+          mood: cue.mood,
+          speech: cue.speech,
+          citations: cue.citations,
+          active: active,
+          greet: true,
+        ),
+      ],
+    );
+  }
+}
+
+class _ShadowPainter extends CustomPainter {
+  _ShadowPainter(this.opacity);
+
+  final double opacity;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawOval(
+      Offset.zero & size,
+      Paint()
+        ..color = LoremarkColors.ink.withValues(alpha: 0.14 * opacity)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, size.height / 3),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_ShadowPainter oldDelegate) =>
+      oldDelegate.opacity != opacity;
+}
+
+/// A visual novel's dialogue box: see-through, so she shows behind it, with
+/// her name on its edge and the log in its corner. [reveal] fades it in.
+class _DialogueBox extends StatelessWidget {
+  const _DialogueBox({
+    super.key,
+    required this.reveal,
+    required this.scroll,
+    required this.onLog,
+    required this.child,
+  });
+
+  final double reveal;
+  final ScrollController scroll;
+  final VoidCallback? onLog;
+  final Widget child;
+
+  static const _radius = BorderRadius.all(Radius.circular(16));
+
+  @override
+  Widget build(BuildContext context) {
+    // The backdrop is faded by hand: under an Opacity it would blur nothing.
+    final blur = 8 * reveal;
+    return Stack(
+      // As tall as the stage asks, so the log sits at the bottom.
+      fit: StackFit.passthrough,
+      clipBehavior: Clip.none,
+      children: [
+        ClipRRect(
+          borderRadius: _radius,
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: LoremarkColors.card.withValues(alpha: 0.76 * reveal),
+                borderRadius: _radius,
+                border: Border.all(
+                  color: LoremarkColors.gold.withValues(alpha: 0.5 * reveal),
+                ),
+              ),
+              child: Opacity(
+                opacity: reveal,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 22, 8, 4),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Flexible(
+                        child: SingleChildScrollView(
+                          controller: scroll,
+                          padding: const EdgeInsets.only(right: 8),
+                          child: child,
+                        ),
+                      ),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: onLog,
+                          style: TextButton.styleFrom(
+                            minimumSize: const Size(48, 32),
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          child: Text(
+                            'LOG',
+                            style: kicker(
+                              size: 11,
+                              color: onLog == null
+                                  ? LoremarkColors.line
+                                  : LoremarkColors.gold,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          top: -12,
+          left: 14,
+          child: Opacity(opacity: reveal, child: const _NameTag()),
+        ),
+      ],
+    );
+  }
+}
+
+/// Her name, on the dialogue box's edge.
+class _NameTag extends StatelessWidget {
+  const _NameTag();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 5),
+      decoration: BoxDecoration(
+        color: LoremarkColors.olive,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: LoremarkColors.gold.withValues(alpha: 0.7)),
+      ),
+      child: Text(
+        'Loremark',
+        style: serif(13.5, height: 1.2, color: LoremarkColors.onOlive),
+      ),
+    );
+  }
+}
+
+/// What's in the dialogue box: the reader's question, then her answer.
+class _Said extends StatelessWidget {
+  const _Said({required this.question, required this.answer});
+
+  final String question;
+  final Widget answer;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.only(left: 10),
+          decoration: BoxDecoration(
+            border: Border(
+              left: BorderSide(
+                color: LoremarkColors.gold.withValues(alpha: 0.6),
+                width: 2,
+              ),
+            ),
+          ),
+          child: SelectableText(
+            question,
+            style: const TextStyle(
+              fontSize: 13,
+              height: 1.4,
+              color: LoremarkColors.muted,
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        answer,
+      ],
     );
   }
 }
@@ -625,136 +1167,7 @@ class _Question extends StatelessWidget {
   }
 }
 
-/// The frame an answer sits in. The newest is [speaking]: a speech bubble
-/// whose tail points down to the companion under it.
-class _AnswerCard extends StatelessWidget {
-  const _AnswerCard({required this.child, this.speaking = false});
-
-  final Widget child;
-  final bool speaking;
-
-  /// Where the tail is, from the bubble's left: over her face.
-  static const _tailLeft = 82.0;
-  static const _tailSize = Size(16, 9);
-
-  @override
-  Widget build(BuildContext context) {
-    final card = Container(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      decoration: BoxDecoration(
-        color: LoremarkColors.card,
-        borderRadius: speaking
-            ? BorderRadius.circular(14)
-            : const BorderRadius.only(
-                topLeft: Radius.circular(4),
-                topRight: Radius.circular(14),
-                bottomLeft: Radius.circular(14),
-                bottomRight: Radius.circular(14),
-              ),
-        border: Border.all(color: LoremarkColors.line),
-      ),
-      child: child,
-    );
-    if (!speaking) {
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 18, right: 24),
-        child: card,
-      );
-    }
-    return Padding(
-      padding: EdgeInsets.only(bottom: _tailSize.height + 4, right: 24),
-      child: Stack(
-        // As wide as the thread, like the other answers.
-        fit: StackFit.passthrough,
-        clipBehavior: Clip.none,
-        children: [
-          card,
-          Positioned(
-            left: _tailLeft,
-            bottom: -_tailSize.height,
-            child: CustomPaint(size: _tailSize, painter: _TailPainter()),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// A speech bubble's tail, pointing down, drawn over the bubble's border so
-/// the two join.
-class _TailPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final tip = Offset(size.width / 2, size.height);
-    canvas.drawPath(
-      Path()
-        ..moveTo(0, -1.5)
-        ..lineTo(size.width, -1.5)
-        ..lineTo(size.width, 0)
-        ..lineTo(tip.dx, tip.dy)
-        ..lineTo(0, 0)
-        ..close(),
-      Paint()..color = LoremarkColors.card,
-    );
-    canvas.drawPath(
-      Path()
-        ..moveTo(0, 0)
-        ..lineTo(tip.dx, tip.dy)
-        ..lineTo(size.width, 0),
-      Paint()
-        ..color = LoremarkColors.line
-        ..style = PaintingStyle.stroke
-        ..strokeJoin = StrokeJoin.round,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_TailPainter oldDelegate) => false;
-}
-
-/// The companion under the newest answer: thinking while a question is under
-/// way, and saying its answer as it arrives.
-class _Speaker extends StatelessWidget {
-  const _Speaker({super.key, required this.pending, required this.active});
-
-  final AskPending? pending;
-  final bool active;
-
-  @override
-  Widget build(BuildContext context) {
-    final pending = this.pending;
-    var mood = CompanionMood.idle;
-    final speech = StringBuffer();
-    var citations = 0;
-    if (pending != null && pending.running) {
-      if (pending.stage == AskStage.writing) {
-        mood = CompanionMood.talking;
-        for (final part in splitAnswer(pending.text, streaming: true)) {
-          switch (part) {
-            case AnswerText(:final text):
-              speech.write(text);
-            case AnswerCitation():
-              citations++;
-          }
-        }
-      } else {
-        mood = CompanionMood.thinking;
-      }
-    }
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: CompanionSprite(
-        frame: CompanionFrame.bust,
-        height: 96,
-        mood: mood,
-        speech: speech.toString(),
-        citations: citations,
-        active: active,
-      ),
-    );
-  }
-}
-
+/// An earlier answer in the log, in a card.
 class _Answer extends StatelessWidget {
   const _Answer({
     required this.text,
@@ -762,12 +1175,55 @@ class _Answer extends StatelessWidget {
     required this.visible,
     required this.onCite,
     this.cutOff = false,
-    this.speaking = false,
   });
 
   final String text;
   final bool cutOff;
-  final bool speaking;
+  final int? Function(AskRef ref) paragraphNumber;
+  final bool Function(List<AskRef> passage) visible;
+  final void Function(List<AskRef> passage) onCite;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 18, right: 24),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        decoration: BoxDecoration(
+          color: LoremarkColors.card,
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(4),
+            topRight: Radius.circular(14),
+            bottomLeft: Radius.circular(14),
+            bottomRight: Radius.circular(14),
+          ),
+          border: Border.all(color: LoremarkColors.line),
+        ),
+        child: _AnswerBody(
+          text: text,
+          cutOff: cutOff,
+          paragraphNumber: paragraphNumber,
+          visible: visible,
+          onCite: onCite,
+        ),
+      ),
+    );
+  }
+}
+
+/// An answer's words and citations, and a note if it was cut off or cites
+/// nothing.
+class _AnswerBody extends StatelessWidget {
+  const _AnswerBody({
+    required this.text,
+    required this.paragraphNumber,
+    required this.visible,
+    required this.onCite,
+    this.cutOff = false,
+  });
+
+  final String text;
+  final bool cutOff;
   final int? Function(AskRef ref) paragraphNumber;
   final bool Function(List<AskRef> passage) visible;
   final void Function(List<AskRef> passage) onCite;
@@ -779,26 +1235,23 @@ class _Answer extends StatelessWidget {
       if (cutOff) 'Cut off before it finished.',
       if (!citesAnything(parts)) 'No passage cited.',
     ];
-    return _AnswerCard(
-      speaking: speaking,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _AnswerText(
-            parts: parts,
-            paragraphNumber: paragraphNumber,
-            visible: visible,
-            onCite: onCite,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _AnswerText(
+          parts: parts,
+          paragraphNumber: paragraphNumber,
+          visible: visible,
+          onCite: onCite,
+        ),
+        if (notes.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(
+            notes.join(' '),
+            style: const TextStyle(fontSize: 11, color: LoremarkColors.muted),
           ),
-          if (notes.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text(
-              notes.join(' '),
-              style: const TextStyle(fontSize: 11, color: LoremarkColors.muted),
-            ),
-          ],
         ],
-      ),
+      ],
     );
   }
 }
@@ -981,8 +1434,8 @@ class _CitationChip extends StatelessWidget {
 }
 
 /// A question under way: what it is doing, then its answer as it arrives.
-class _Working extends StatelessWidget {
-  const _Working({
+class _WorkingBody extends StatelessWidget {
+  const _WorkingBody({
     required this.pending,
     required this.paragraphNumber,
     required this.visible,
@@ -997,14 +1450,11 @@ class _Working extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (pending.text.isNotEmpty) {
-      return _AnswerCard(
-        speaking: true,
-        child: _AnswerText(
-          parts: splitAnswer(pending.text, streaming: true),
-          paragraphNumber: paragraphNumber,
-          visible: visible,
-          onCite: onCite,
-        ),
+      return _AnswerText(
+        parts: splitAnswer(pending.text, streaming: true),
+        paragraphNumber: paragraphNumber,
+        visible: visible,
+        onCite: onCite,
       );
     }
     // Words, not a spinner: an endless animation would keep widget tests
@@ -1014,22 +1464,20 @@ class _Working extends StatelessWidget {
       AskStage.lookingUp => 'Checking the Story Map…',
       _ => 'Thinking…',
     };
-    return _AnswerCard(
-      speaking: true,
-      child: Text(
-        status,
-        style: const TextStyle(
-          fontSize: 13,
-          fontStyle: FontStyle.italic,
-          color: LoremarkColors.muted,
-        ),
+    return Text(
+      status,
+      style: const TextStyle(
+        fontSize: 13,
+        fontStyle: FontStyle.italic,
+        color: LoremarkColors.muted,
       ),
     );
   }
 }
 
-class _Failed extends StatelessWidget {
-  const _Failed({
+/// A question that failed: why, and what can be done.
+class _FailedBody extends StatelessWidget {
+  const _FailedBody({
     required this.message,
     required this.onRetry,
     required this.onDismiss,
@@ -1041,27 +1489,24 @@ class _Failed extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _AnswerCard(
-      speaking: true,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            message,
-            style: const TextStyle(
-              fontSize: 13,
-              height: 1.5,
-              color: LoremarkColors.muted,
-            ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          message,
+          style: const TextStyle(
+            fontSize: 13,
+            height: 1.5,
+            color: LoremarkColors.muted,
           ),
-          Row(
-            children: [
-              TextButton(onPressed: onRetry, child: const Text('Try again')),
-              TextButton(onPressed: onDismiss, child: const Text('Dismiss')),
-            ],
-          ),
-        ],
-      ),
+        ),
+        Row(
+          children: [
+            TextButton(onPressed: onRetry, child: const Text('Try again')),
+            TextButton(onPressed: onDismiss, child: const Text('Dismiss')),
+          ],
+        ),
+      ],
     );
   }
 }

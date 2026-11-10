@@ -5,8 +5,8 @@ import '../theme/loremark_theme.dart';
 
 /// A tab's heading over a short message, for when there is nothing to show.
 ///
-/// With [art] or an [image], the companion illustrates the message; otherwise
-/// [icon] does.
+/// With an [image], the companion illustrates the message; otherwise [icon]
+/// does.
 class EmptyState extends StatelessWidget {
   const EmptyState({
     super.key,
@@ -15,7 +15,6 @@ class EmptyState extends StatelessWidget {
     required this.icon,
     required this.message,
     this.image,
-    this.art,
   });
 
   final String label;
@@ -24,13 +23,9 @@ class EmptyState extends StatelessWidget {
   final String message;
   final String? image;
 
-  /// Shown in place of [image].
-  final Widget? art;
-
   @override
   Widget build(BuildContext context) {
     final image = this.image;
-    final art = this.art;
     return PaperBackground(
       child: ListView(
         padding: const EdgeInsets.fromLTRB(22, 24, 22, 32),
@@ -39,9 +34,7 @@ class EmptyState extends StatelessWidget {
           const SizedBox(height: 9),
           Text(title, style: serif(29, height: 1.18)),
           const SizedBox(height: 28),
-          if (art != null)
-            Center(child: art)
-          else if (image != null)
+          if (image != null)
             Image.asset(image, height: 190, excludeFromSemantics: true)
           else
             Icon(icon, size: 40, color: LoremarkColors.line),
