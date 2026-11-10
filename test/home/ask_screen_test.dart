@@ -7,6 +7,9 @@ import 'package:loremark/ask/ask_boundary.dart';
 import 'package:loremark/ask/ask_controller.dart';
 import 'package:loremark/ask/ask_history.dart';
 import 'package:loremark/ask/ask_stream.dart';
+import 'package:loremark/companion/companion_art.dart';
+import 'package:loremark/companion/companion_director.dart';
+import 'package:loremark/companion/companion_sprite.dart';
 import 'package:loremark/home/ask_screen.dart';
 import 'package:loremark/library/book.dart';
 import 'package:loremark/reader/epub_reader_service.dart';
@@ -354,6 +357,99 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Stopped. Nothing was kept.'), findsOne);
     expect(find.byTooltip('Ask'), findsOne);
+  });
+
+  group('the companion', () {
+    CompanionSprite speaker(WidgetTester tester) => tester.widget(
+      find.descendant(
+        of: find.byKey(const ValueKey('companion')),
+        matching: find.byType(CompanionSprite),
+      ),
+    );
+
+    testWidgets('waits, all of her, in an empty thread', (tester) async {
+      final active = ValueNotifier(true);
+      await pumpAsk(tester, active: active);
+      final sprite = tester.widget<CompanionSprite>(
+        find.byType(CompanionSprite),
+      );
+      expect(sprite.frame, CompanionFrame.full);
+      expect(sprite.mood, CompanionMood.idle);
+      expect(sprite.active, isTrue);
+
+      // Keeping still while the tab is hidden.
+      active.value = false;
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<CompanionSprite>(find.byType(CompanionSprite)).active,
+        isFalse,
+      );
+    });
+
+    testWidgets('thinks, then says the answer as it arrives', (tester) async {
+      final body = StreamController<String>();
+      await pumpAsk(
+        tester,
+        post: (url, headers, sent) async =>
+            AskHttpReply(200, body.stream, () => body.close()),
+      );
+      await askQuestion(tester, 'Who?');
+      expect(speaker(tester).frame, CompanionFrame.bust);
+      expect(speaker(tester).mood, CompanionMood.thinking);
+
+      body.add(
+        sse([
+          {
+            'type': 'response.output_text.delta',
+            'item_id': 'm',
+            'delta': 'Mara is a clerk ',
+          },
+        ]),
+      );
+      await tester.pumpAndSettle();
+      expect(speaker(tester).mood, CompanionMood.talking);
+      expect(speaker(tester).speech, 'Mara is a clerk ');
+      expect(speaker(tester).citations, 0);
+
+      // A citation isn't said, but counted, so she can point at it.
+      body.add(
+        sse([
+          {
+            'type': 'response.output_text.delta',
+            'item_id': 'm',
+            'delta': '[s1/p0001]. She',
+          },
+        ]),
+      );
+      await tester.pumpAndSettle();
+      expect(speaker(tester).speech, 'Mara is a clerk . She');
+      expect(speaker(tester).citations, 1);
+
+      await tester.tap(find.byTooltip('Stop'));
+      await tester.pumpAndSettle();
+      expect(speaker(tester).mood, CompanionMood.idle);
+    });
+
+    testWidgets('stands under the newest answer only', (tester) async {
+      await pumpAsk(
+        tester,
+        replies: [
+          (200, answer('Mara is a dock clerk.')),
+          (200, answer('She works the night shift.')),
+        ],
+      );
+      await askQuestion(tester, 'Who is Mara?');
+      await askQuestion(tester, 'When does she work?');
+
+      final companion = find.byKey(const ValueKey('companion'));
+      expect(companion, findsOne);
+      expect(
+        tester.getTopLeft(companion).dy,
+        greaterThan(
+          tester.getBottomLeft(find.text('She works the night shift.')).dy,
+        ),
+      );
+    });
   });
 
   testWidgets('a question being written survives going offline', (

@@ -8,13 +8,15 @@ import '../ask/ask_boundary.dart';
 import '../ask/ask_citations.dart';
 import '../ask/ask_controller.dart';
 import '../ask/ask_history.dart' show AskConversation;
+import '../companion/companion_art.dart';
+import '../companion/companion_director.dart';
+import '../companion/companion_sprite.dart';
 import '../reader/epub_reader_service.dart';
 import '../reading/text_position.dart';
 import '../settings/ai_settings.dart';
 import '../story_map/story_facts.dart';
 import '../story_model/story_model.dart';
 import '../story_update/story_paragraphs.dart';
-import '../theme/decor.dart';
 import '../theme/loremark_theme.dart';
 import 'empty_state.dart';
 
@@ -378,7 +380,12 @@ class _AskScreenState extends State<AskScreen> {
     final Widget conversation;
     if (exchanges.isEmpty && pending == null) {
       conversation = EmptyState(
-        image: LoremarkArt.chibiHush,
+        art: CompanionSprite(
+          frame: CompanionFrame.full,
+          height: 240,
+          active: widget.active,
+          greet: true,
+        ),
         label: 'A THREAD BACK INTO THE STORY',
         title: 'Ask about what you’ve read.',
         icon: Icons.chat_bubble_outline,
@@ -393,7 +400,7 @@ class _AskScreenState extends State<AskScreen> {
         controller: _scroll,
         padding: const EdgeInsets.fromLTRB(14, 14, 14, 18),
         children: [
-          for (final exchange in exchanges) ...[
+          for (final (index, exchange) in exchanges.indexed) ...[
             _Question(exchange.question),
             _Answer(
               text: exchange.answer,
@@ -401,6 +408,7 @@ class _AskScreenState extends State<AskScreen> {
               paragraphNumber: paragraphNumber,
               visible: visibleAt(exchange.limit),
               onCite: (passage) => _openCitation(passage, exchange.limit),
+              speaking: pending == null && index == exchanges.length - 1,
             ),
           ],
           if (pending != null) ...[
@@ -420,6 +428,13 @@ class _AskScreenState extends State<AskScreen> {
                 onDismiss: _ask.dismiss,
               ),
           ],
+          // Keyed, so she carries on as a question under way becomes an
+          // answer.
+          _Speaker(
+            key: const ValueKey('companion'),
+            pending: pending,
+            active: widget.active,
+          ),
         ],
       );
     }
@@ -600,28 +615,132 @@ class _Question extends StatelessWidget {
   }
 }
 
-/// The frame an answer sits in.
+/// The frame an answer sits in. The newest is [speaking]: a speech bubble
+/// whose tail points down to the companion under it.
 class _AnswerCard extends StatelessWidget {
-  const _AnswerCard({required this.child});
+  const _AnswerCard({required this.child, this.speaking = false});
 
   final Widget child;
+  final bool speaking;
+
+  /// Where the tail is, from the bubble's left: over her face.
+  static const _tailLeft = 82.0;
+  static const _tailSize = Size(16, 9);
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 18, right: 24),
+    final card = Container(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: BoxDecoration(
         color: LoremarkColors.card,
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(4),
-          topRight: Radius.circular(14),
-          bottomLeft: Radius.circular(14),
-          bottomRight: Radius.circular(14),
-        ),
+        borderRadius: speaking
+            ? BorderRadius.circular(14)
+            : const BorderRadius.only(
+                topLeft: Radius.circular(4),
+                topRight: Radius.circular(14),
+                bottomLeft: Radius.circular(14),
+                bottomRight: Radius.circular(14),
+              ),
         border: Border.all(color: LoremarkColors.line),
       ),
       child: child,
+    );
+    if (!speaking) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 18, right: 24),
+        child: card,
+      );
+    }
+    return Padding(
+      padding: EdgeInsets.only(bottom: _tailSize.height + 4, right: 24),
+      child: Stack(
+        // As wide as the thread, like the other answers.
+        fit: StackFit.passthrough,
+        clipBehavior: Clip.none,
+        children: [
+          card,
+          Positioned(
+            left: _tailLeft,
+            bottom: -_tailSize.height,
+            child: CustomPaint(size: _tailSize, painter: _TailPainter()),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A speech bubble's tail, pointing down, drawn over the bubble's border so
+/// the two join.
+class _TailPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final tip = Offset(size.width / 2, size.height);
+    canvas.drawPath(
+      Path()
+        ..moveTo(0, -1.5)
+        ..lineTo(size.width, -1.5)
+        ..lineTo(size.width, 0)
+        ..lineTo(tip.dx, tip.dy)
+        ..lineTo(0, 0)
+        ..close(),
+      Paint()..color = LoremarkColors.card,
+    );
+    canvas.drawPath(
+      Path()
+        ..moveTo(0, 0)
+        ..lineTo(tip.dx, tip.dy)
+        ..lineTo(size.width, 0),
+      Paint()
+        ..color = LoremarkColors.line
+        ..style = PaintingStyle.stroke
+        ..strokeJoin = StrokeJoin.round,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_TailPainter oldDelegate) => false;
+}
+
+/// The companion under the newest answer: thinking while a question is under
+/// way, and saying its answer as it arrives.
+class _Speaker extends StatelessWidget {
+  const _Speaker({super.key, required this.pending, required this.active});
+
+  final AskPending? pending;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    final pending = this.pending;
+    var mood = CompanionMood.idle;
+    final speech = StringBuffer();
+    var citations = 0;
+    if (pending != null && pending.running) {
+      if (pending.stage == AskStage.writing) {
+        mood = CompanionMood.talking;
+        for (final part in splitAnswer(pending.text, streaming: true)) {
+          switch (part) {
+            case AnswerText(:final text):
+              speech.write(text);
+            case AnswerCitation():
+              citations++;
+          }
+        }
+      } else {
+        mood = CompanionMood.thinking;
+      }
+    }
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: CompanionSprite(
+        frame: CompanionFrame.bust,
+        height: 96,
+        mood: mood,
+        speech: speech.toString(),
+        citations: citations,
+        active: active,
+      ),
     );
   }
 }
@@ -633,10 +752,12 @@ class _Answer extends StatelessWidget {
     required this.visible,
     required this.onCite,
     this.cutOff = false,
+    this.speaking = false,
   });
 
   final String text;
   final bool cutOff;
+  final bool speaking;
   final int? Function(AskRef ref) paragraphNumber;
   final bool Function(List<AskRef> passage) visible;
   final void Function(List<AskRef> passage) onCite;
@@ -649,6 +770,7 @@ class _Answer extends StatelessWidget {
       if (!citesAnything(parts)) 'No passage cited.',
     ];
     return _AnswerCard(
+      speaking: speaking,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -866,6 +988,7 @@ class _Working extends StatelessWidget {
   Widget build(BuildContext context) {
     if (pending.text.isNotEmpty) {
       return _AnswerCard(
+        speaking: true,
         child: _AnswerText(
           parts: splitAnswer(pending.text, streaming: true),
           paragraphNumber: paragraphNumber,
@@ -882,6 +1005,7 @@ class _Working extends StatelessWidget {
       _ => 'Thinking…',
     };
     return _AnswerCard(
+      speaking: true,
       child: Text(
         status,
         style: const TextStyle(
@@ -908,6 +1032,7 @@ class _Failed extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _AnswerCard(
+      speaking: true,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

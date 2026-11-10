@@ -1,0 +1,188 @@
+{
+  "canvas": {
+    "width": 2048,
+    "height": 3072
+  },
+  "base": "body.png",
+  "idle": "idle.png",
+  "layers": {
+    "eyes": {
+      "x": 956,
+      "y": 314,
+      "width": 282,
+      "height": 152,
+      "files": {
+        "open": "eyes-open.png",
+        "half": "eyes-half.png",
+        "closed": "eyes-closed.png"
+      }
+    },
+    "mouth": {
+      "x": 1038,
+      "y": 452,
+      "width": 86,
+      "height": 70,
+      "files": {
+        "closed": "mouth-closed.png",
+        "half": "mouth-half.png",
+        "open": "mouth-open.png"
+      }
+    },
+    "hand": {
+      "x": 1290,
+      "y": 422,
+      "width": 208,
+      "height": 304,
+      "files": {
+        "rest": "hand-rest.png",
+        "lift": "hand-lift.png",
+        "point": "hand-point.png"
+      }
+    }
+  },
+  "initial": {
+    "eyes": "open",
+    "mouth": "closed",
+    "hand": "rest"
+  },
+  "preview": [
+    {
+      "eyes": "open",
+      "mouth": "closed",
+      "hand": "rest",
+      "durationMs": 500
+    },
+    {
+      "eyes": "open",
+      "mouth": "half",
+      "hand": "rest",
+      "durationMs": 110
+    },
+    {
+      "eyes": "open",
+      "mouth": "open",
+      "hand": "rest",
+      "durationMs": 160
+    },
+    {
+      "eyes": "open",
+      "mouth": "half",
+      "hand": "lift",
+      "durationMs": 100
+    },
+    {
+      "eyes": "open",
+      "mouth": "open",
+      "hand": "point",
+      "durationMs": 200
+    },
+    {
+      "eyes": "open",
+      "mouth": "half",
+      "hand": "point",
+      "durationMs": 140
+    },
+    {
+      "eyes": "open",
+      "mouth": "closed",
+      "hand": "point",
+      "durationMs": 200
+    },
+    {
+      "eyes": "open",
+      "mouth": "half",
+      "hand": "lift",
+      "durationMs": 110
+    },
+    {
+      "eyes": "open",
+      "mouth": "open",
+      "hand": "rest",
+      "durationMs": 170
+    },
+    {
+      "eyes": "half",
+      "mouth": "half",
+      "hand": "rest",
+      "durationMs": 65
+    },
+    {
+      "eyes": "closed",
+      "mouth": "half",
+      "hand": "rest",
+      "durationMs": 85
+    },
+    {
+      "eyes": "half",
+      "mouth": "open",
+      "hand": "rest",
+      "durationMs": 65
+    },
+    {
+      "eyes": "open",
+      "mouth": "open",
+      "hand": "rest",
+      "durationMs": 135
+    },
+    {
+      "eyes": "open",
+      "mouth": "half",
+      "hand": "rest",
+      "durationMs": 160
+    },
+    {
+      "eyes": "open",
+      "mouth": "closed",
+      "hand": "rest",
+      "durationMs": 320
+    },
+    {
+      "eyes": "open",
+      "mouth": "half",
+      "hand": "rest",
+      "durationMs": 120
+    },
+    {
+      "eyes": "open",
+      "mouth": "open",
+      "hand": "rest",
+      "durationMs": 200
+    },
+    {
+      "eyes": "open",
+      "mouth": "half",
+      "hand": "rest",
+      "durationMs": 105
+    },
+    {
+      "eyes": "open",
+      "mouth": "closed",
+      "hand": "rest",
+      "durationMs": 100
+    },
+    {
+      "eyes": "open",
+      "mouth": "half",
+      "hand": "rest",
+      "durationMs": 125
+    },
+    {
+      "eyes": "open",
+      "mouth": "open",
+      "hand": "rest",
+      "durationMs": 170
+    },
+    {
+      "eyes": "open",
+      "mouth": "half",
+      "hand": "rest",
+      "durationMs": 120
+    },
+    {
+      "eyes": "open",
+      "mouth": "closed",
+      "hand": "rest",
+      "durationMs": 480
+    }
+  ]
+}

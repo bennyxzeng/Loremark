@@ -84,6 +84,9 @@ flutter:
     - assets/chat/
     # Companion illustrations, cropped and compressed from assets/images/.
     - assets/app/
+    # The animated companion in Ask, built from assets/ai_chat_illust/ by
+    # tool/companion/build_companion.py.
+    - assets/companion/
     - assets/reader/page_end.js
 
   # To add assets to your application, add an assets section, like this:

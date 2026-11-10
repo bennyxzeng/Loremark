@@ -12,7 +12,6 @@ abstract final class LoremarkArt {
   /// Chibi poses, cut out on transparent backgrounds.
   static const chibiReading = 'assets/app/chibi_reading.webp';
   static const chibiPondering = 'assets/app/chibi_pondering.webp';
-  static const chibiHush = 'assets/app/chibi_hush.webp';
 }
 
 /// Warm paper with soft light: a gold glow from the top corner and a faint
