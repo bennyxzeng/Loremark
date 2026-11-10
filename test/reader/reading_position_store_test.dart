@@ -6,6 +6,7 @@ import 'package:loremark/reader/page_end.dart';
 import 'package:loremark/reader/page_start.dart';
 import 'package:loremark/reader/reader_position.dart';
 import 'package:loremark/reader/reading_position_store.dart';
+import 'package:loremark/reading/text_position.dart';
 
 void main() {
   late Directory temp;
@@ -120,6 +121,52 @@ void main() {
         '"textProgression":1.5}}',
       );
       expect(await store.loadPageEnd(bookA), isNull);
+    });
+  });
+
+  group('the reading progress', () {
+    const furthest = TextPosition(9, 0.25);
+    const boundary = TextPosition(5, 0.5);
+
+    test('is kept across restarts, beside the position', () async {
+      const position = ReaderPosition(9, 0.25);
+      await Future.wait([
+        store.save(bookA, position),
+        store.saveProgress(bookA, furthest: furthest, boundary: boundary),
+      ]);
+      final restarted = ReadingPositionStore(store.root);
+      expect(await restarted.loadProgress(bookA), (
+        furthest: furthest,
+        boundary: boundary,
+      ));
+      expect(await restarted.load(bookA), position);
+    });
+
+    test('doesn\'t change the position', () async {
+      const position = ReaderPosition(2, 0.3);
+      await store.save(bookA, position);
+      await store.saveProgress(bookA, furthest: furthest, boundary: boundary);
+      expect(await store.load(bookA), position);
+    });
+
+    test('is null with none saved, or when it can\'t be read', () async {
+      expect(await store.loadProgress(bookA), isNull);
+      await store.save(bookA, const ReaderPosition(1, 0.5));
+      expect(await store.loadProgress(bookA), isNull);
+      await writeRaw(
+        bookA,
+        jsonEncode({'version': 1, 'furthest': furthest.toJson()}),
+      );
+      expect(await store.loadProgress(bookA), isNull);
+      await writeRaw(
+        bookA,
+        jsonEncode({
+          'version': 1,
+          'furthest': furthest.toJson(),
+          'boundary': {'sectionIndex': 5, 'progression': 1.5},
+        }),
+      );
+      expect(await store.loadProgress(bookA), isNull);
     });
   });
 

@@ -21,6 +21,22 @@ void main() {
     expect(fresh.pendingJump, isNull);
   });
 
+  test('resume picks up where the book was left', () {
+    final resumed = ReadingProgressTracker.resume(
+      current: const TextPosition(4, 0.75),
+      furthest: const TextPosition(9, 0.25),
+      boundary: const TextPosition(5, 0.5),
+    );
+    expect(resumed.current, const TextPosition(4, 0.75));
+    expect(resumed.furthest, const TextPosition(9, 0.25));
+    expect(resumed.boundary, const TextPosition(5, 0.5));
+    expect(resumed.pendingJump, isNull);
+    expect(
+      resumed.updatePosition(const TextPosition(8, 0)),
+      PositionUpdateResult.needsConfirmation,
+    );
+  });
+
   test('small step forward moves the boundary', () {
     final result = tracker.updatePosition(const TextPosition(7, 0.9));
     expect(result, PositionUpdateResult.updated);

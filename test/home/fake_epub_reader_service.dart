@@ -251,6 +251,24 @@ class FakeReadingPositionStore implements ReadingPositionStore {
   Future<void> savePageEnd(String bookId, PageEnd end) async =>
       pageEndSaves.add((bookId, end));
 
+  /// What [loadProgress] returns, by book id.
+  final progress = <String, ({TextPosition furthest, TextPosition boundary})>{};
+
+  /// Every [saveProgress], in order.
+  final List<(String, TextPosition, TextPosition)> progressSaves = [];
+
+  @override
+  Future<({TextPosition furthest, TextPosition boundary})?> loadProgress(
+    String bookId,
+  ) async => progress[bookId];
+
+  @override
+  Future<void> saveProgress(
+    String bookId, {
+    required TextPosition furthest,
+    required TextPosition boundary,
+  }) async => progressSaves.add((bookId, furthest, boundary));
+
   @override
   Directory get root => Directory('fake');
 

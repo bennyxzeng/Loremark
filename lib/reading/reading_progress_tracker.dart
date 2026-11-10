@@ -22,6 +22,14 @@ class ReadingProgressTracker {
       _furthest = const TextPosition(0, 0),
       _boundary = const TextPosition(0, 0);
 
+  /// Picks up a book where it was left, with no jump waiting.
+  ReadingProgressTracker.resume({
+    required this._current,
+    required this._furthest,
+    required this._boundary,
+    this.maxJumpSections = 2,
+  });
+
   /// Reads a tracker saved by [toJson].
   ///
   /// Throws a [FormatException] if any position is missing or invalid.
