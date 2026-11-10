@@ -77,8 +77,8 @@ class _BookScreenState extends State<BookScreen> {
 
   late AiSettings _ai;
   late ConnectionStatus _connection;
-  ScaffoldMessengerState? _messenger;
   Timer? _bannerTimer;
+  TheoryStatusChange? _banner;
   AnnotationService? _notesService;
   TheoryChecker? _checker;
   StreamSubscription<TheoryStatusChange>? _changes;
@@ -100,7 +100,6 @@ class _BookScreenState extends State<BookScreen> {
     super.didChangeDependencies();
     _ai = AiSettingsScope.of(context);
     _connection = ConnectionScope.of(context);
-    _messenger = ScaffoldMessenger.of(context);
   }
 
   /// Creates the theory checker once the notes open, and runs it. If the
@@ -157,45 +156,26 @@ class _BookScreenState extends State<BookScreen> {
     }
   }
 
-  /// Shows the banner at the top, under the app bar, so it never covers the
-  /// page arrows, the progress row or the tab bar. A MaterialBanner has no
-  /// timeout of its own, so a timer hides it after 8 seconds. A new banner
-  /// replaces the one on screen, so there is never more than one.
+  /// Shows the banner as an overlay at the top of the body. It is drawn over
+  /// the reader and never changes its size, so the book is not repaginated
+  /// and the reader keeps its place. A new banner replaces the one on
+  /// screen, and a timer hides it after 8 seconds.
   void _showTheoryBanner(TheoryStatusChange change) {
     if (!mounted) return;
-    final messenger = ScaffoldMessenger.of(context);
     _bannerTimer?.cancel();
-    messenger.removeCurrentMaterialBanner();
-    void hide() {
-      _bannerTimer?.cancel();
-      _bannerTimer = null;
-      messenger.removeCurrentMaterialBanner();
-    }
+    _bannerTimer = Timer(const Duration(seconds: 8), _hideBanner);
+    setState(() => _banner = change);
+  }
 
-    messenger.showMaterialBanner(
-      MaterialBanner(
-        content: Text(change.bannerText),
-        backgroundColor: LoremarkColors.card,
-        contentTextStyle: const TextStyle(color: LoremarkColors.ink),
-        actions: [
-          TextButton(
-            onPressed: () {
-              hide();
-              showNoteInNotesTab(change.noteId);
-            },
-            child: const Text('View'),
-          ),
-          TextButton(onPressed: hide, child: const Text('Dismiss')),
-        ],
-      ),
-    );
-    _bannerTimer = Timer(const Duration(seconds: 8), hide);
+  void _hideBanner() {
+    _bannerTimer?.cancel();
+    _bannerTimer = null;
+    if (mounted && _banner != null) setState(() => _banner = null);
   }
 
   @override
   void dispose() {
     _bannerTimer?.cancel();
-    _messenger?.removeCurrentMaterialBanner();
     unawaited(_changes?.cancel());
     _notesService?.removeListener(_onNotesChanged);
     _checker?.dispose();
@@ -266,6 +246,21 @@ class _BookScreenState extends State<BookScreen> {
                     right: 0,
                     child: OfflineBanner(),
                   ),
+                  if (_banner case final change?)
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      child: _TheoryBanner(
+                        key: const Key('theoryBanner'),
+                        text: change.bannerText,
+                        onView: () {
+                          _hideBanner();
+                          showNoteInNotesTab(change.noteId);
+                        },
+                        onDismiss: _hideBanner,
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -303,6 +298,54 @@ class _BookScreenState extends State<BookScreen> {
               selectedIcon: Icon(Icons.hub),
               label: 'Story Map',
               tooltip: '',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The card that announces a theory's new verdict over the top of the body.
+class _TheoryBanner extends StatelessWidget {
+  const _TheoryBanner({
+    super.key,
+    required this.text,
+    required this.onView,
+    required this.onDismiss,
+  });
+
+  final String text;
+  final VoidCallback onView;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: LoremarkColors.card,
+      elevation: 3,
+      shadowColor: LoremarkColors.ink.withValues(alpha: 0.25),
+      child: Container(
+        decoration: const BoxDecoration(
+          border: Border(bottom: BorderSide(color: LoremarkColors.line)),
+        ),
+        padding: const EdgeInsets.fromLTRB(16, 8, 8, 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(text, style: const TextStyle(color: LoremarkColors.ink)),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextButton(onPressed: onView, child: const Text('View')),
+                  TextButton(
+                    onPressed: onDismiss,
+                    child: const Text('Dismiss'),
+                  ),
+                ],
+              ),
             ),
           ],
         ),

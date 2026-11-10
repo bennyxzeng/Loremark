@@ -113,7 +113,7 @@ void main() {
     expect(find.text('View'), findsOneWidget);
 
     // Regression: the banner must not cover the page-turn row or the tab bar.
-    final rect = tester.getRect(find.byType(MaterialBanner));
+    final rect = tester.getRect(find.byKey(const Key('theoryBanner')));
     final nav = tester.getRect(find.byType(NavigationBar));
     final screen = tester.getRect(find.byType(Scaffold).first);
     expect(rect.overlaps(nav), isFalse, reason: 'clear of the tab bar');
@@ -179,7 +179,7 @@ void main() {
     // The banner slides in; a tap before the slide ends misses its buttons.
     await tester.pump(const Duration(seconds: 1));
 
-    expect(find.byType(MaterialBanner), findsOneWidget);
+    expect(find.byKey(const Key('theoryBanner')), findsOneWidget);
     expect(banner1, findsNothing);
     expect(banner2, findsOneWidget);
 
@@ -188,7 +188,7 @@ void main() {
     expect(banner2, findsOneWidget);
     await tester.pump(const Duration(seconds: 2));
     await tester.pumpAndSettle();
-    expect(find.byType(MaterialBanner), findsNothing);
+    expect(find.byKey(const Key('theoryBanner')), findsNothing);
   });
 
   testWidgets('leaving the book screen removes the banner', (tester) async {
@@ -202,6 +202,27 @@ void main() {
 
     await tester.pumpWidget(const SizedBox());
     await tester.pumpAndSettle();
-    expect(find.byType(MaterialBanner), findsNothing);
+    expect(find.byKey(const Key('theoryBanner')), findsNothing);
+  });
+
+  testWidgets('the banner does not resize or move the reader', (tester) async {
+    final checker = await openBook(tester);
+    // The body that holds the reader and the other tabs.
+    final body = find.byType(IndexedStack);
+    final size = tester.getSize(body);
+    final origin = tester.getTopLeft(body);
+
+    checker.controller.add(confirmed('theory-1', 'Mara is the thief'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(banner1, findsOneWidget);
+    expect(tester.getSize(body), size, reason: 'same size with the banner');
+    expect(tester.getTopLeft(body), origin, reason: 'same place');
+
+    await tester.tap(find.text('Dismiss'));
+    await tester.pumpAndSettle();
+    expect(banner1, findsNothing);
+    expect(tester.getSize(body), size);
+    expect(tester.getTopLeft(body), origin);
   });
 }
