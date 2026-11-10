@@ -867,13 +867,144 @@ void main() {
       expect(latest, findsOne);
     });
 
-    testWidgets('turning back to reread doesn\'t ask again', (tester) async {
+    testWidgets('turning back takes the map back with the reader', (
+      tester,
+    ) async {
       await pumpAt(tester, 2);
+      expect(latest, findsOne);
+      await pumpAt(tester, 1);
+      expect(earliest, findsOne);
+      expect(latest, findsNothing);
+      await slideToEnd(tester);
+      expect(warning, findsOne);
+    });
+
+    testWidgets('a section they agreed to see stays agreed', (tester) async {
+      await pumpAt(tester, 1);
+      await slideToEnd(tester);
+      await tester.tap(find.text('Show anyway'));
+      await tester.pumpAndSettle();
+      expect(latest, findsOne);
       await pumpAt(tester, 1);
       expect(latest, findsOne);
       await slideToFirstChapter(tester);
       await slideToEnd(tester);
       expect(warning, findsNothing);
+    });
+
+    group('partway through a section', () {
+      final soFar = find.text('Known so far in Chapter 2: The Letter');
+      final wholeChapter = find.byType(Switch);
+
+      Future<void> pumpPartway(
+        WidgetTester tester,
+        Set<String> hidden, {
+        int finished = 1,
+      }) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: StoryMapScreen(
+                model: storyModelFixture(),
+                finishedSections: finished,
+                hiddenInNext: hidden,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+      }
+
+      Future<void> switchToWhole(WidgetTester tester) async {
+        await tester.tap(wholeChapter);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Show anyway'));
+        await tester.pumpAndSettle();
+      }
+
+      testWidgets('shows only what has been reached', (tester) async {
+        await pumpPartway(tester, {'f004', 'f012', 'f014'});
+        expect(soFar, findsOne);
+        // Elian's name, learned in chapter 2, is still ahead of the reader.
+        expect(find.textContaining('Elian'), findsNothing);
+      });
+
+      testWidgets('showing the whole chapter asks first', (tester) async {
+        await pumpPartway(tester, {'f004'});
+        await tester.tap(wholeChapter);
+        await tester.pumpAndSettle();
+        expect(
+          find.textContaining('The rest of Chapter 2: The Letter'),
+          findsOne,
+        );
+        await tester.tap(find.text('Cancel'));
+        await tester.pumpAndSettle();
+        expect(soFar, findsOne);
+        expect(tester.widget<Switch>(wholeChapter).value, isFalse);
+
+        await switchToWhole(tester);
+        expect(latest, findsOne);
+        expect(soFar, findsNothing);
+        expect(tester.widget<Switch>(wholeChapter).value, isTrue);
+      });
+
+      testWidgets('can go back to what has been read, without asking', (
+        tester,
+      ) async {
+        await pumpPartway(tester, {'f004', 'f012', 'f014'});
+        await switchToWhole(tester);
+        await tester.tap(wholeChapter);
+        await tester.pumpAndSettle();
+
+        expect(warning, findsNothing);
+        expect(soFar, findsOne);
+        expect(tester.widget<Switch>(wholeChapter).value, isFalse);
+      });
+
+      testWidgets('stays on while reading on in that section', (tester) async {
+        await pumpPartway(tester, {'f004'});
+        await switchToWhole(tester);
+        await pumpPartway(tester, const {});
+        expect(latest, findsOne);
+      });
+
+      testWidgets('doesn\'t carry over to the next section', (tester) async {
+        await pumpPartway(tester, const {'f001'}, finished: 0);
+        await switchToWhole(tester);
+        expect(earliest, findsOne);
+
+        await pumpPartway(tester, {'f004'});
+        expect(soFar, findsOne);
+        expect(tester.widget<Switch>(wholeChapter).value, isFalse);
+      });
+
+      testWidgets('agreeing to a later section leaves this one partial', (
+        tester,
+      ) async {
+        await pumpPartway(tester, const {'f001'}, finished: 0);
+        await slideToEnd(tester);
+        await tester.tap(find.text('Show anyway'));
+        await tester.pumpAndSettle();
+        expect(latest, findsOne);
+
+        await slideToFirstChapter(tester);
+        expect(find.text('Known so far in Chapter 1: Arrival'), findsOne);
+      });
+
+      testWidgets('there is no switch on a finished section', (tester) async {
+        await pumpPartway(tester, {'f004'});
+        await slideToFirstChapter(tester);
+        expect(earliest, findsOne);
+        expect(wholeChapter, findsNothing);
+      });
+
+      testWidgets('follows the reader on as they read', (tester) async {
+        await pumpPartway(tester, {'f004'});
+        await pumpAt(tester, 2);
+        await tester.pumpAndSettle();
+        expect(latest, findsOne);
+        expect(soFar, findsNothing);
+      });
     });
 
     Future<void> pumpGrowing(

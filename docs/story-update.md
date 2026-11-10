@@ -21,7 +21,7 @@ the command line.
 | `story_run_folder.dart` | `pipeline.py`, `artifacts.py` | Keeps a folder of everything about each update |
 | `story_archive.dart` | (new) | Zips a book's store and run folders to export them |
 | `story_import.dart` | (new) | Checks a file and loads it as a book's store |
-| `story_paragraphs.dart` | (new) | Finds the paragraphs a model's evidence cites, for answering from them |
+| `story_paragraphs.dart` | (new) | Finds the paragraphs a model's evidence cites, and what of a section a reader hasn't reached |
 
 Not ported: the command line, the `review.md` and `diff.md` reports, and committing a run after
 manual corrections. A reader can't correct a run in the app, so a failed one is tried again, or
@@ -52,6 +52,13 @@ it, in `<book id>.runs/`. Both go when the book does.
   slider asks before showing anything past their position instead (`StoryMapScreen`). That uses
   `ReaderPosition.current`, because the furthest position isn't stored yet; once it is, pass it to
   `completedSectionCutoff` in `finishedStorySections`.
+- **The map follows the page being looked at, down to the paragraph.** Each page, Readium reports its
+  first visible element, kept as a `PageStart` beside the reading position. The paragraphs before that
+  element have been read, so the section being read shows only what they establish
+  (`hiddenWithinSection`, which leans towards showing a fact late, since the model read the whole
+  section before writing any of it). A page just turned to hasn't been read, so a section is finished
+  only once the reader has turned past it. Turning back takes the map back too. If a page can't be
+  placed, only finished sections show.
 - **The quote check is a setting, off by default.** Off, a quote that isn't in its paragraph is
   only a warning, and `processed_sections[].quotes_checked` remembers that for the section. The
   Chapter page says so. On, one bad quote rejects an update that has already been paid for.
@@ -142,9 +149,13 @@ and every record's evidence names a `section_id` and a `paragraph_id`. So answer
 from the facts to the text behind them:
 
 ```dart
-final visible = await backend.reachedSections(book, model.sections);
-final paragraphs = await backend.paragraphs(book, visibleSections: visible);
-final snapshot = StorySnapshot(model, model.sections[visible - 1]); // if visible > 0
+final progress = await backend.readingProgress(book, model.sections);
+final paragraphs = await backend.paragraphs(book, progress);
+final snapshot = StorySnapshot( // if progress.shown > 0
+  model,
+  model.sections[progress.shown - 1],
+  hidden: progress.hiddenInNext ?? const {},
+);
 // `records` are the facts picked out of the snapshot for a question.
 final context = paragraphs.forEvidence(
   records.expand((record) => record.evidence),
@@ -153,14 +164,16 @@ final context = paragraphs.forEvidence(
 // Each StoryParagraph: sectionId, id, number, text. In reading order, no repeats.
 ```
 
-- **`visibleSections` is the spoiler boundary**, and it is required. It counts from the first
-  processed section. Later sections aren't loaded at all, so a lookup can't reach them.
-- **Answers go by `reachedSections`, the map by `finishedSections`.** People ask while reading, so
-  the section being read counts, all of it: an answer can draw on what is still ahead in that
-  section. Only sections already in the map count, and of several sharing one EPUB document, only the
-  first unfinished one, since a position can't tell them apart.
+- **`StoryReadingProgress` is the spoiler boundary**, and it is required. Finished sections come
+  whole, and of the section being read only the paragraphs turned past. Nothing else is kept, so a
+  lookup can't reach it, and neither can `forEvidence`'s neighbors.
+- **Answers stop where the map does.** Don't work out another boundary for a feature that answers
+  the reader: take it from `readingProgress`. A page just turned to hasn't been read, so on a
+  section's first page nothing of that section can be used, and if a page can't be placed, only
+  finished sections can.
 - **Evidence always comes from the section its record was learned in**, so records from a snapshot
-  never lead past it.
+  never lead past it. A citation ahead of the page just isn't found: a name shows at its first
+  citation, so its later ones can be further on.
 - **Answer from the paragraph, not the quote.** With the quote check off a quote may not match, but
   `unknown_paragraph` is always an error, so the paragraph it names is real.
 - **A map loaded from a lone `story_model.json` has no `inputs/`.** Its text comes from the EPUB
@@ -190,6 +203,9 @@ result with what the lab committed:
 ```bash
 LOREMARK_STORY_STORES=<folder of stores> flutter test --tags corpus test/story_update
 ```
+
+`LOREMARK_STORY_LIBRARY=<an app's library folder>` does the same for paragraph progress, over the maps
+and books on a device. On an iOS simulator that folder is under the app's `Library/Application Support`.
 
 A store written here can be checked the other way, with the lab's `story-model show --store <path>`.
 

@@ -13,6 +13,61 @@ void main() {
     for (final record in records) record.id,
   ];
 
+  group('partway through a section', () {
+    final section = model.sections[1];
+
+    test('with nothing hidden, is the end of the section', () {
+      final partial = StorySnapshot(model, section, hidden: const {});
+      expect(
+        ids(partial.relationships),
+        ids(StorySnapshot(model, section).relationships),
+      );
+      expect(partial.transitions, hasLength(chapter2.transitions.length));
+    });
+
+    test('leaves out what is hidden everywhere it would show', () {
+      final partial = StorySnapshot(
+        model,
+        section,
+        hidden: {
+          for (final record in model.allRecords)
+            if (record.learnedInSectionId == section.id) record.id,
+        },
+      );
+      expect(ids(partial.relationships), isNot(contains('f012')));
+      expect(ids(partial.events), isNot(contains('f014')));
+      expect(partial.knownEntities.map((e) => e.id), isNot(contains('c003')));
+      expect(partial.isNewRecord(model.recordsById['f012']!), isFalse);
+    });
+
+    test('a hidden change leaves the old fact standing', () {
+      final partial = StorySnapshot(
+        model,
+        section,
+        hidden: const {'t001', 'f006'},
+      );
+      expect(partial.displayName('c001'), 'Mara');
+      expect(chapter2.displayName('c001'), 'Mara Quinn');
+      expect(partial.transitions.map((t) => t.id), isNot(contains('t001')));
+    });
+
+    test('an open question stays open until its answer is reached', () {
+      final partial = StorySnapshot(model, section, hidden: const {'t003'});
+      final question = partial.questions.firstWhere(
+        (item) => item.record.id == 'f016',
+      );
+      expect(question.resolution, isNull);
+    });
+
+    test('a hidden question isn\'t asked', () {
+      final partial = StorySnapshot(model, section, hidden: const {'f017'});
+      expect(
+        partial.questions.map((item) => item.record.id),
+        isNot(contains('f017')),
+      );
+    });
+  });
+
   test('sorts sections into reading order', () {
     expect([for (final s in model.sections) s.id], ['s1', 's2']);
     expect(model.sections[1].label, 'Chapter 2');

@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:loremark/home/read_screen.dart';
 import 'package:loremark/library/book.dart';
 import 'package:loremark/reader/epub_reader_service.dart';
+import 'package:loremark/reader/page_start.dart';
 import 'package:loremark/reader/reader_position.dart';
 import 'package:loremark/theme/loremark_theme.dart';
 
@@ -264,6 +265,54 @@ void main() {
       }
 
       expect(session.builtViews, hasLength(1));
+    });
+  });
+
+  group('where the page starts', () {
+    const start = PageStart(1, ':root > :nth-child(2) > :nth-child(7)');
+
+    Future<void> emitStart(
+      WidgetTester tester,
+      FakeEpubReaderSession session,
+      PageStart pageStart,
+    ) async {
+      session.emitPageStart(pageStart);
+      await tester.idle();
+      await tester.pump();
+    }
+
+    testWidgets('is kept for the Story Map', (tester) async {
+      final session = await openBook(tester);
+      await emit(tester, session, const ReaderPosition(1, 0.2));
+
+      await emitStart(tester, session, start);
+
+      expect(store.pageStartSaves, [('abc', start)]);
+    });
+
+    testWidgets('isn\'t kept from another section than the position', (
+      tester,
+    ) async {
+      final session = await openBook(tester);
+      await emit(tester, session, const ReaderPosition(2, 0.2));
+
+      await emitStart(tester, session, start);
+
+      expect(store.pageStartSaves, isEmpty);
+    });
+
+    testWidgets('isn\'t kept from a page opened on the way to the saved one', (
+      tester,
+    ) async {
+      store = FakeReadingPositionStore(
+        positions: {'abc': const ReaderPosition(1, 0.8)},
+      );
+      final session = await openBook(tester);
+      await emit(tester, session, const ReaderPosition(1, 0.1));
+
+      await emitStart(tester, session, start);
+
+      expect(store.pageStartSaves, isEmpty);
     });
   });
 

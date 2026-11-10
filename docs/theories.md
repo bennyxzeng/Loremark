@@ -45,6 +45,7 @@ A theory may build on **at most one older theory of the same book** (Features #4
 - If the theory it builds on is deleted, the link is cleared (in the same save as the delete).
 - If the older theory ends Confirmed or Partially correct, the newer one keeps being tracked as normal.
 - The service refuses a link to a note that is not a theory of this book, to the theory itself, or to a newer theory, with an `ArgumentError`.
+- The "Builds on" box only matters under Theory, but its space is kept whenever the book has an older theory, and the box is hidden under Personal note. The sheet sits at the bottom of the screen, so adding the box on choosing Theory used to push the text box up and make taps miss (bug THY-01). A test checks the text box does not move.
 
 "Older" means made earlier. Notes made at the same moment (only possible in tests) are ordered by the counter at the end of their id.
 

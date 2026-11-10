@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loremark/story_model/story_model.dart';
+import 'package:loremark/story_model/story_snapshot.dart';
 import 'package:loremark/story_update/story_api_client.dart';
 import 'package:loremark/story_update/story_book.dart';
 import 'package:loremark/story_update/story_model_choice.dart';
@@ -150,8 +151,20 @@ void main() {
     });
     tearDown(() => temp.deleteSync(recursive: true));
 
-    StoryParagraphs read(int visibleSections, {String epub = _epub}) =>
-        readStoryParagraphs(storePath, epub, visibleSections: visibleSections);
+    StoryParagraphs read(int finished, {String epub = _epub}) =>
+        readStoryParagraphs(storePath, epub, StoryReadingProgress(finished));
+
+    /// A reader who has finished the first section and is [paragraphs] into the
+    /// second.
+    StoryParagraphs partway(int paragraphs) => readStoryParagraphs(
+      storePath,
+      _epub,
+      StoryReadingProgress(
+        1,
+        hiddenInNext: const {},
+        paragraphsReadInNext: paragraphs,
+      ),
+    );
 
     StoryModel model() => StoryModel.fromJson(readStoryModel(storePath)!);
 
@@ -204,6 +217,53 @@ void main() {
       expect(read(2).forEvidence([cited]), hasLength(1));
     });
 
+    group('partway through a section,', () {
+      test('holds finished sections whole, and only the start of that one', () {
+        final map = model();
+        final first = map.sections[0].id;
+        final second = map.sections[1].id;
+        final paragraphs = partway(2);
+
+        expect(
+          paragraphs.ofSection(first),
+          hasLength(read(1).ofSection(first).length),
+        );
+        expect(_names(paragraphs.ofSection(second)), [
+          '$second:p0001',
+          '$second:p0002',
+        ]);
+      });
+
+      test('cannot reach a paragraph ahead of the page', () {
+        final second = model().sections[1].id;
+        final paragraphs = partway(2);
+
+        expect(paragraphs.paragraph(second, 'p0003'), isNull);
+        expect(paragraphs.forEvidence([_cite(second, 'p0003')]), isEmpty);
+      });
+
+      test('context stops at the page', () {
+        final second = model().sections[1].id;
+        expect(
+          _names(partway(2).forEvidence([_cite(second, 'p0002')], context: 5)),
+          ['$second:p0001', '$second:p0002'],
+        );
+      });
+
+      test('holds nothing of a section not in the map', () {
+        final paragraphs = readStoryParagraphs(
+          storePath,
+          _epub,
+          const StoryReadingProgress(
+            5,
+            hiddenInNext: {},
+            paragraphsReadInNext: 1,
+          ),
+        );
+        expect(textOf(paragraphs), textOf(read(2)));
+      });
+    });
+
     test('holds nothing when no section is visible', () {
       final evidence = evidenceOf(model());
       expect(read(0).forEvidence(evidence), isEmpty);
@@ -218,7 +278,7 @@ void main() {
       final paragraphs = readStoryParagraphs(
         '${temp.path}/none',
         _epub,
-        visibleSections: 3,
+        const StoryReadingProgress(3),
       );
       expect(paragraphs.paragraph('section-002', 'p0001'), isNull);
     });
@@ -231,7 +291,11 @@ void main() {
       final lone = '${temp.path}/lone';
       Directory(lone).createSync();
       File('$storePath/story_model.json').copySync('$lone/story_model.json');
-      final paragraphs = readStoryParagraphs(lone, _epub, visibleSections: 2);
+      final paragraphs = readStoryParagraphs(
+        lone,
+        _epub,
+        const StoryReadingProgress(2),
+      );
       expect(textOf(paragraphs), textOf(read(2)));
     });
 

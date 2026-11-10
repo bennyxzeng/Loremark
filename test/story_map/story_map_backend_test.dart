@@ -5,10 +5,12 @@ import 'package:archive/archive.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loremark/library/book.dart';
+import 'package:loremark/reader/page_start.dart';
 import 'package:loremark/reader/reader_position.dart';
 import 'package:loremark/reader/reading_position_store.dart';
 import 'package:loremark/settings/ai_settings.dart';
 import 'package:loremark/story_map/story_map_backend.dart';
+import 'package:loremark/story_model/story_snapshot.dart';
 import 'package:loremark/story_update/story_api_client.dart';
 import 'package:loremark/story_update/story_book.dart';
 import 'package:loremark/story_update/story_import.dart';
@@ -97,21 +99,59 @@ void main() {
 
     // The paragraphs its evidence cites can be read back, up to a boundary.
     final evidence = model.allRecords.expand((record) => record.evidence);
-    final visible = await backend.paragraphs(book, visibleSections: 1);
+    final visible = await backend.paragraphs(
+      book,
+      const StoryReadingProgress(1),
+    );
     expect(visible.forEvidence(evidence), isNotEmpty);
-    final hidden = await backend.paragraphs(book, visibleSections: 0);
+    final hidden = await backend.paragraphs(
+      book,
+      const StoryReadingProgress(0),
+    );
     expect(hidden.forEvidence(evidence), isEmpty);
 
     // Nothing read yet: not even this section counts as finished.
-    expect(await backend.finishedSections(book, model.sections), 0);
-    expect(await backend.reachedSections(book, model.sections), 0);
+    Future<StoryReadingProgress> progress() =>
+        backend.readingProgress(book, model.sections);
+    expect((await progress()).finished, 0);
     final positions = await ReadingPositionStore.open();
-    // Partway through it: reached for answering, but not finished for the map.
+    // Partway through it, with no page start: nothing of it can be used.
     await positions.save(book.id, const ReaderPosition(1, 0.5));
-    expect(await backend.finishedSections(book, model.sections), 0);
-    expect(await backend.reachedSections(book, model.sections), 1);
+    expect((await progress()).finished, 0);
+    expect(
+      (await backend.paragraphs(
+        book,
+        await progress(),
+      )).ofSection('section-002'),
+      isEmpty,
+    );
+    // With the page's start known, the map follows it paragraph by paragraph.
+    expect((await progress()).hiddenInNext, isNull);
+    await positions.savePageStart(
+      book.id,
+      const PageStart(1, ':root > :nth-child(2) > :nth-child(3)'),
+    );
+    expect((await progress()).hiddenInNext, isNotNull);
+    // And what can be answered from stops at the same paragraph.
+    expect((await progress()).paragraphsReadInNext, greaterThan(0));
+    expect(
+      (await backend.paragraphs(
+        book,
+        await progress(),
+      )).ofSection('section-002'),
+      hasLength((await progress()).paragraphsReadInNext),
+    );
+    // A start left over from another file says nothing about this one.
+    await positions.savePageStart(
+      book.id,
+      const PageStart(5, ':root > :nth-child(2) > :nth-child(3)'),
+    );
+    expect((await progress()).hiddenInNext, isNull);
+    // Its last page hasn't been read yet, so turning past it is what counts.
     await positions.save(book.id, const ReaderPosition(1, 1));
-    expect(await backend.finishedSections(book, model.sections), 1);
+    expect((await progress()).finished, 0);
+    await positions.save(book.id, const ReaderPosition(2, 0));
+    expect((await progress()).finished, 1);
 
     // That update left a run folder, and exporting takes it and the store.
     final library = '${temp.path}/library/story_models/${book.id}';

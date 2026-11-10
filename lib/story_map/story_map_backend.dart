@@ -11,6 +11,7 @@ import '../reader/reading_position_store.dart';
 import '../search/search_cutoff.dart';
 import '../settings/ai_settings.dart';
 import '../story_model/story_model.dart';
+import '../story_model/story_snapshot.dart';
 import '../story_update/story_api_client.dart';
 import '../story_update/story_archive.dart';
 import '../story_update/story_import.dart';
@@ -20,17 +21,23 @@ import '../story_update/story_run_folder.dart';
 import '../story_update/story_updater.dart';
 
 /// How many of [sections], counted from the first, the reader has finished at
-/// [current]. A section counts only once its whole document is finished, since
-/// the Story Map shows what is known by the end of a section. Without a position
-/// it is none.
+/// [current]. A section counts only once the reader has turned past the end of
+/// its whole document, since a page just turned to hasn't been read yet. The last
+/// page of the book has nothing to turn to, so reaching it is enough. Without a
+/// position it is none.
 int finishedStorySections(
   List<StorySection> sections,
   List<SpineItem> spine,
   ReaderPosition? current,
 ) {
   if (current == null) return 0;
+  final atBookEnd =
+      current.progression == 1 &&
+      current.sectionIndex == spine.lastIndexWhere((item) => item.linear);
   // Takes a furthest position too, for when the reader's is kept.
-  final cutoff = completedSectionCutoff(current: current);
+  final cutoff = completedSectionCutoff(
+    current: atBookEnd ? current : ReaderPosition(current.sectionIndex, 0),
+  );
   final finishedItems = cutoff.progression == 1
       ? cutoff.sectionIndex + 1
       : cutoff.sectionIndex;
@@ -41,28 +48,6 @@ int finishedStorySections(
     count++;
   }
   return count;
-}
-
-/// How many of [sections], counted from the first, the reader has reached at
-/// [current]: those they have finished, and the one they are in. Answers go by
-/// this, since people ask while reading, so an answer can draw on the rest of
-/// that section too. The Story Map goes by [finishedStorySections].
-///
-/// A position can't tell sections sharing a document apart, so only the first
-/// unfinished one counts as being read. Counting them all would give away every
-/// chapter of a book that keeps them in one file.
-int reachedStorySections(
-  List<StorySection> sections,
-  List<SpineItem> spine,
-  ReaderPosition? current,
-) {
-  if (current == null) return 0;
-  final finished = finishedStorySections(sections, spine, current);
-  if (finished == sections.length) return finished;
-  final index = spineIndexOf(spine, sections[finished].href ?? '');
-  return index != null && index <= current.sectionIndex
-      ? finished + 1
-      : finished;
 }
 
 /// How exporting a book's Story Map files ended.
@@ -95,17 +80,18 @@ abstract interface class StoryMapBackend {
   /// The book's story model, or null if none has been built yet.
   Future<StoryModel?> loadModel(Book book);
 
-  /// How many of [sections] the reader has finished.
-  Future<int> finishedSections(Book book, List<StorySection> sections);
+  /// How far the reader has got through [sections], down to the paragraph in the
+  /// section they are partway through. The map, and anything answering the
+  /// reader, go by this.
+  Future<StoryReadingProgress> readingProgress(
+    Book book,
+    List<StorySection> sections,
+  );
 
-  /// How many of [sections] the reader has reached, counting the one they are
-  /// in. The boundary for answering: see [reachedStorySections].
-  Future<int> reachedSections(Book book, List<StorySection> sections);
-
-  /// The paragraphs of the first [visibleSections] sections of [book]'s Story
-  /// Map. Nothing past them is loaded. Throws a `StoryStoreError` or a
+  /// The paragraphs of [book]'s Story Map that a reader at [progress] has read.
+  /// Nothing past them is kept. Throws a `StoryStoreError` or a
   /// `StoryEpubError` if a section's text can't be read.
-  Future<StoryParagraphs> paragraphs(Book book, {required int visibleSections});
+  Future<StoryParagraphs> paragraphs(Book book, StoryReadingProgress progress);
 
   /// What pressing Update would do.
   Future<StoryUpdateStatus> inspect(Book book);
@@ -179,27 +165,51 @@ class DeviceStoryMapBackend implements StoryMapBackend {
   }
 
   @override
-  Future<int> finishedSections(Book book, List<StorySection> sections) async {
+  Future<StoryReadingProgress> readingProgress(
+    Book book,
+    List<StorySection> sections,
+  ) async {
     final (position, spine) = await _readingPlace(book);
-    return finishedStorySections(sections, spine, position);
-  }
-
-  @override
-  Future<int> reachedSections(Book book, List<StorySection> sections) async {
-    final (position, spine) = await _readingPlace(book);
-    return reachedStorySections(sections, spine, position);
+    final finished = finishedStorySections(sections, spine, position);
+    final store = await ReadingPositionStore.open();
+    final start = await store.loadPageStart(book.id);
+    if (start == null || start.sectionIndex != position?.sectionIndex) {
+      return StoryReadingProgress(finished);
+    }
+    final onPage = [
+      for (final section
+          in sections
+              .skip(finished)
+              .takeWhile(
+                (section) =>
+                    spineIndexOf(spine, section.href ?? '') ==
+                    start.sectionIndex,
+              ))
+        section.id,
+    ];
+    if (onPage.isEmpty) return StoryReadingProgress(finished);
+    final path = await _storePath(book);
+    final epub = book.epubPath;
+    final selector = start.cssSelector;
+    return Isolate.run(
+      () => readStoryProgress(
+        path,
+        epub,
+        finished: finished,
+        sectionsOnPage: onPage,
+        cssSelector: selector,
+      ),
+    );
   }
 
   @override
   Future<StoryParagraphs> paragraphs(
-    Book book, {
-    required int visibleSections,
-  }) async {
+    Book book,
+    StoryReadingProgress progress,
+  ) async {
     final path = await _storePath(book);
     final epub = book.epubPath;
-    return Isolate.run(
-      () => readStoryParagraphs(path, epub, visibleSections: visibleSections),
-    );
+    return Isolate.run(() => readStoryParagraphs(path, epub, progress));
   }
 
   @override

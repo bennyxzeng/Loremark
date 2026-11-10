@@ -108,17 +108,34 @@ void main() {
     });
 
     testWidgets('offers older theories under Theory only', (tester) async {
+      final buildsOnPicker = find.byType(DropdownButtonFormField<String?>);
       final older = await addTheory('Mara cut the power.');
       await openSheet(tester, olderTheories: [older]);
 
-      expect(find.text('Builds on'), findsNothing);
+      // The picker's space is reserved, but it can't be seen or tapped.
+      expect(buildsOnPicker.hitTestable(), findsNothing);
       await tester.tap(find.text('Theory'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Builds on'), findsOneWidget);
+      expect(buildsOnPicker.hitTestable(), findsOneWidget);
       await tester.tap(find.text('None'));
       await tester.pumpAndSettle();
       expect(find.text('Mara cut the power.'), findsWidgets);
+    });
+
+    testWidgets('choosing Theory does not move the sheet (THY-01)', (
+      tester,
+    ) async {
+      final older = await addTheory('Mara cut the power.');
+      await openSheet(tester, olderTheories: [older]);
+      final before = tester.getTopLeft(find.byType(TextField));
+      final sheetBefore = tester.getSize(find.byType(Column).first);
+
+      await tester.tap(find.text('Theory'));
+      await tester.pumpAndSettle();
+
+      expect(tester.getTopLeft(find.byType(TextField)), before);
+      expect(tester.getSize(find.byType(Column).first), sheetBefore);
     });
 
     testWidgets('returns the older theory that was picked', (tester) async {
