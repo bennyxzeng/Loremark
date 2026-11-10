@@ -96,6 +96,7 @@ Each ID links to its GitHub issue (#17 to #86). Commit hashes link to
 | [OPEN-08](https://github.com/bennyxzeng/Loremark/issues/77) | 2026-11-04 | P2 | usability | On the iPhone simulator, the reader's progress percentage stays empty | Open, not confirmed on a real iPhone | |
 | [THY-01](https://github.com/bennyxzeng/Loremark/issues/86) | 2026-11-09 | P2 | usability | The Add note sheet jumps after choosing Theory, so taps on the text box miss | Fixed, with a regression test | [d4062ff](https://github.com/bennyxzeng/Loremark/commit/d4062ff) |
 | THY-02 | 2026-11-09 | P2 | usability | The theory banner covered the page-turn arrows, so tapping next opened the Notes tab | Fixed, with a regression test | [e9fece3](https://github.com/bennyxzeng/Loremark/commit/e9fece3) |
+| THY-03 | 2026-11-09 | P0 | spoiler | The theory check counted a chapter as finished once the reader reached its last page, so it could send that unread page to the AI and show a banner about it | Fixed, with regression tests | [e06812f](https://github.com/bennyxzeng/Loremark/commit/e06812f) |
 
 ## Details
 
