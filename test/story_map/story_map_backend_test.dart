@@ -206,6 +206,12 @@ void main() {
     expect((await loader.loadModel(book))!.sections.single.id, 'section-002');
   });
 
+  test('remembers that the intro was closed', () async {
+    expect(await DeviceStoryMapBackend().introSeen(), isFalse);
+    await DeviceStoryMapBackend().markIntroSeen();
+    expect(await DeviceStoryMapBackend().introSeen(), isTrue);
+  });
+
   test('has nothing to export for a book with no files', () async {
     final book = Book(
       id: 'no-files-yet',

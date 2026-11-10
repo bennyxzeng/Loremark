@@ -8,6 +8,7 @@ import '../story_model/story_snapshot.dart';
 import '../story_update/story_import.dart';
 import '../story_update/story_updater.dart';
 import 'story_map_backend.dart';
+import 'story_map_intro.dart';
 import 'story_map_screen.dart';
 import 'story_update_bar.dart';
 
@@ -52,6 +53,10 @@ class _StoryMapTabState extends State<StoryMapTab> {
   /// Whether files are being exported or loaded.
   bool _filesBusy = false;
 
+  /// Whether the intro shows. It starts hidden, so a reader who closed it
+  /// before doesn't see it flash while the backend is asked.
+  bool _showIntro = false;
+
   /// Counts the maps loaded from a file. What the slider remembers belongs to the
   /// map it was on, so a different map starts it afresh.
   int _mapsLoaded = 0;
@@ -64,6 +69,7 @@ class _StoryMapTabState extends State<StoryMapTab> {
     _load().then((_) {
       if (mounted && widget.active) _inspect();
     });
+    _loadIntro();
     final running = _backend.running(widget.book);
     if (running != null) {
       _updateStartedAt = running.startedAt;
@@ -100,6 +106,26 @@ class _StoryMapTabState extends State<StoryMapTab> {
         _loaded = true;
         _loadError = error;
       });
+    }
+  }
+
+  Future<void> _loadIntro() async {
+    try {
+      final seen = await _backend.introSeen();
+      if (mounted && !seen) setState(() => _showIntro = true);
+    } on Object {
+      // Leave it hidden rather than show it on every visit.
+    }
+  }
+
+  /// Hides the intro now, and for good once that is saved. If saving fails,
+  /// it shows again next time.
+  Future<void> _dismissIntro() async {
+    setState(() => _showIntro = false);
+    try {
+      await _backend.markIntroSeen();
+    } on Object {
+      // Nothing else depends on it.
     }
   }
 
@@ -326,6 +352,7 @@ class _StoryMapTabState extends State<StoryMapTab> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (_showIntro) StoryMapIntro(onDismiss: _dismissIntro),
         StoryUpdateBar(
           status: _status,
           updateStartedAt: _updateStartedAt,
