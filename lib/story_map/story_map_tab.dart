@@ -4,6 +4,7 @@ import '../library/book.dart';
 import '../settings/ai_settings.dart';
 import '../settings/connection_status.dart';
 import '../story_model/story_model.dart';
+import '../story_model/story_snapshot.dart';
 import '../story_update/story_import.dart';
 import '../story_update/story_updater.dart';
 import 'story_map_backend.dart';
@@ -35,7 +36,7 @@ class StoryMapTab extends StatefulWidget {
 
 class _StoryMapTabState extends State<StoryMapTab> {
   StoryModel? _model;
-  int _finishedSections = 0;
+  StoryReadingProgress _progress = const StoryReadingProgress(0);
   bool _loaded = false;
   Object? _loadError;
   StoryUpdateStatus? _status;
@@ -83,13 +84,13 @@ class _StoryMapTabState extends State<StoryMapTab> {
   Future<void> _load() async {
     try {
       final model = await _backend.loadModel(widget.book);
-      final finished = model == null
-          ? 0
-          : await _backend.finishedSections(widget.book, model.sections);
+      final progress = model == null
+          ? const StoryReadingProgress(0)
+          : await _backend.readingProgress(widget.book, model.sections);
       if (!mounted) return;
       setState(() {
         _model = model;
-        _finishedSections = finished;
+        _progress = progress;
         _loaded = true;
         _loadError = null;
       });
@@ -106,11 +107,11 @@ class _StoryMapTabState extends State<StoryMapTab> {
     final model = _model;
     if (model == null) return;
     try {
-      final finished = await _backend.finishedSections(
+      final progress = await _backend.readingProgress(
         widget.book,
         model.sections,
       );
-      if (mounted) setState(() => _finishedSections = finished);
+      if (mounted) setState(() => _progress = progress);
     } on Object {
       // Keep the last known position: it only decides when to ask first.
     }
@@ -248,7 +249,7 @@ class _StoryMapTabState extends State<StoryMapTab> {
     return [
       count == 1 ? 'Loaded 1 section.' : 'Loaded $count sections.',
       // Never jump past the reader: the slider asks first.
-      if (_finishedSections < count)
+      if (_progress.shown < count)
         'Drag the slider to see ${count == 1 ? 'it' : 'them'}.',
     ].join(' ');
   }
@@ -277,7 +278,7 @@ class _StoryMapTabState extends State<StoryMapTab> {
       _notice = [
         'Added ${outcome.sectionTitle} in $took.',
         // Never jump past the reader: the slider asks first.
-        if (_finishedSections < sections) 'Drag the slider to see it.',
+        if (_progress.shown < sections) 'Drag the slider to see it.',
         if (outcome.unmatchedQuotes > 0)
           '${outcome.unmatchedQuotes} quote(s) couldn’t be matched to the book.',
       ].join(' ');
@@ -318,7 +319,8 @@ class _StoryMapTabState extends State<StoryMapTab> {
       body = StoryMapScreen(
         key: ValueKey(_mapsLoaded),
         model: model,
-        finishedSections: _finishedSections,
+        finishedSections: _progress.finished,
+        hiddenInNext: _progress.hiddenInNext,
       );
     }
     return Column(

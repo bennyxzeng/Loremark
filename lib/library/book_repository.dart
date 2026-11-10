@@ -51,9 +51,27 @@ class BookRepository {
         jsonDecode(await _index.readAsString()) as Map<String, dynamic>;
     _books.addAll([
       for (final book in json['books'] as List)
-        Book.fromJson(book as Map<String, dynamic>),
+        _locatedHere(Book.fromJson(book as Map<String, dynamic>)),
     ]);
     _lastOpenedId = json['last_opened_id'] as String?;
+  }
+
+  /// [book] with its files where they are now. The list records full paths, but
+  /// iOS moves the app's folder when the app is reinstalled or updated, and the
+  /// files move with it, keeping their place inside [root].
+  Book _locatedHere(Book book) {
+    String here(String folder, String path) =>
+        '${root.path}/$folder/${path.substring(path.lastIndexOf('/') + 1)}';
+    return Book(
+      id: book.id,
+      title: book.title,
+      author: book.author,
+      epubPath: here('books', book.epubPath),
+      coverPath: book.coverPath == null
+          ? null
+          : here('covers', book.coverPath!),
+      importedAt: book.importedAt,
+    );
   }
 
   /// Copies the EPUB at [sourcePath] into the library.

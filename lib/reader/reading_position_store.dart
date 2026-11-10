@@ -4,12 +4,14 @@ import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
 
+import 'page_start.dart';
 import 'reader_position.dart';
 
 /// Each book's reading position, kept on the device next to the library.
 ///
 /// Every book has its own `reading_state/<book id>.json`, holding
-/// `{"version": 1, "current": <ReaderPosition JSON>}`. `current` is the key
+/// `{"version": 1, "current": <ReaderPosition JSON>}`, and `pageStart` beside it
+/// once a page has reported where it starts. `current` is the key
 /// `ReadingProgressTracker` uses for the same file, which lets it add
 /// `furthest` and `boundary` beside it later.
 ///
@@ -81,24 +83,45 @@ class ReadingPositionStore {
     }
   }
 
+  /// Where the page saved for [bookId] starts, or null if there is none or the
+  /// file can't be read. It may be from another section than [load]'s position.
+  Future<PageStart?> loadPageStart(String bookId) async {
+    final saved = (await _readState(_file(bookId)))['pageStart'];
+    if (saved is! Map<String, dynamic>) return null;
+    try {
+      return PageStart.fromJson(saved);
+    } on FormatException {
+      return null;
+    }
+  }
+
   /// Writes [position] as the saved position for [bookId].
   ///
   /// Completes once [position], or a newer save for the same book, is on disk.
   /// Throws if the write fails; later saves are not affected.
-  Future<void> save(String bookId, ReaderPosition position) async {
+  Future<void> save(String bookId, ReaderPosition position) async =>
+      _enqueue(bookId, (save) => save.position = position);
+
+  /// Writes [start] as where the reader's page in [bookId] starts, and completes
+  /// and fails the way [save] does.
+  Future<void> savePageStart(String bookId, PageStart start) async =>
+      _enqueue(bookId, (save) => save.pageStart = start);
+
+  Future<void> _enqueue(String bookId, void Function(_QueuedSave) change) {
     final file = _file(bookId);
     final queued = _queued[bookId];
     if (queued != null) {
-      queued.position = position;
+      change(queued);
       return queued.done.future;
     }
-    final save = _queued[bookId] = _QueuedSave(position);
+    final save = _queued[bookId] = _QueuedSave();
+    change(save);
     _writing = _writing.then((_) async {
       // A save arriving from now on is newer than this write, so it queues
       // again instead of changing what is written.
       _queued.remove(bookId);
       try {
-        await _write(file, save.position);
+        await _write(file, save);
         save.done.complete();
       } on Object catch (error, stackTrace) {
         save.done.completeError(error, stackTrace);
@@ -113,10 +136,13 @@ class ReadingPositionStore {
   /// The other keys of the existing file stay, since the progress tracker
   /// keeps its own beside `current`. Only the writes in the queue touch the
   /// file, so reading it here can't race another save.
-  Future<void> _write(File file, ReaderPosition position) async {
+  Future<void> _write(File file, _QueuedSave save) async {
     await file.parent.create(recursive: true);
     final state = await _readState(file);
-    state['current'] = position.toJson();
+    if (save.position case final position?) {
+      state['current'] = position.toJson();
+    }
+    if (save.pageStart case final start?) state['pageStart'] = start.toJson();
     final temp = File('${file.path}.tmp');
     await temp.writeAsString(jsonEncode(state), flush: true);
     await temp.rename(file.path);
@@ -138,8 +164,7 @@ class ReadingPositionStore {
 }
 
 class _QueuedSave {
-  _QueuedSave(this.position);
-
-  ReaderPosition position;
+  ReaderPosition? position;
+  PageStart? pageStart;
   final done = Completer<void>();
 }
