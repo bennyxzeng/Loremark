@@ -398,48 +398,73 @@ void main() {
   });
 
   group('history', () {
-    AskTurn turn(String question, TextPosition limit) =>
-        AskTurn(question: question, answer: 'A to $question', limit: limit);
+    AskTurn turn(String question) =>
+        AskTurn(question: question, answer: 'A to $question');
 
-    test('leaves out questions asked further on', () {
-      final kept = askHistory([
-        turn('early', const TextPosition(1, 0.2)),
-        turn('later', const TextPosition(3, 0.1)),
-        turn('same page', const TextPosition(2, 0.5)),
-      ], const TextPosition(2, 0.5));
-      expect([for (final t in kept) t.question], ['early', 'same page']);
-    });
+    test(
+      'the whole conversation goes before the new question, in order',
+      () async {
+        final provider = FakeAskProvider([
+          (
+            200,
+            sse([
+              completed([message('Hi.')]),
+            ]),
+          ),
+        ]);
+        // More than any old limit, and asked wherever the reader was then.
+        await ask(
+          provider,
+          history: [for (var i = 0; i < 15; i++) turn('q$i')],
+        );
+        final input = provider.bodies.single['input'] as List;
+        final turns = input.skip(1).toList();
+        expect(turns, hasLength(31));
+        expect((turns.first as Map)['content'], 'q0');
+        expect((turns[1] as Map)['content'], 'A to q0');
+        expect((turns[29] as Map)['content'], 'A to q14');
+        expect((turns.last as Map)['role'], 'user');
+        expect((turns.last as Map)['content'], contains('QUESTION:'));
+      },
+    );
+  });
 
-    test('keeps only the latest', () {
-      final kept = askHistory([
-        for (var i = 0; i < 15; i++) turn('q$i', const TextPosition(0, 0)),
-      ], const TextPosition(1, 0));
-      expect(kept, hasLength(maxAskHistory));
-      expect(kept.first.question, 'q5');
-    });
-
-    test('is sent before the new question', () async {
-      final provider = FakeAskProvider([
-        (
-          200,
-          sse([
-            completed([message('Hi.')]),
-          ]),
-        ),
-      ]);
-      await ask(
-        provider,
-        history: [
-          turn('before', const TextPosition(1, 0)),
-          turn('after', const TextPosition(4, 0)),
-        ],
-      );
-      final input = provider.bodies.single['input'] as List;
+  group('usage', () {
+    test('adds up the requests, counting what is missing as 0', () {
       expect(
-        [for (final item in input.skip(1)) (item as Map)['role']],
-        ['user', 'assistant', 'user'],
+        askUsageSummary([
+          {
+            'input_tokens': 1200,
+            'input_tokens_details': {'cached_tokens': 0},
+            'output_tokens': 40,
+          },
+          {
+            'input_tokens': 1500,
+            'input_tokens_details': {'cached_tokens': 1152},
+            'output_tokens': 300,
+          },
+          {'input_tokens': 10},
+        ]),
+        {
+          'input_tokens': 2710,
+          'cached_tokens': 1152,
+          'output_tokens': 340,
+          'rounds': [
+            [1200, 0, 40],
+            [1500, 1152, 300],
+            [10, 0, 0],
+          ],
+        },
       );
-      expect(jsonEncode(input), isNot(contains('A to after')));
+    });
+
+    test('nothing used is all 0', () {
+      expect(askUsageSummary(const []), {
+        'input_tokens': 0,
+        'cached_tokens': 0,
+        'output_tokens': 0,
+        'rounds': <Object>[],
+      });
     });
   });
 

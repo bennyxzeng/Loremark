@@ -75,9 +75,37 @@ tools' answers. OpenAI stores nothing (`store: false`), so its reasoning comes b
 (`include: ["reasoning.encrypted_content"]`). Tried with `gpt-6.1-terra` on OpenAI; DeepSeek's
 Responses API documents the same function calls and events but hasn't been run.
 
-Earlier questions go with a new one as plain question and answer, at most 10, and only those asked
-at or before the reader's current page end. A reader who turns back doesn't get answers that drew on
-pages they have turned back from.
+The conversation so far goes with a new question as plain question and answer: all of it, in
+order, and nothing from the book's other conversations. It isn't cut to where the reader is now. A
+reader who asked something has read that far, so turning back a few chapters and asking again in
+the same conversation keeps what it already said. The tools and the page still stop at the reader.
+
+Only the question and answer text go back, not the pages and lookups behind earlier answers, so the
+history stays small. A new question's own requests repeat its start, so providers that cache a
+repeated start (OpenAI and DeepSeek do it by themselves) charge less for all but the first.
+
+Debug and profile builds log each question's tokens as a `LOREMARK_ASK_USAGE` line: the status, how
+many earlier questions went with it, the totals of input, cached input and output, and each
+request's `[input, cached, output]`. On the iOS simulator:
+
+```bash
+xcrun simctl spawn <udid> log show --last 1h --predicate 'process == "Runner"' | grep LOREMARK_ASK_USAGE
+```
+
+## Conversations
+
+A book can have many conversations. Each is saved once its first question is answered, as
+`library/chats/<book id>/<conversation id>.json`.
+
+- Opening a book starts a new conversation, so leaving the book or the app and coming back does too.
+- Leaving the Ask tab, or the app, for 5 minutes or more (`askIdleGap`) and coming back also starts
+  a new one. Back sooner, the reader is where they left off.
+- **New conversation** in the strip above the thread starts one by hand. **Conversations** lists
+  the book's saved ones, the latest first, by their first question; tapping one carries it on, and
+  each can be deleted.
+- Nothing switches while a question is under way.
+- A book's one conversation from before there could be several (`library/chats/<book id>.json`)
+  becomes a conversation of its own the first time the list is read.
 
 ## Files
 
@@ -88,7 +116,7 @@ pages they have turned back from.
 | `lib/ask/ask_stream.dart` | One streamed request |
 | `lib/ask/ask_engine.dart` | A question: requests, tool calls, history |
 | `lib/ask/ask_citations.dart` | Reading and cleaning citations |
-| `lib/ask/ask_history.dart` | Each book's conversation, in `library/chats/<book id>.json` |
+| `lib/ask/ask_history.dart` | Each book's conversations, in `library/chats/<book id>/<conversation id>.json` |
 | `lib/ask/ask_controller.dart` | The tab's state, kept above `AiLock` so going offline loses nothing |
 | `lib/ask/ask_backend.dart` | What Ask needs from the device; `DeviceStoryMapBackend` provides it |
 | `lib/home/ask_screen.dart` | The tab |

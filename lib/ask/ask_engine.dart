@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import '../reading/text_position.dart';
 import '../story_update/story_book.dart' show JsonMap;
 import '../story_update/story_model_choice.dart';
 import 'ask_boundary.dart';
@@ -14,22 +13,12 @@ const askPromptName = 'answer_v1.txt';
 /// The most requests one question may take. The last one must answer.
 const maxAskRounds = 10;
 
-/// The most earlier questions sent along with a new one.
-const maxAskHistory = 10;
-
-/// An earlier question and its answer.
+/// An earlier question in the conversation and its answer.
 class AskTurn {
-  const AskTurn({
-    required this.question,
-    required this.answer,
-    required this.limit,
-  });
+  const AskTurn({required this.question, required this.answer});
 
   final String question;
   final String answer;
-
-  /// How far the reader had read when it was asked: [AskReach.limit].
-  final TextPosition limit;
 }
 
 /// How a question ended.
@@ -110,23 +99,34 @@ String askMessage(AskPage? page, String question) => [
   question,
 ].join('\n');
 
-/// The earlier questions to send with a new one at [limit]: none asked further
-/// on, since their answers could hold what the reader hasn't reached, and at
-/// most [maxAskHistory] of the latest.
-List<AskTurn> askHistory(List<AskTurn> turns, TextPosition limit) {
-  final kept = [
-    for (final turn in turns)
-      if (turn.limit <= limit) turn,
+/// The tokens a question's requests used, from each request's `usage`: in
+/// total, and request by request, as `[input, cached input, output]`. A count
+/// the provider didn't send is 0.
+JsonMap askUsageSummary(List<JsonMap> usage) {
+  int count(Object? value) => value is int ? value : 0;
+  final rounds = [
+    for (final counts in usage)
+      [
+        count(counts['input_tokens']),
+        count((counts['input_tokens_details'] as Map?)?['cached_tokens']),
+        count(counts['output_tokens']),
+      ],
   ];
-  return kept.sublist(
-    kept.length > maxAskHistory ? kept.length - maxAskHistory : 0,
-  );
+  int sum(int i) => rounds.fold(0, (total, round) => total + round[i]);
+  return {
+    'input_tokens': sum(0),
+    'cached_tokens': sum(1),
+    'output_tokens': sum(2),
+    'rounds': rounds,
+  };
 }
 
 /// Answers [question] from [boundary] and nothing else.
 ///
 /// The model sees the overview and the reader's page, and looks the rest up
-/// with [StoryLookup]'s tools. Each request goes to the provider once and is
+/// with [StoryLookup]'s tools. [history] is the conversation so far, sent
+/// whole and in order before the question: asked by this reader, so already
+/// theirs, wherever in the book they were then. Each request goes to the provider once and is
 /// never retried. [onRound] is called as each request starts, since words
 /// shown from the one before weren't the answer; [onText] gets the answer's
 /// words as they arrive; and [onLookup] names the tools being run.
@@ -149,7 +149,7 @@ Future<AskAnswer> askStory({
   final tools = lookup.tools;
   final instructions = '$prompt\n\n${lookup.overview()}';
   final base = <JsonMap>[
-    for (final turn in askHistory(history, boundary.reach.limit)) ...[
+    for (final turn in history) ...[
       {'role': 'user', 'content': turn.question},
       {'role': 'assistant', 'content': turn.answer},
     ],

@@ -38,8 +38,10 @@ void main() {
 
   late Directory temp;
   late FakeAskBackend backend;
+  late DateTime clock;
 
   setUp(() {
+    clock = DateTime.utc(2026, 11, 9);
     temp = Directory.systemTemp.createTempSync('ask_controller_');
     backend = FakeAskBackend(
       model: model,
@@ -64,7 +66,25 @@ void main() {
     openHistory: () async => AskHistoryStore(temp),
     post: provider.post,
     loadPrompt: () async => 'PROMPT',
-    now: () => DateTime.utc(2026, 11, 9),
+    now: () => clock,
+  );
+
+  AskExchange earlier(String question) => AskExchange(
+    question: question,
+    answer: 'Yes.',
+    limit: const TextPosition(1, 0),
+    askedAt: DateTime.utc(2026),
+  );
+
+  /// A controller whose answers arrive only when [body] gets them.
+  AskController streaming(StreamController<String> body) => AskController(
+    book: book,
+    backend: backend,
+    openHistory: () async => AskHistoryStore(temp),
+    loadPrompt: () async => 'PROMPT',
+    now: () => clock,
+    post: (url, headers, sent) async =>
+        AskHttpReply(200, body.stream, () => body.close()),
   );
 
   Future<void> ask(AskController controller, String question) => controller.ask(
@@ -78,26 +98,25 @@ void main() {
     completed([message(text)]),
   ]);
 
-  test('looks at where the reader is, and reads the conversation', () async {
-    await AskHistoryStore(temp).save('book', [
-      AskExchange(
-        question: 'Earlier?',
-        answer: 'Yes.',
-        limit: const TextPosition(1, 0),
-        askedAt: DateTime.utc(2026),
-      ),
-    ]);
-    final controller = controllerWith(FakeAskProvider([]));
-    expect(controller.loaded, isFalse);
-    await controller.refresh();
-    expect(controller.loaded, isTrue);
-    expect(controller.boundary!.sections.single.id, 's1');
-    expect(controller.exchanges.single.question, 'Earlier?');
-    // Read once only, however often it looks again.
-    await controller.refresh();
-    expect(controller.exchanges, hasLength(1));
-    expect(backend.reaches, 2);
-  });
+  test(
+    'looks at where the reader is, and starts on a new conversation',
+    () async {
+      await AskHistoryStore(temp).save('book', 'c1', [earlier('Earlier?')]);
+      final controller = controllerWith(FakeAskProvider([]));
+      expect(controller.loaded, isFalse);
+      await controller.refresh();
+      expect(controller.loaded, isTrue);
+      expect(controller.boundary!.sections.single.id, 's1');
+      expect(controller.exchanges, isEmpty);
+      expect(controller.conversationId, isNull);
+      expect(controller.conversations.single.title, 'Earlier?');
+      // Read once only, however often it looks again.
+      await AskHistoryStore(temp).save('book', 'c2', [earlier('Later?')]);
+      await controller.refresh();
+      expect(controller.conversations, hasLength(1));
+      expect(backend.reaches, 2);
+    },
+  );
 
   test('keeps an answer, with the reader\'s place, on the device', () async {
     final provider = FakeAskProvider([
@@ -115,8 +134,10 @@ void main() {
     expect(exchange.answer, 'A clerk [s1/p0001].');
     expect(exchange.limit, const TextPosition(2, 0.5));
     expect(stages, containsAllInOrder([AskStage.reading, AskStage.thinking]));
-    final saved = await AskHistoryStore(temp).load('book');
+    final id = controller.conversationId!;
+    final saved = await AskHistoryStore(temp).load('book', id);
     expect(saved.single.answer, 'A clerk [s1/p0001].');
+    expect(controller.conversations.single.id, id);
   });
 
   test('sends the conversation so far with the next question', () async {
@@ -216,14 +237,123 @@ void main() {
     expect(controller.exchanges, isEmpty);
   });
 
-  test('clears the conversation, on the device too', () async {
-    final controller = controllerWith(
-      FakeAskProvider([(200, answerWith('Yes.'))]),
+  group('conversations', () {
+    test('a new one sends nothing from the one before, which stays', () async {
+      final provider = FakeAskProvider([
+        (200, answerWith('First.')),
+        (200, answerWith('Second.')),
+      ]);
+      final controller = controllerWith(provider);
+      await ask(controller, 'One?');
+      final first = controller.conversationId!;
+      controller.startNew();
+      expect(controller.exchanges, isEmpty);
+      expect(controller.conversationId, isNull);
+
+      clock = clock.add(const Duration(minutes: 1));
+      await ask(controller, 'Two?');
+      final input = jsonEncode(provider.bodies[1]['input']);
+      expect(input, isNot(contains('One?')));
+      expect(controller.conversationId, isNot(first));
+      expect(
+        [for (final c in controller.conversations) c.title],
+        ['Two?', 'One?'],
+      );
+      expect(await AskHistoryStore(temp).list('book'), hasLength(2));
+    });
+
+    test('a saved one can be opened and carried on', () async {
+      await AskHistoryStore(temp).save('book', 'c1', [earlier('Earlier?')]);
+      await AskHistoryStore(temp).save('book', 'c2', [earlier('Other?')]);
+      final provider = FakeAskProvider([(200, answerWith('Again.'))]);
+      final controller = controllerWith(provider);
+      await controller.refresh();
+      controller.open('c1');
+      expect(controller.conversationId, 'c1');
+      expect(controller.exchanges.single.question, 'Earlier?');
+
+      await ask(controller, 'And now?');
+      final input = jsonEncode(provider.bodies.single['input']);
+      expect(input, contains('Earlier?'));
+      expect(input, isNot(contains('Other?')));
+      final saved = await AskHistoryStore(temp).load('book', 'c1');
+      expect([for (final e in saved) e.question], ['Earlier?', 'And now?']);
+      expect(controller.conversations.first.id, 'c1');
+    });
+
+    test(
+      'coming back within five minutes keeps it; later, starts anew',
+      () async {
+        final controller = controllerWith(
+          FakeAskProvider([(200, answerWith('Yes.'))]),
+        );
+        await ask(controller, 'Who?');
+
+        controller.leave();
+        clock = clock.add(askIdleGap - const Duration(seconds: 1));
+        await controller.refresh();
+        expect(controller.exchanges, hasLength(1));
+
+        // Away is counted from leaving, not from the question.
+        controller.leave();
+        clock = clock.add(askIdleGap);
+        await controller.refresh();
+        expect(controller.exchanges, isEmpty);
+        expect(controller.conversations.single.title, 'Who?');
+
+        // Looking again without leaving changes nothing.
+        clock = clock.add(const Duration(hours: 1));
+        await controller.refresh();
+        expect(controller.conversationId, isNull);
+      },
     );
-    await ask(controller, 'Who?');
-    await controller.clear();
-    expect(controller.exchanges, isEmpty);
-    expect(await AskHistoryStore(temp).load('book'), isEmpty);
+
+    test('nothing switches while a question is under way', () async {
+      await AskHistoryStore(temp).save('book', 'c1', [earlier('Earlier?')]);
+      final body = StreamController<String>();
+      final controller = streaming(body);
+      await controller.refresh();
+      controller.open('c1');
+      final asking = ask(controller, 'More?');
+      await pumpEventQueue();
+      expect(controller.busy, isTrue);
+
+      controller
+        ..startNew()
+        ..open('c2')
+        ..leave();
+      clock = clock.add(const Duration(hours: 1));
+      await controller.refresh();
+      await controller.deleteConversation('c1');
+      expect(controller.conversationId, 'c1');
+      expect(controller.exchanges, hasLength(1));
+
+      body.add(answerWith('Yes.'));
+      await body.close();
+      await asking;
+      final saved = await AskHistoryStore(temp).load('book', 'c1');
+      expect(saved, hasLength(2));
+    });
+
+    test(
+      'deleting the one shown starts a new one, on the device too',
+      () async {
+        await AskHistoryStore(temp).save('book', 'c1', [earlier('Earlier?')]);
+        await AskHistoryStore(temp).save('book', 'c2', [earlier('Other?')]);
+        final controller = controllerWith(FakeAskProvider([]));
+        await controller.refresh();
+        controller.open('c1');
+        await controller.deleteConversation('c1');
+        expect(controller.conversationId, isNull);
+        expect(controller.exchanges, isEmpty);
+        expect([for (final c in controller.conversations) c.id], ['c2']);
+        expect(await AskHistoryStore(temp).load('book', 'c1'), isEmpty);
+
+        await controller.deleteConversation('c2');
+        expect(controller.conversations, isEmpty);
+        expect(await AskHistoryStore(temp).list('book'), isEmpty);
+      },
+    );
   });
 
   test('says what went wrong in words a reader can act on', () {

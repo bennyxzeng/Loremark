@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter/widgets.dart' show TextEditingController;
@@ -29,6 +31,10 @@ enum AskStage {
   failed,
 }
 
+/// How long the reader can be away from Ask and come back to the same
+/// conversation. Away longer, they come back to a new one.
+const askIdleGap = Duration(minutes: 5);
+
 /// The question being answered, or the last one, if it failed.
 class AskPending {
   AskPending(this.question);
@@ -45,11 +51,12 @@ class AskPending {
   bool get running => stage != AskStage.failed;
 }
 
-/// One book's Ask tab: its conversation, the question under way, and how far
-/// the reader has read.
+/// One book's Ask tab: the conversation shown, the book's saved ones, the
+/// question under way, and how far the reader has read.
 ///
 /// It outlives the tab's widgets, which are rebuilt when Ask locks and unlocks,
-/// so a question under way and a half-written one survive going offline.
+/// so a question under way and a half-written one survive going offline. It
+/// starts on a new conversation, since one is made each time the book opens.
 class AskController extends ChangeNotifier {
   AskController({
     required this.book,
@@ -77,7 +84,10 @@ class AskController extends ChangeNotifier {
   final draft = TextEditingController();
 
   AskHistoryStore? _history;
+  String? _conversationId;
   final _exchanges = <AskExchange>[];
+  var _conversations = <AskConversation>[];
+  DateTime? _awaySince;
   AskPending? _pending;
   AskBoundary? _boundary;
   Object? _boundaryError;
@@ -86,8 +96,14 @@ class AskController extends ChangeNotifier {
   AskCancel? _cancel;
   bool _disposed = false;
 
-  /// The conversation, oldest first.
+  /// The conversation shown, oldest first. Empty for a new one.
   List<AskExchange> get exchanges => List.unmodifiable(_exchanges);
+
+  /// The id of the conversation shown, or null while it is new and unsaved.
+  String? get conversationId => _conversationId;
+
+  /// The book's saved conversations, the latest first.
+  List<AskConversation> get conversations => List.unmodifiable(_conversations);
 
   AskPending? get pending => _pending;
 
@@ -97,23 +113,30 @@ class AskController extends ChangeNotifier {
   /// Why the reader's place couldn't be worked out, if it couldn't.
   Object? get boundaryError => _boundaryError;
 
-  /// Whether the conversation and the reader's place have been read once.
+  /// Whether the saved conversations and the reader's place have been read
+  /// once.
   bool get loaded => _loaded;
 
   bool get busy => _pending?.running ?? false;
 
-  /// Looks again at how far the reader has read, and reads the conversation
-  /// the first time. Calls made while one is running wait for it.
+  /// Looks again at how far the reader has read, and reads the saved
+  /// conversations the first time. After [leave], if the reader was away for
+  /// [askIdleGap] or more, starts a new conversation. Calls made while one is
+  /// running wait for it.
   Future<void> refresh() => _refreshing ??= _refresh().whenComplete(() {
     _refreshing = null;
   });
 
   Future<void> _refresh() async {
-    try {
-      final history = _history ??= await _openHistory();
-      if (!_loaded) _exchanges.addAll(await history.load(book.id));
-    } on Object catch (error) {
-      debugPrint('Could not read the Ask conversation: $error');
+    final away = _awaySince;
+    _awaySince = null;
+    if (away != null && !_now().isBefore(away.add(askIdleGap))) startNew();
+    if (!_loaded) {
+      try {
+        _conversations = await (await _store()).list(book.id);
+      } on Object catch (error) {
+        debugPrint('Could not read the Ask conversations: $error');
+      }
     }
     try {
       _boundary = await openAskBoundary(backend, book);
@@ -193,6 +216,15 @@ class AskController extends ChangeNotifier {
     } finally {
       if (identical(_cancel, cancel)) _cancel = null;
     }
+    // Debug and profile builds only; for seeing what questions cost.
+    if (kDebugMode || kProfileMode) {
+      final fields = {
+        'status': answer.status,
+        'history': _exchanges.length,
+        ...askUsageSummary(answer.usage),
+      };
+      debugPrintSynchronously('LOREMARK_ASK_USAGE ${jsonEncode(fields)}');
+    }
     if (_disposed) return;
 
     final cutOff = answer.status == 'incomplete';
@@ -206,9 +238,16 @@ class AskController extends ChangeNotifier {
           cutOff: cutOff,
         ),
       );
+      final id = _conversationId ??= AskHistoryStore.newId(_now());
+      final conversation = AskConversation(id, _exchanges);
+      _conversations = [
+        conversation,
+        for (final other in _conversations)
+          if (other.id != id) other,
+      ];
       _pending = null;
       _notify();
-      await _save();
+      await _save(conversation);
       return;
     }
     _fail(pending, describeAskFailure(answer));
@@ -242,16 +281,52 @@ class AskController extends ChangeNotifier {
     _notify();
   }
 
-  /// Forgets the conversation.
-  Future<void> clear() async {
+  /// Notes that the reader has left Ask: see [refresh].
+  void leave() => _awaySince ??= _now();
+
+  /// Starts a new conversation. The one shown, if it has anything, stays in
+  /// [conversations]. Does nothing while a question is under way.
+  void startNew() {
     if (busy) return;
+    _conversationId = null;
     _exchanges.clear();
     _pending = null;
     _notify();
+  }
+
+  /// Shows saved conversation [id], to carry on with. Does nothing while a
+  /// question is under way.
+  void open(String id) {
+    if (busy) return;
+    final conversation = _conversations.where((c) => c.id == id).firstOrNull;
+    if (conversation == null) return;
+    _conversationId = id;
+    _exchanges
+      ..clear()
+      ..addAll(conversation.exchanges);
+    _pending = null;
+    _notify();
+  }
+
+  /// Forgets saved conversation [id]. If it is the one shown, a new one takes
+  /// its place; while a question is under way in it, does nothing.
+  Future<void> deleteConversation(String id) async {
+    final shown = id == _conversationId;
+    if (shown && busy) return;
+    _conversations = [
+      for (final other in _conversations)
+        if (other.id != id) other,
+    ];
+    if (shown) {
+      _conversationId = null;
+      _exchanges.clear();
+      _pending = null;
+    }
+    _notify();
     try {
-      await (_history ??= await _openHistory()).delete(book.id);
+      await (await _store()).delete(book.id, id);
     } on Object catch (error) {
-      debugPrint('Could not clear the Ask conversation: $error');
+      debugPrint('Could not delete the Ask conversation: $error');
     }
   }
 
@@ -264,9 +339,17 @@ class AskController extends ChangeNotifier {
     _notify();
   }
 
-  Future<void> _save() async {
+  Future<AskHistoryStore> _store() async => _history ??= await _openHistory();
+
+  /// Saves [conversation] as it was, whatever is shown by the time the store
+  /// is ready.
+  Future<void> _save(AskConversation conversation) async {
     try {
-      await (_history ??= await _openHistory()).save(book.id, _exchanges);
+      await (await _store()).save(
+        book.id,
+        conversation.id,
+        conversation.exchanges,
+      );
     } on Object catch (error) {
       debugPrint('Could not save the Ask conversation: $error');
     }

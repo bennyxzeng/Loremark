@@ -36,7 +36,7 @@ class AskReach {
   final StoryReadingProgress progress;
 
   /// Where the page ends, or where it starts if its end couldn't be measured.
-  /// An earlier question is sent again only if it was asked at or before this.
+  /// Kept with each question, as where the reader was when they asked it.
   final TextPosition limit;
 
   /// The text of the page, or null if its end couldn't be measured.

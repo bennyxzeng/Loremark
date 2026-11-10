@@ -282,8 +282,7 @@ class DeviceStoryMapBackend implements StoryMapBackend, AskBackend {
 
     return AskReach(
       progress: progress,
-      // Unmeasured, only the page's start is sure, so earlier questions from
-      // further into this section aren't sent again.
+      // Unmeasured, only the section is sure.
       limit: through ?? TextPosition(position.sectionIndex, 0),
       page: page,
       pastMap: _outsideMap(sections, spine, progress, position.sectionIndex),

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../ask/ask_boundary.dart';
 import '../ask/ask_citations.dart';
 import '../ask/ask_controller.dart';
+import '../ask/ask_history.dart' show AskConversation;
 import '../reader/epub_reader_service.dart';
 import '../settings/ai_settings.dart';
 import '../story_map/story_facts.dart';
@@ -43,6 +44,10 @@ class AskScreen extends StatefulWidget {
 class _AskScreenState extends State<AskScreen> {
   final _scroll = ScrollController();
 
+  /// Leaving the app counts as leaving Ask, for how long the reader is away.
+  /// Null only in a state kept by a hot reload from before it existed.
+  AppLifecycleListener? _lifecycle;
+
   AskController get _ask => widget.controller;
 
   @override
@@ -50,6 +55,14 @@ class _AskScreenState extends State<AskScreen> {
     super.initState();
     _ask.addListener(_changed);
     _ask.draft.addListener(_draftChanged);
+    _lifecycle = AppLifecycleListener(
+      onHide: () {
+        if (widget.active) _ask.leave();
+      },
+      onShow: () {
+        if (widget.active) unawaited(_ask.refresh());
+      },
+    );
     if (widget.active) unawaited(_ask.refresh());
   }
 
@@ -65,6 +78,7 @@ class _AskScreenState extends State<AskScreen> {
         ..draft.addListener(_draftChanged);
     }
     if (widget.active && !oldWidget.active) unawaited(_ask.refresh());
+    if (!widget.active && oldWidget.active) _ask.leave();
   }
 
   @override
@@ -72,6 +86,7 @@ class _AskScreenState extends State<AskScreen> {
     _ask
       ..removeListener(_changed)
       ..draft.removeListener(_draftChanged);
+    _lifecycle?.dispose();
     _scroll.dispose();
     super.dispose();
   }
@@ -111,14 +126,85 @@ class _AskScreenState extends State<AskScreen> {
     );
   }
 
-  Future<void> _clear() async {
+  /// The book's saved conversations, to open one, start a new one, or delete
+  /// one.
+  Future<void> _openConversations() => showFactSheet(
+    context,
+    builder: (sheetContext, scrollController) => ListenableBuilder(
+      listenable: _ask,
+      builder: (context, _) {
+        final conversations = _ask.conversations;
+        final now = DateTime.now();
+        return ListView(
+          controller: scrollController,
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 32),
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Text('CONVERSATIONS', style: kicker()),
+            ),
+            ListTile(
+              enabled: !_ask.busy,
+              leading: const Icon(Icons.add_comment_outlined),
+              title: const Text('New conversation'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _ask.startNew();
+              },
+            ),
+            if (conversations.isEmpty)
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: Text(
+                  'Conversations you have about this book are kept here.',
+                  style: TextStyle(fontSize: 13, color: LoremarkColors.muted),
+                ),
+              ),
+            for (final conversation in conversations)
+              ListTile(
+                key: ValueKey('conversation-${conversation.id}'),
+                enabled: !_ask.busy,
+                selected: conversation.id == _ask.conversationId,
+                selectedColor: LoremarkColors.ink,
+                selectedTileColor: LoremarkColors.panel,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                title: Text(
+                  conversation.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                subtitle: Text(
+                  '${conversationTime(conversation.updatedAt, now)} · '
+                  '${conversation.length} '
+                  '${conversation.length == 1 ? 'question' : 'questions'}',
+                ),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _ask.open(conversation.id);
+                },
+                trailing: IconButton(
+                  tooltip: 'Delete conversation',
+                  icon: const Icon(Icons.delete_outline, size: 20),
+                  onPressed: _ask.busy && conversation.id == _ask.conversationId
+                      ? null
+                      : () => _deleteConversation(conversation),
+                ),
+              ),
+          ],
+        );
+      },
+    ),
+  );
+
+  Future<void> _deleteConversation(AskConversation conversation) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Clear this conversation?'),
+        title: const Text('Delete this conversation?'),
         content: const Text(
-          'The questions and answers about this book are removed from this '
-          'device.',
+          'Its questions and answers are removed from this device.',
         ),
         actions: [
           TextButton(
@@ -127,12 +213,12 @@ class _AskScreenState extends State<AskScreen> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Clear'),
+            child: const Text('Delete'),
           ),
         ],
       ),
     );
-    if (confirmed == true) await _ask.clear();
+    if (confirmed == true) await _ask.deleteConversation(conversation.id);
   }
 
   /// Shows the paragraph [ref] names, with one on either side.
@@ -286,7 +372,8 @@ class _AskScreenState extends State<AskScreen> {
           _Coverage(
             controller: _ask,
             onOpenStoryMap: widget.onOpenStoryMap,
-            onClear: exchanges.isEmpty || _ask.busy ? null : _clear,
+            onConversations: _openConversations,
+            onNew: exchanges.isEmpty || _ask.busy ? null : _ask.startNew,
           ),
           Expanded(child: conversation),
           _Composer(
@@ -307,12 +394,16 @@ class _Coverage extends StatelessWidget {
   const _Coverage({
     required this.controller,
     required this.onOpenStoryMap,
-    required this.onClear,
+    required this.onConversations,
+    required this.onNew,
   });
 
   final AskController controller;
   final VoidCallback onOpenStoryMap;
-  final VoidCallback? onClear;
+  final VoidCallback onConversations;
+
+  /// Null when there's nothing to start afresh from.
+  final VoidCallback? onNew;
 
   @override
   Widget build(BuildContext context) {
@@ -362,15 +453,18 @@ class _Coverage extends StatelessWidget {
                     ),
                   ),
                 ),
-                if (onClear != null)
-                  IconButton(
-                    tooltip: 'Clear conversation',
-                    visualDensity: VisualDensity.compact,
-                    onPressed: onClear,
-                    icon: const Icon(Icons.delete_sweep_outlined, size: 20),
-                  )
-                else
-                  const SizedBox(height: 40),
+                IconButton(
+                  tooltip: 'Conversations',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: onConversations,
+                  icon: const Icon(Icons.history, size: 20),
+                ),
+                IconButton(
+                  tooltip: 'New conversation',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: onNew,
+                  icon: const Icon(Icons.add_comment_outlined, size: 20),
+                ),
               ],
             ),
             if (advice != null)
@@ -752,4 +846,34 @@ class _Composer extends StatelessWidget {
       ),
     );
   }
+}
+
+const _months = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
+
+/// When a conversation was last added to, as its list shows it: the time if
+/// it was [now]'s day, the date if [now]'s year, and the year too if earlier.
+@visibleForTesting
+String conversationTime(DateTime time, DateTime now) {
+  final at = time.toLocal();
+  final today = now.toLocal();
+  final sameYear = at.year == today.year;
+  if (sameYear && at.month == today.month && at.day == today.day) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    return 'Today ${two(at.hour)}:${two(at.minute)}';
+  }
+  final date = '${_months[at.month - 1]} ${at.day}';
+  return sameYear ? date : '$date, ${at.year}';
 }

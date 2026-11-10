@@ -110,8 +110,12 @@ void main() {
     for (final folder in sideFolders) {
       await File('${folder.path}/kept.json').create(recursive: true);
     }
-    final chat = AskHistoryStore(repository.root).file(book.id);
+    final chats = AskHistoryStore(repository.root);
+    final chat = chats.file(book.id, 'c1');
     await chat.create(recursive: true);
+    // The one conversation a book had before there could be several.
+    final single = File('${chats.folder(book.id).path}.json');
+    await single.create();
 
     await repository.remove(book);
 
@@ -123,7 +127,8 @@ void main() {
     for (final folder in sideFolders) {
       expect(await folder.exists(), isFalse, reason: folder.path);
     }
-    expect(await chat.exists(), isFalse);
+    expect(await chat.parent.exists(), isFalse);
+    expect(await single.exists(), isFalse);
   });
 
   test('rejects a file that is not an EPUB', () async {

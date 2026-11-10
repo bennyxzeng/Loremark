@@ -21,24 +21,44 @@ import '../ask/ask_test_support.dart';
 import '../ask/fake_ask_backend.dart';
 import '../story_model/story_model_fixture.dart';
 
-/// The conversation in memory.
+/// The book's conversations in memory, by id.
 class _MemoryHistory extends AskHistoryStore {
-  _MemoryHistory([List<AskExchange>? saved])
-    : saved = saved ?? [],
+  _MemoryHistory([Map<String, List<AskExchange>>? saved])
+    : saved = saved ?? {},
       super(Directory('unused'));
 
-  List<AskExchange> saved;
+  final Map<String, List<AskExchange>> saved;
 
   @override
-  Future<List<AskExchange>> load(String bookId) async => List.of(saved);
+  Future<List<AskConversation>> list(String bookId) async => [
+    for (final MapEntry(:key, :value) in saved.entries)
+      if (value.isNotEmpty) AskConversation(key, value),
+  ]..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 
   @override
-  Future<void> save(String bookId, List<AskExchange> exchanges) async =>
-      saved = List.of(exchanges);
+  Future<List<AskExchange>> load(String bookId, String id) async =>
+      List.of(saved[id] ?? const []);
 
   @override
-  Future<void> delete(String bookId) async => saved = [];
+  Future<void> save(
+    String bookId,
+    String id,
+    List<AskExchange> exchanges,
+  ) async => saved[id] = List.of(exchanges);
+
+  @override
+  Future<void> delete(String bookId, String id) async => saved.remove(id);
+
+  @override
+  Future<void> deleteBook(String bookId) async => saved.clear();
 }
+
+AskExchange _exchange(String question, String answer) => AskExchange(
+  question: question,
+  answer: answer,
+  limit: const TextPosition(1, 0),
+  askedAt: DateTime.utc(2026),
+);
 
 void main() {
   final book = Book(
@@ -79,6 +99,8 @@ void main() {
     List<(int, String)> replies = const [],
     _MemoryHistory? history,
     ConnectionStatus? connection,
+    ValueNotifier<bool>? active,
+    DateTime Function()? now,
   }) async {
     final settings = AiSettings(
       MemorySecretStore({
@@ -94,6 +116,7 @@ void main() {
       openHistory: () async => history ?? _MemoryHistory(),
       post: post ?? FakeAskProvider(replies).post,
       loadPrompt: () async => 'PROMPT',
+      now: now,
     );
     addTearDown(controller.dispose);
     await tester.pumpWidget(
@@ -107,11 +130,14 @@ void main() {
               body: AiLock(
                 feature: 'Ask',
                 needsConnection: true,
-                child: AskScreen(
-                  controller: controller,
-                  active: true,
-                  onOpenStoryMap: () => openedMap.add('opened'),
-                  onOpenPassage: (target) async => jumps.add(target),
+                child: ValueListenableBuilder(
+                  valueListenable: active ?? ValueNotifier(true),
+                  builder: (context, active, _) => AskScreen(
+                    controller: controller,
+                    active: active,
+                    onOpenStoryMap: () => openedMap.add('opened'),
+                    onOpenPassage: (target) async => jumps.add(target),
+                  ),
                 ),
               ),
             ),
@@ -130,6 +156,13 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  IconButton newConversation(WidgetTester tester) => tester.widget(
+    find.ancestor(
+      of: find.byIcon(Icons.add_comment_outlined),
+      matching: find.byType(IconButton),
+    ),
+  );
+
   String answer(String text) => sse([
     completed([message(text)]),
   ]);
@@ -141,7 +174,7 @@ void main() {
       findsOne,
     );
     expect(find.text('Ask about what you’ve read.'), findsOne);
-    expect(find.byTooltip('Clear conversation'), findsNothing);
+    expect(newConversation(tester).onPressed, isNull);
   });
 
   testWidgets('asks, and shows the answer with where it comes from', (
@@ -177,17 +210,21 @@ void main() {
   testWidgets('a citation past where the reader is now can\'t be opened', (
     tester,
   ) async {
-    await pumpAsk(
+    final controller = await pumpAsk(
       tester,
-      history: _MemoryHistory([
-        AskExchange(
-          question: 'Later?',
-          answer: 'Elian came [s2/p0001].',
-          limit: const TextPosition(9, 0),
-          askedAt: DateTime.utc(2026),
-        ),
-      ]),
+      history: _MemoryHistory({
+        'c1': [
+          AskExchange(
+            question: 'Later?',
+            answer: 'Elian came [s2/p0001].',
+            limit: const TextPosition(9, 0),
+            askedAt: DateTime.utc(2026),
+          ),
+        ],
+      }),
     );
+    controller.open('c1');
+    await tester.pumpAndSettle();
     expect(find.byTooltip('Past where you are now'), findsOne);
     await tester.tap(find.text('1'));
     await tester.pumpAndSettle();
@@ -303,21 +340,118 @@ void main() {
     expect(input.controller!.text, 'Half a');
   });
 
-  testWidgets('clears the conversation once the reader agrees', (tester) async {
-    final history = _MemoryHistory([
-      AskExchange(
-        question: 'Who?',
-        answer: 'Mara.',
-        limit: const TextPosition(1, 0),
-        askedAt: DateTime.utc(2026),
-      ),
-    ]);
-    await pumpAsk(tester, history: history);
-    await tester.tap(find.byTooltip('Clear conversation'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Clear'));
-    await tester.pumpAndSettle();
-    expect(find.text('Ask about what you’ve read.'), findsOne);
-    expect(history.saved, isEmpty);
+  group('conversations', () {
+    testWidgets('a new one empties the thread; the old one is listed', (
+      tester,
+    ) async {
+      await pumpAsk(tester, replies: [(200, answer('Mara.'))]);
+      await askQuestion(tester, 'Who?');
+      expect(find.text('Mara.'), findsOne);
+
+      await tester.tap(find.byTooltip('New conversation'));
+      await tester.pumpAndSettle();
+      expect(find.text('Ask about what you’ve read.'), findsOne);
+      expect(newConversation(tester).onPressed, isNull);
+
+      await tester.tap(find.byTooltip('Conversations'));
+      await tester.pumpAndSettle();
+      expect(find.text('CONVERSATIONS'), findsOne);
+      expect(find.text('Who?'), findsOne);
+      expect(find.textContaining('· 1 question'), findsOne);
+    });
+
+    testWidgets('one opens from the list', (tester) async {
+      await pumpAsk(
+        tester,
+        history: _MemoryHistory({
+          'c1': [_exchange('Earlier?', 'Long ago.')],
+          'c2': [_exchange('Other?', 'Elsewhere.')],
+        }),
+      );
+      expect(find.text('Ask about what you’ve read.'), findsOne);
+      await tester.tap(find.byTooltip('Conversations'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Earlier?'));
+      await tester.pumpAndSettle();
+      expect(find.text('CONVERSATIONS'), findsNothing);
+      expect(find.text('Long ago.'), findsOne);
+      expect(find.text('Elsewhere.'), findsNothing);
+    });
+
+    testWidgets('deleting one asks first', (tester) async {
+      final history = _MemoryHistory({
+        'c1': [_exchange('Who?', 'Mara.')],
+      });
+      final controller = await pumpAsk(tester, history: history);
+      controller.open('c1');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Conversations'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Delete conversation'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(history.saved, contains('c1'));
+
+      await tester.tap(find.byTooltip('Delete conversation'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Delete'));
+      await tester.pumpAndSettle();
+      expect(history.saved, isEmpty);
+      expect(
+        find.text('Conversations you have about this book are kept here.'),
+        findsOne,
+      );
+      Navigator.of(tester.element(find.text('CONVERSATIONS'))).pop();
+      await tester.pumpAndSettle();
+      expect(find.text('Ask about what you’ve read.'), findsOne);
+    });
+
+    testWidgets('leaving the tab for five minutes means a new one', (
+      tester,
+    ) async {
+      var clock = DateTime.utc(2026, 11, 9, 12);
+      final active = ValueNotifier(true);
+      await pumpAsk(
+        tester,
+        replies: [(200, answer('Mara.'))],
+        active: active,
+        now: () => clock,
+      );
+      await askQuestion(tester, 'Who?');
+
+      active.value = false;
+      await tester.pump();
+      clock = clock.add(const Duration(minutes: 4));
+      active.value = true;
+      await tester.pumpAndSettle();
+      expect(find.text('Mara.'), findsOne);
+
+      active.value = false;
+      await tester.pump();
+      clock = clock.add(askIdleGap);
+      active.value = true;
+      await tester.pumpAndSettle();
+      expect(find.text('Mara.'), findsNothing);
+      expect(find.text('Ask about what you’ve read.'), findsOne);
+    });
+  });
+
+  group('when a conversation was last added to', () {
+    final now = DateTime(2026, 11, 9, 20, 30);
+
+    test('today, the time', () {
+      expect(conversationTime(DateTime(2026, 11, 9, 8, 5), now), 'Today 08:05');
+    });
+
+    test('this year, the date', () {
+      expect(conversationTime(DateTime(2026, 11, 8, 23, 59), now), 'Nov 8');
+      expect(conversationTime(DateTime(2026, 3, 2), now), 'Mar 2');
+    });
+
+    test('before, the year too', () {
+      expect(conversationTime(DateTime(2025, 11, 9), now), 'Nov 9, 2025');
+    });
   });
 }

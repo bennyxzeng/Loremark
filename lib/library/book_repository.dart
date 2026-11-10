@@ -142,7 +142,7 @@ class BookRepository {
       final folder = Directory(path);
       if (await folder.exists()) await folder.delete(recursive: true);
     }
-    await AskHistoryStore(root).delete(book.id);
+    await AskHistoryStore(root).deleteBook(book.id);
   }
 
   /// Queues a write, so two saves never share the temporary file. A failed

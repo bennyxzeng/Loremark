@@ -44,13 +44,14 @@ class AskExchange {
   final String answer;
 
   /// How far the reader had read when it was asked: see `AskReach.limit`.
+  /// A record only; it doesn't decide what is sent.
   final TextPosition limit;
   final DateTime askedAt;
 
   /// Whether the answer was cut off before it finished.
   final bool cutOff;
 
-  AskTurn get turn => AskTurn(question: question, answer: answer, limit: limit);
+  AskTurn get turn => AskTurn(question: question, answer: answer);
 
   Map<String, dynamic> toJson() => {
     'question': question,
@@ -61,14 +62,34 @@ class AskExchange {
   };
 }
 
-/// The most exchanges kept for a book; older ones are dropped.
+/// The most exchanges kept in one conversation; older ones are dropped.
 const maxKeptExchanges = 200;
 
-/// Each book's Ask conversation, kept on the device next to the library as
-/// `chats/<book id>.json`.
+/// One conversation about a book, as saved. Never empty.
+class AskConversation {
+  AskConversation(this.id, List<AskExchange> exchanges)
+    : assert(exchanges.isNotEmpty),
+      exchanges = List.unmodifiable(exchanges);
+
+  final String id;
+
+  /// Oldest first.
+  final List<AskExchange> exchanges;
+
+  /// Its first question.
+  String get title => exchanges.first.question;
+
+  /// When its last question was asked.
+  DateTime get updatedAt => exchanges.last.askedAt;
+
+  int get length => exchanges.length;
+}
+
+/// Each book's Ask conversations, kept on the device next to the library as
+/// `chats/<book id>/<conversation id>.json`.
 ///
-/// It is the reader's own record, so losing it loses nothing of the book: a
-/// file that can't be read is an empty conversation.
+/// They are the reader's own record, so losing one loses nothing of the book:
+/// a file that can't be read is an empty conversation.
 class AskHistoryStore {
   AskHistoryStore(this.root);
 
@@ -83,19 +104,96 @@ class AskHistoryStore {
 
   static final _validId = RegExp(r'^[A-Za-z0-9_-]+$');
 
-  /// The file for [bookId]. A path separator or `..` never reaches the disk.
-  File file(String bookId) {
-    if (!_validId.hasMatch(bookId)) {
-      throw ArgumentError.value(bookId, 'bookId', 'Not a valid book id');
-    }
-    return File('${root.path}/chats/$bookId.json');
+  /// An id for a conversation started at [now].
+  static String newId(DateTime now) => 'c${now.microsecondsSinceEpoch}';
+
+  /// The folder of [bookId]'s conversations. A path separator or `..` never
+  /// reaches the disk.
+  Directory folder(String bookId) {
+    _check(bookId, 'bookId');
+    return Directory('${root.path}/chats/$bookId');
   }
 
-  /// The conversation about [bookId], oldest first; empty if there is none or
-  /// it can't be read.
-  Future<List<AskExchange>> load(String bookId) async {
+  /// The file of conversation [id] about [bookId].
+  File file(String bookId, String id) {
+    _check(id, 'id');
+    return File('${folder(bookId).path}/$id.json');
+  }
+
+  /// Where the one conversation a book had before there could be several was
+  /// kept.
+  File _singleFile(String bookId) => File('${folder(bookId).path}.json');
+
+  static void _check(String id, String name) {
+    if (!_validId.hasMatch(id)) {
+      throw ArgumentError.value(id, name, 'Not a valid id');
+    }
+  }
+
+  /// The conversations about [bookId], the latest first. Files that can't be
+  /// read are left out.
+  Future<List<AskConversation>> list(String bookId) async {
+    await _moveSingleFile(bookId);
+    final dir = folder(bookId);
+    final conversations = <AskConversation>[];
     try {
-      final json = jsonDecode(await file(bookId).readAsString());
+      await for (final entity in dir.list()) {
+        final name = entity.uri.pathSegments.last;
+        if (entity is! File || !name.endsWith('.json')) continue;
+        final id = name.substring(0, name.length - '.json'.length);
+        if (!_validId.hasMatch(id)) continue;
+        final exchanges = await _read(entity);
+        if (exchanges.isEmpty) continue;
+        conversations.add(AskConversation(id, exchanges));
+      }
+    } on FileSystemException {
+      return [];
+    }
+    conversations.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    return conversations;
+  }
+
+  /// Conversation [id] about [bookId], oldest first; empty if there is none
+  /// or it can't be read.
+  Future<List<AskExchange>> load(String bookId, String id) =>
+      _read(file(bookId, id));
+
+  /// Writes [exchanges] as conversation [id] about [bookId], keeping the
+  /// latest [maxKeptExchanges]. A crash mid-write leaves the old file or the
+  /// new one.
+  Future<void> save(String bookId, String id, List<AskExchange> exchanges) =>
+      _write(file(bookId, id), exchanges);
+
+  /// Forgets conversation [id] about [bookId].
+  Future<void> delete(String bookId, String id) async {
+    final target = file(bookId, id);
+    if (await target.exists()) await target.delete();
+  }
+
+  /// Forgets every conversation about [bookId].
+  Future<void> deleteBook(String bookId) async {
+    final dir = folder(bookId);
+    if (await dir.exists()) await dir.delete(recursive: true);
+    final single = _singleFile(bookId);
+    if (await single.exists()) await single.delete();
+  }
+
+  /// Moves the book's one conversation from before there could be several
+  /// into its folder, as a conversation of its own. One that can't be read is
+  /// left where it is.
+  Future<void> _moveSingleFile(String bookId) async {
+    final single = _singleFile(bookId);
+    if (!await single.exists()) return;
+    final exchanges = await _read(single);
+    if (exchanges.isEmpty) return;
+    final target = file(bookId, newId(exchanges.first.askedAt));
+    await target.parent.create(recursive: true);
+    await single.rename(target.path);
+  }
+
+  Future<List<AskExchange>> _read(File file) async {
+    try {
+      final json = jsonDecode(await file.readAsString());
       if (json is! Map<String, dynamic> || json['version'] != 1) return [];
       return [
         for (final item in json['exchanges'] as List)
@@ -110,10 +208,7 @@ class AskHistoryStore {
     }
   }
 
-  /// Writes [exchanges] as the conversation about [bookId], keeping the latest
-  /// [maxKeptExchanges]. A crash mid-write leaves the old file or the new one.
-  Future<void> save(String bookId, List<AskExchange> exchanges) async {
-    final target = file(bookId);
+  Future<void> _write(File target, List<AskExchange> exchanges) async {
     await target.parent.create(recursive: true);
     final kept = exchanges.length > maxKeptExchanges
         ? exchanges.sublist(exchanges.length - maxKeptExchanges)
@@ -127,11 +222,5 @@ class AskHistoryStore {
       flush: true,
     );
     await temp.rename(target.path);
-  }
-
-  /// Forgets the conversation about [bookId].
-  Future<void> delete(String bookId) async {
-    final target = file(bookId);
-    if (await target.exists()) await target.delete();
   }
 }
