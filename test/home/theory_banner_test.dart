@@ -98,9 +98,18 @@ void main() {
     expect(find.text('Theory confirmed: "Mara is the thief"'), findsOneWidget);
     expect(find.text('View'), findsOneWidget);
 
-    // Pressed directly: a tap on the button did not hit it in the test
-    // (cause not found), but what the button does is what is checked here.
-    tester.widget<SnackBarAction>(find.byType(SnackBarAction)).onPressed();
+    // The bar is zero height until its slide-in has run for one full pass,
+    // so a tap before this second pump lands on the bar, not on the button.
+    await tester.pump(const Duration(seconds: 1));
+
+    final snackRect = tester.getRect(find.byType(SnackBar));
+    final nav = tester.getRect(find.byType(NavigationBar));
+    expect(
+      snackRect.bottom,
+      lessThanOrEqualTo(nav.top),
+      reason: 'the floating bar clears the tab bar',
+    );
+    await tester.tap(find.text('View'));
     await tester.pumpAndSettle();
 
     final bar = tester.widget<NavigationBar>(find.byType(NavigationBar));
