@@ -102,4 +102,65 @@ void main() {
       expect(citesAnything(splitAnswer('Just words.')), isFalse);
     });
   });
+
+  group('citedPassages', () {
+    AskRef page([int? line]) => AskRef.page(line);
+    // Paragraph pNNNN is number NNNN; s9 isn't known.
+    int? number(AskRef ref) =>
+        ref.sectionId == 's9' ? null : int.parse(ref.paragraphId!.substring(1));
+
+    test('joins lines next to each other, in reading order', () {
+      expect(citedPassages([page(9), page(8)], number), [
+        [page(8), page(9)],
+      ]);
+      expect(citedPassages([page(3), page(5)], number), [
+        [page(3)],
+        [page(5)],
+      ]);
+      expect(citedPassages([page(4), page(6), page(5)], number), [
+        [page(4), page(5), page(6)],
+      ]);
+    });
+
+    test('joins paragraphs next to each other in one section', () {
+      expect(
+        citedPassages([
+          AskRef('s1', 'p0012'),
+          AskRef('s1', 'p0013'),
+          AskRef('s2', 'p0014'),
+          AskRef('s1', 'p0015'),
+        ], number),
+        [
+          [AskRef('s1', 'p0012'), AskRef('s1', 'p0013')],
+          [AskRef('s2', 'p0014')],
+          [AskRef('s1', 'p0015')],
+        ],
+      );
+    });
+
+    test('keeps lines and paragraphs apart, in the order first cited', () {
+      expect(citedPassages([page(5), AskRef('s1', 'p0004'), page(4)], number), [
+        [page(4), page(5)],
+        [AskRef('s1', 'p0004')],
+      ]);
+    });
+
+    test('leaves alone what has no place, and counts a repeat once', () {
+      expect(
+        citedPassages([
+          page(),
+          AskRef('s9', 'p0001'),
+          AskRef('s9', 'p0002'),
+          page(2),
+          page(2),
+        ], number),
+        [
+          [page()],
+          [AskRef('s9', 'p0001')],
+          [AskRef('s9', 'p0002')],
+          [page(2)],
+        ],
+      );
+    });
+  });
 }

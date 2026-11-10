@@ -1,3 +1,5 @@
+import 'dart:math';
+
 /// A place an answer cites: a paragraph of the Story Map, or a line of the
 /// reader's recent pages.
 class AskRef {
@@ -122,3 +124,48 @@ List<AnswerPart> splitAnswer(String text, {bool streaming = false}) {
 /// Whether [parts] cite anything at all.
 bool citesAnything(List<AnswerPart> parts) =>
     parts.any((part) => part is AnswerCitation && part.refs.isNotEmpty);
+
+/// The passages one citation's [refs] make: lines of the recent pages that
+/// follow each other are one passage, and so are paragraphs of one section
+/// that do. A model citing a line or paragraph often cites the one next to it
+/// too, for context; together they read as one place in the book.
+///
+/// [paragraphNumber] gives a paragraph's place in its section, or null if it
+/// isn't known, which keeps it a passage of its own. So is the recent pages
+/// with no line. Each passage is in reading order, and passages come in the
+/// order their first reference does. A reference cited twice counts once.
+List<List<AskRef>> citedPassages(
+  List<AskRef> refs,
+  int? Function(AskRef ref) paragraphNumber,
+) {
+  final cited = {...refs}.toList();
+  // Where each reference is, by what it can join up with: the recent pages,
+  // or a section.
+  final placed = <String?, Map<int, AskRef>>{};
+  final passages = <(int, List<AskRef>)>[];
+  for (final (order, ref) in cited.indexed) {
+    final number = ref.isPage ? ref.line : paragraphNumber(ref);
+    if (number == null) {
+      passages.add((order, [ref]));
+    } else {
+      (placed[ref.sectionId] ??= {})[number] = ref;
+    }
+  }
+  for (final refsAt in placed.values) {
+    final numbers = refsAt.keys.toList()..sort();
+    var run = <AskRef>[];
+    for (final (i, number) in numbers.indexed) {
+      if (i > 0 && number != numbers[i - 1] + 1) {
+        passages.add((_firstCited(run, cited), run));
+        run = [];
+      }
+      run.add(refsAt[number]!);
+    }
+    passages.add((_firstCited(run, cited), run));
+  }
+  passages.sort((a, b) => a.$1.compareTo(b.$1));
+  return [for (final (_, passage) in passages) passage];
+}
+
+int _firstCited(List<AskRef> passage, List<AskRef> cited) =>
+    passage.map(cited.indexOf).reduce(min);

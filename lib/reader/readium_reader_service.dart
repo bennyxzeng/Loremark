@@ -513,13 +513,10 @@ class _ReadiumSession implements EpubReaderSession {
     if (locator == null) return;
     // Readium draws a decoration only where the text quote is found, and finds
     // it again whichever page loads, so the order of the two calls is free.
-    await _decorate(passageHighlightGroup, [
-      ReaderDecoration(
-        id: 'hit',
-        locator: locator,
-        style: passageHighlightStyle,
-      ),
-    ]);
+    await _decorate(
+      passageHighlightGroup,
+      passageDecorations(target, _publication.readingOrder, _indexOf),
+    );
     await _go(locator);
   }
 
@@ -751,6 +748,23 @@ Locator? locatorForPassage(
     ),
   );
 }
+
+/// The decorations that highlight [target] and what it [PassageTarget.also]
+/// highlights, each where its text quote is. One whose section isn't in
+/// [readingOrder] is left out.
+List<ReaderDecoration> passageDecorations(
+  PassageTarget target,
+  List<Link> readingOrder,
+  int? Function(String href) indexOf,
+) => [
+  for (final (i, part) in [target, ...target.also].indexed)
+    if (locatorForPassage(part, readingOrder, indexOf) case final locator?)
+      ReaderDecoration(
+        id: i == 0 ? 'hit' : 'hit-$i',
+        locator: locator,
+        style: passageHighlightStyle,
+      ),
+];
 
 /// The menu over selected text, one action per [SelectionCommand], each with
 /// the command's name as its id.

@@ -224,22 +224,31 @@ class _AskScreenState extends State<AskScreen> {
     if (confirmed == true) await _ask.deleteConversation(conversation.id);
   }
 
-  /// Shows what [ref] cites, in an answer given when the reader's page ended
-  /// at [limit].
-  Future<void> _openCitation(AskRef ref, TextPosition? limit) async {
-    if (ref.isPage) {
-      if (limit != null) await _openRecentPages(ref.line, limit);
+  /// Shows the passage a citation chip stands for: one or more lines of the
+  /// recent pages, or paragraphs of one section, that follow each other (see
+  /// `citedPassages`). [limit] is where the reader's page ended when the
+  /// answer was given.
+  Future<void> _openCitation(List<AskRef> passage, TextPosition? limit) async {
+    if (passage.first.isPage) {
+      final lines = [for (final ref in passage) ?ref.line];
+      if (limit != null) await _openRecentPages(lines, limit);
       return;
     }
     final boundary = _ask.boundary;
-    final section = boundary?.model?.sectionById(ref.sectionId!);
-    final cited = boundary?.paragraphs.paragraph(
-      ref.sectionId!,
-      ref.paragraphId!,
-    );
-    if (boundary == null || section == null || cited == null) return;
+    final section = boundary?.model?.sectionById(passage.first.sectionId!);
+    final cited = [
+      for (final ref in passage)
+        ?boundary?.paragraphs.paragraph(ref.sectionId!, ref.paragraphId!),
+    ];
+    if (boundary == null || section == null || cited.isEmpty) return;
+    final citedIds = {for (final paragraph in cited) paragraph.id};
     final shown = boundary.paragraphs.forEvidence([
-      Evidence(sectionId: cited.sectionId, paragraphId: cited.id, quote: ''),
+      for (final paragraph in cited)
+        Evidence(
+          sectionId: paragraph.sectionId,
+          paragraphId: paragraph.id,
+          quote: '',
+        ),
     ], context: 1);
     await showFactSheet(
       context,
@@ -248,17 +257,17 @@ class _AskScreenState extends State<AskScreen> {
         heading: section.name,
         passages: [
           for (final paragraph in shown)
-            (paragraph.text, paragraph.id == cited.id),
+            (paragraph.text, citedIds.contains(paragraph.id)),
         ],
         onOpen: () => _openInBook(sheetContext, section, cited),
       ),
     );
   }
 
-  /// Shows line [line] of the recent pages an answer was given when the
-  /// reader's page ended at [limit], with one on either side; or all of them
-  /// if [line] is null.
-  Future<void> _openRecentPages(int? line, TextPosition limit) async {
+  /// Shows [lines] of the recent pages an answer was given when the reader's
+  /// page ended at [limit], with one on either side; or all of them if [lines]
+  /// is empty or isn't among them.
+  Future<void> _openRecentPages(List<int> lines, TextPosition limit) async {
     final messenger = ScaffoldMessenger.maybeOf(context);
     RecentPages? pages;
     try {
@@ -273,11 +282,21 @@ class _AskScreenState extends State<AskScreen> {
       );
       return;
     }
-    final lines = pages.lines;
-    final cited = line != null && line >= 1 && line <= lines.length
-        ? line
-        : null;
-    final target = pages.target(cited ?? lines.length);
+    final all = pages.lines;
+    final cited = {
+      for (final line in lines)
+        if (line >= 1 && line <= all.length) line,
+    };
+    // Lines that follow each other, as `citedPassages` makes them.
+    final ordered = cited.toList()..sort();
+    final first = ordered.firstOrNull;
+    final last = ordered.lastOrNull;
+    // The jump goes to the first, and all of them are highlighted.
+    final target = first == null
+        ? pages.target(all.length)
+        : pages.target(first).alsoHighlighting([
+            for (final line in ordered.skip(1)) pages.target(line),
+          ]);
     await showFactSheet(
       context,
       builder: (sheetContext, scrollController) => _PassageSheet(
@@ -286,15 +305,15 @@ class _AskScreenState extends State<AskScreen> {
         intro:
             'What Ask saw: the page you were on when you asked, and a few '
             'pages before it.',
-        passages: cited == null
-            ? [for (final at in lines) (at.text, false)]
+        passages: first == null || last == null
+            ? [for (final at in all) (at.text, false)]
             : [
                 for (
-                  var n = max(1, cited - 1);
-                  n <= min(lines.length, cited + 1);
+                  var n = max(1, first - 1);
+                  n <= min(all.length, last + 1);
                   n++
                 )
-                  (lines[n - 1].text, n == cited),
+                  (all[n - 1].text, cited.contains(n)),
               ],
         onOpen: () async {
           Navigator.of(sheetContext).pop();
@@ -304,15 +323,22 @@ class _AskScreenState extends State<AskScreen> {
     );
   }
 
+  /// Goes to the first of [paragraphs], highlighting all of them.
   Future<void> _openInBook(
     BuildContext sheetContext,
     StorySection section,
-    StoryParagraph paragraph,
+    List<StoryParagraph> paragraphs,
   ) async {
     final messenger = ScaffoldMessenger.maybeOf(context);
     PassageTarget? target;
     try {
-      target = await _ask.backend.passageTarget(_ask.book, section, paragraph);
+      final placed = [
+        for (final paragraph in paragraphs)
+          ?await _ask.backend.passageTarget(_ask.book, section, paragraph),
+      ];
+      if (placed.isNotEmpty) {
+        target = placed.first.alsoHighlighting(placed.sublist(1));
+      }
     } on Object catch (error) {
       debugPrint('Could not place the passage: $error');
     }
@@ -336,13 +362,18 @@ class _AskScreenState extends State<AskScreen> {
     final pending = _ask.pending;
     final canAsk = boundary != null && !boundary.isEmpty;
 
+    int? paragraphNumber(AskRef ref) => boundary?.paragraphs
+        .paragraph(ref.sectionId!, ref.paragraphId!)
+        ?.number;
+
     // Recent pages can be shown when the answer's page end was measured;
     // paragraphs while the reader is still past them.
-    bool Function(AskRef) visibleAt(TextPosition? limit) =>
-        (ref) => ref.isPage
-        ? limit != null && limit.progression > 0
-        : boundary?.paragraphs.paragraph(ref.sectionId!, ref.paragraphId!) !=
-              null;
+    bool Function(List<AskRef>) visibleAt(TextPosition? limit) =>
+        (passage) => passage.every(
+          (ref) => ref.isPage
+              ? limit != null && limit.progression > 0
+              : paragraphNumber(ref) != null,
+        );
 
     final Widget conversation;
     if (exchanges.isEmpty && pending == null) {
@@ -367,8 +398,9 @@ class _AskScreenState extends State<AskScreen> {
             _Answer(
               text: exchange.answer,
               cutOff: exchange.cutOff,
+              paragraphNumber: paragraphNumber,
               visible: visibleAt(exchange.limit),
-              onCite: (ref) => _openCitation(ref, exchange.limit),
+              onCite: (passage) => _openCitation(passage, exchange.limit),
             ),
           ],
           if (pending != null) ...[
@@ -376,8 +408,10 @@ class _AskScreenState extends State<AskScreen> {
             if (pending.running)
               _Working(
                 pending: pending,
+                paragraphNumber: paragraphNumber,
                 visible: visibleAt(boundary?.reach.limit),
-                onCite: (ref) => _openCitation(ref, boundary?.reach.limit),
+                onCite: (passage) =>
+                    _openCitation(passage, boundary?.reach.limit),
               )
             else
               _Failed(
@@ -595,6 +629,7 @@ class _AnswerCard extends StatelessWidget {
 class _Answer extends StatelessWidget {
   const _Answer({
     required this.text,
+    required this.paragraphNumber,
     required this.visible,
     required this.onCite,
     this.cutOff = false,
@@ -602,8 +637,9 @@ class _Answer extends StatelessWidget {
 
   final String text;
   final bool cutOff;
-  final bool Function(AskRef ref) visible;
-  final void Function(AskRef ref) onCite;
+  final int? Function(AskRef ref) paragraphNumber;
+  final bool Function(List<AskRef> passage) visible;
+  final void Function(List<AskRef> passage) onCite;
 
   @override
   Widget build(BuildContext context) {
@@ -616,7 +652,12 @@ class _Answer extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _AnswerText(parts: parts, visible: visible, onCite: onCite),
+          _AnswerText(
+            parts: parts,
+            paragraphNumber: paragraphNumber,
+            visible: visible,
+            onCite: onCite,
+          ),
           if (notes.isNotEmpty) ...[
             const SizedBox(height: 6),
             Text(
@@ -634,41 +675,45 @@ class _Answer extends StatelessWidget {
 class _AnswerText extends StatelessWidget {
   const _AnswerText({
     required this.parts,
+    required this.paragraphNumber,
     required this.visible,
     required this.onCite,
   });
 
   final List<AnswerPart> parts;
-  final bool Function(AskRef ref) visible;
-  final void Function(AskRef ref) onCite;
+  final int? Function(AskRef ref) paragraphNumber;
+  final bool Function(List<AskRef> passage) visible;
+  final void Function(List<AskRef> passage) onCite;
 
   @override
   Widget build(BuildContext context) {
-    final numbers = <AskRef, int>{};
+    // A passage cited again keeps its number.
+    final numbers = <String, int>{};
     final spans = <InlineSpan>[];
     for (final part in parts) {
       switch (part) {
         case AnswerText(:final text):
           spans.add(TextSpan(text: text));
         case AnswerCitation(:final refs):
-          for (final ref in refs) {
+          for (final passage in citedPassages(refs, paragraphNumber)) {
+            final first = passage.first;
             // Lines of the recent pages are numbered with the paragraphs;
             // the recent pages as a whole, from older answers, aren't.
-            final label = ref.isPage && ref.line == null
+            final label = first.isPage && first.line == null
                 ? 'recent pages'
-                : '${numbers.putIfAbsent(ref, () => numbers.length + 1)}';
-            final enabled = visible(ref);
+                : '${numbers.putIfAbsent(passage.join(', '), () => numbers.length + 1)}';
+            final enabled = visible(passage);
             spans.add(
               WidgetSpan(
                 alignment: PlaceholderAlignment.middle,
                 child: _CitationChip(
                   label: label,
-                  tooltip: ref.isPage
+                  tooltip: first.isPage
                       ? 'From your recent pages'
                       : enabled
                       ? 'Show the passage'
                       : 'Past where you are now',
-                  onTap: enabled ? () => onCite(ref) : null,
+                  onTap: enabled ? () => onCite(passage) : null,
                 ),
               ),
             );
@@ -807,13 +852,15 @@ class _CitationChip extends StatelessWidget {
 class _Working extends StatelessWidget {
   const _Working({
     required this.pending,
+    required this.paragraphNumber,
     required this.visible,
     required this.onCite,
   });
 
   final AskPending pending;
-  final bool Function(AskRef ref) visible;
-  final void Function(AskRef ref) onCite;
+  final int? Function(AskRef ref) paragraphNumber;
+  final bool Function(List<AskRef> passage) visible;
+  final void Function(List<AskRef> passage) onCite;
 
   @override
   Widget build(BuildContext context) {
@@ -821,6 +868,7 @@ class _Working extends StatelessWidget {
       return _AnswerCard(
         child: _AnswerText(
           parts: splitAnswer(pending.text, streaming: true),
+          paragraphNumber: paragraphNumber,
           visible: visible,
           onCite: onCite,
         ),

@@ -139,6 +139,7 @@ class PassageTarget {
     required this.highlight,
     this.before = '',
     this.after = '',
+    this.also = const [],
   });
 
   final int sectionIndex;
@@ -151,6 +152,20 @@ class PassageTarget {
   /// lines apart.
   final String before;
   final String after;
+
+  /// More of the passage to highlight with this, such as the paragraphs after
+  /// it when several are cited together. The jump goes to this one.
+  final List<PassageTarget> also;
+
+  /// This, with [more] to highlight too.
+  PassageTarget alsoHighlighting(List<PassageTarget> more) => PassageTarget(
+    sectionIndex: sectionIndex,
+    progression: progression,
+    highlight: highlight,
+    before: before,
+    after: after,
+    also: [...also, ...more],
+  );
 
   @override
   String toString() => 'PassageTarget($sectionIndex, $progression, $highlight)';

@@ -163,6 +163,13 @@ void main() {
     ),
   );
 
+  /// The passages a citation sheet marks as cited, top to bottom.
+  List<String> highlighted(WidgetTester tester) => [
+    for (final box in tester.widgetList<Container>(find.byType(Container)))
+      if (box.decoration case BoxDecoration(color: LoremarkColors.noteQuote))
+        (box.child! as Text).data!,
+  ];
+
   String answer(String text) => sse([
     completed([message(text)]),
   ]);
@@ -206,6 +213,33 @@ void main() {
     expect(jumps.single.highlight, 'Text of s1 1.');
     expect(backend.placed.single.id, 'p0001');
     expect(find.text('Text of s1 2.'), findsNothing);
+  });
+
+  testWidgets('paragraphs next to each other are one citation', (tester) async {
+    await pumpAsk(
+      tester,
+      replies: [
+        (200, answer('Mara is a dock clerk [s1/p0001, s1/p0002, s1/p0003].')),
+      ],
+    );
+    await askQuestion(tester, 'Who is Mara?');
+    expect(find.text('1'), findsOne);
+    expect(find.text('2'), findsNothing);
+    await tester.tap(find.text('1'));
+    await tester.pumpAndSettle();
+    expect(highlighted(tester), [
+      'Text of s1 1.',
+      'Text of s1 2.',
+      'Text of s1 3.',
+    ]);
+    await tester.tap(find.text('Open in book'));
+    await tester.pumpAndSettle();
+    expect(jumps.single.highlight, 'Text of s1 1.');
+    expect(
+      [for (final more in jumps.single.also) more.highlight],
+      ['Text of s1 2.', 'Text of s1 3.'],
+    );
+    expect(backend.placed, hasLength(3));
   });
 
   testWidgets('a citation past where the reader is now can\'t be opened', (
@@ -386,6 +420,31 @@ void main() {
       await tester.tap(find.text('2'));
       await tester.pumpAndSettle();
       expect(find.text('Chapter 1: Arrival'), findsOne);
+    });
+
+    testWidgets('lines next to each other are one citation', (tester) async {
+      await pumpAsk(
+        tester,
+        replies: [(200, answer('Mara waited by it [page/3, page/2].'))],
+      );
+      await askQuestion(tester, 'What did Mara do?');
+      expect(find.text('1'), findsOne);
+      expect(find.text('2'), findsNothing);
+
+      await tester.tap(find.text('1'));
+      await tester.pumpAndSettle();
+      for (final line in fourLines.lines) {
+        expect(find.text(line), findsOne);
+      }
+      expect(highlighted(tester), ['Second line.', 'Third line.']);
+      await tester.tap(find.text('Open in book'));
+      await tester.pumpAndSettle();
+      // It goes to the first, and highlights both.
+      expect(jumps.single.highlight, 'Second line.');
+      expect(
+        [for (final more in jumps.single.also) more.highlight],
+        ['Third line.'],
+      );
     });
 
     testWidgets('with no line, all of them show, ending at the page', (

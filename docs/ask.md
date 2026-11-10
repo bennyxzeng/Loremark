@@ -170,12 +170,12 @@ How a question can end:
 
 The model cites a Story Map paragraph as `[section-004/p0012]` and a line of the recent pages as `[page/12]`, several in one bracket as `[section-004/p0012, page/12]`. `cleanCitations` removes any paragraph the reader hasn't read and any line that wasn't sent (all of them when no pages were), so a made-up number disappears. Answers from before the lines were numbered cite `[page]`: the recent pages as a whole.
 
-In the answer, paragraphs and lines are numbered chips in one sequence; `[page]` shows as **recent pages**.
+In the answer, paragraphs and lines are numbered chips in one sequence; `[page]` shows as **recent pages**. Lines that follow each other in one citation, or paragraphs of one section that do, make one chip, whose sheet marks them all (`citedPassages`): a model citing a line often cites the one next to it too, for context.
 
 - **A paragraph** opens a sheet with the chapter's name, the paragraph highlighted and one on either side, all taken from the book by number. In an earlier answer, a paragraph the reader has since turned back from is shown but can't be opened ("Past where you are now").
 - **A line** opens **RECENT PAGES**, with a note that Ask saw the page the reader was on and a few before it, and the line highlighted with one on either side. The lines are rebuilt from the answer's `limit`, the page end it was asked at, by `pageTextBefore`, so the page text isn't saved with the answer. `[page]` shows all the lines. A line can't be opened when that page end wasn't measured.
 
-**Open in book** finds the passage and shows it in the Read tab: for a line, that line, and for `[page]` the last one, where the page ended.
+**Open in book** finds the passage and shows it in the Read tab: for a line, that line, and for `[page]` the last one, where the page ended. A chip that stands for several lines or paragraphs goes to the first and highlights them all (`PassageTarget.also`).
 
 The paragraph numbers in fact lines come from the Story Map's evidence. When a map was built with the quote check off, a number may point to a real paragraph that doesn't support the fact; the text shown is still the book's.
 
