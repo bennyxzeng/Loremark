@@ -18,6 +18,7 @@ import 'notes_screen.dart';
 import 'offline_banner.dart';
 import 'read_screen.dart';
 import 'reader_header.dart';
+import 'swipe_hint.dart';
 
 /// One open book: the Read, Ask, Notes, and Story Map tabs for [book].
 class BookScreen extends StatefulWidget {
@@ -99,15 +100,17 @@ class _BookScreenState extends State<BookScreen> {
                   IndexedStack(
                     index: _selectedTab,
                     children: [
-                      ReadScreen(
-                        book: widget.book,
-                        readerService: const ReadiumReaderService(),
-                        openSearch: () => openPassageSearch(
-                          bookId: widget.book.id,
-                          epubPath: widget.book.epubPath,
+                      SwipeHint(
+                        child: ReadScreen(
+                          book: widget.book,
+                          readerService: const ReadiumReaderService(),
+                          openSearch: () => openPassageSearch(
+                            bookId: widget.book.id,
+                            epubPath: widget.book.epubPath,
+                          ),
+                          notes: _notes,
+                          noteJumps: _noteJumps,
                         ),
-                        notes: _notes,
-                        noteJumps: _noteJumps,
                       ),
                       AiLock(
                         feature: 'Ask',
