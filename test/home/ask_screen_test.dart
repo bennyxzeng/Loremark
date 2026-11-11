@@ -493,6 +493,29 @@ void main() {
       );
     });
 
+    testWidgets('steps up while a first question is being written', (
+      tester,
+    ) async {
+      await pumpAsk(tester);
+      final companion = find.byKey(const ValueKey('companion'));
+      final standing = tester.getSize(companion).height;
+
+      // Up close, as in a conversation, with nothing yet to put in a
+      // dialogue box.
+      await tester.tap(find.byKey(const ValueKey('ask-input')));
+      await tester.pumpAndSettle();
+      expect(find.text('Ask about what you’ve read.'), findsNothing);
+      expect(find.byKey(const ValueKey('dialogue')), findsNothing);
+      expect(tester.getSize(companion).height, greaterThan(standing));
+
+      await tester.tap(
+        find.text('Sees your recent pages · Story Map to Chapter 1: Arrival'),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Ask about what you’ve read.'), findsOne);
+      expect(tester.getSize(companion).height, standing);
+    });
+
     testWidgets('fits a short stage, as with the keyboard up', (tester) async {
       tester.view.physicalSize = const Size(400, 420);
       tester.view.devicePixelRatio = 1;
@@ -555,7 +578,9 @@ void main() {
       await tester.pump();
       expect(tester.testTextInput.isVisible, isTrue);
 
-      await tester.tap(find.text('Ask about what you’ve read.'));
+      await tester.tap(
+        find.text('Sees your recent pages · Story Map to Chapter 1: Arrival'),
+      );
       await tester.pump();
       expect(tester.testTextInput.isVisible, isFalse);
     });

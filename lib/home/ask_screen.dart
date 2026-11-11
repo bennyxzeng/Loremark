@@ -64,6 +64,7 @@ class _AskScreenState extends State<AskScreen> {
     super.initState();
     _ask.addListener(_changed);
     _ask.draft.addListener(_draftChanged);
+    _input.addListener(_focusChanged);
     _lifecycle = AppLifecycleListener(
       onHide: () {
         if (widget.active) _ask.leave();
@@ -102,7 +103,9 @@ class _AskScreenState extends State<AskScreen> {
       ..draft.removeListener(_draftChanged);
     _lifecycle?.dispose();
     _scroll.dispose();
-    _input.dispose();
+    _input
+      ..removeListener(_focusChanged)
+      ..dispose();
     super.dispose();
   }
 
@@ -132,6 +135,10 @@ class _AskScreenState extends State<AskScreen> {
   }
 
   void _draftChanged() => setState(() {});
+
+  /// She steps up while a first question is being written, so the keyboard
+  /// doesn't shrink her under the heading.
+  void _focusChanged() => setState(() {});
 
   Future<void> _send() async {
     final settings = AiSettingsScope.of(context);
@@ -490,6 +497,9 @@ class _AskScreenState extends State<AskScreen> {
     final conversation = _Stage(
       active: widget.active,
       cue: _companionCue(pending),
+      // The question box having focus is the keyboard being up: the Scaffold
+      // keeps the keyboard's height out of this tab's MediaQuery.
+      close: said != null || _input.hasFocus,
       scroll: _scroll,
       said: said,
       onLog: exchanges.isEmpty ? null : _openLog,
@@ -554,12 +564,14 @@ _Cue _companionCue(AskPending? pending) {
 enum _Slot { heading, companion, floor, dialogue }
 
 /// The Ask tab as a visual novel's scene. Before a first question the heading
-/// is shown, with the companion standing under it; once one is asked she steps
-/// up, and what she [said] is in a dialogue box in front of her.
+/// is shown, with the companion standing under it; once one is being written
+/// she steps up [close], and what she [said] is in a dialogue box in front of
+/// her.
 class _Stage extends StatefulWidget {
   const _Stage({
     required this.active,
     required this.cue,
+    required this.close,
     required this.scroll,
     required this.said,
     required this.onLog,
@@ -568,10 +580,15 @@ class _Stage extends StatefulWidget {
   final bool active;
   final _Cue cue;
 
+  /// Whether she has stepped up: in a conversation, or while a first question
+  /// is being written.
+  final bool close;
+
   /// Scrolls the dialogue box.
   final ScrollController scroll;
 
-  /// The question and its answer, or null before a first question.
+  /// The question and its answer, or null before a first question, when there
+  /// is no dialogue box.
   final Widget? said;
 
   /// Opens the log of the conversation; null while nothing has been answered.
@@ -582,11 +599,11 @@ class _Stage extends StatefulWidget {
 }
 
 class _StageState extends State<_Stage> with SingleTickerProviderStateMixin {
-  /// From the empty thread (0) to a conversation (1).
+  /// From standing under the heading (0) to close up (1).
   late final AnimationController _step = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 350),
-    value: widget.said == null ? 0 : 1,
+    value: widget.close ? 1 : 0,
   );
   late final CurvedAnimation _eased = CurvedAnimation(
     parent: _step,
@@ -596,11 +613,11 @@ class _StageState extends State<_Stage> with SingleTickerProviderStateMixin {
   @override
   void didUpdateWidget(_Stage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final talking = widget.said != null;
-    if (talking == (oldWidget.said != null)) return;
+    final close = widget.close;
+    if (close == oldWidget.close) return;
     if (MediaQuery.disableAnimationsOf(context)) {
-      _step.value = talking ? 1 : 0;
-    } else if (talking) {
+      _step.value = close ? 1 : 0;
+    } else if (close) {
       _step.forward();
     } else {
       _step.reverse();
@@ -650,9 +667,10 @@ class _StageState extends State<_Stage> with SingleTickerProviderStateMixin {
                     ),
                   ),
                 ),
-                // Paper over her legs under the dialogue box, so nothing of
-                // her shows in the gap below it.
-                if (said != null)
+                // Paper over her legs at the foot of the stage, so nothing of
+                // her shows in the gap under the dialogue box, and with no box
+                // she fades out there instead of being cut off.
+                if (t > 0)
                   LayoutId(
                     id: _Slot.floor,
                     child: Opacity(
