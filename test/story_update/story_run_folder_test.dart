@@ -229,6 +229,64 @@ void main() {
         section['input_file_sha256'],
       );
     });
+
+    test('keeps the quotes it put back to the book’s text', () async {
+      await update(request(checkQuotes: true), answering(chapter1Delta));
+      final slipped = jsonDecode(jsonEncode(chapter2Delta)) as JsonMap;
+      final names = (slipped['new_records'] as JsonMap)['names'] as List;
+      final evidence = (names[0] as JsonMap)['evidence'] as List;
+      // The quote is in p0006.
+      (evidence[0] as JsonMap)['paragraph_id'] = 'p0007';
+
+      final outcome = await update(
+        request(section: null, checkQuotes: true),
+        answering(slipped),
+      );
+      expect(outcome.status, 'committed', reason: '${outcome.issues}');
+
+      final run = runOf('section-003');
+      expect(readJson(run, 'delta.candidate.json'), slipped);
+      final kept = (readJson(run, 'delta.json')['new_records'] as JsonMap);
+      expect(
+        (((kept['names'] as List)[0] as JsonMap)['evidence'] as List)[0],
+        containsPair('paragraph_id', 'p0006'),
+      );
+      final repairs = jsonDecode(
+        File('${run.path}/quote_repairs.json').readAsStringSync(),
+      ) as List;
+      expect(repairs.single, {
+        'path': 'new_records.names[0].evidence[0].paragraph_id',
+        'from': 'p0007',
+        'to': 'p0006',
+        'reason': isA<String>(),
+        'corrected_by': 'loremark-quote-repair',
+        'corrected_at': isA<String>(),
+      });
+      final validation = readJson(run, 'run.json')['validation'] as JsonMap;
+      expect(validation['quote_repair_count'], 1);
+      expect(validation['quote_repair_version'], isNotEmpty);
+      final issues = (readJson(run, 'validation.json')['issues'] as List)
+          .cast<JsonMap>();
+      expect(
+        issues.where((i) => i['code'] == 'quote_repaired').single['severity'],
+        'warning',
+      );
+
+      final runId = run.path.split('/').last;
+      final commit = jsonDecode(
+        File('$storePath/provenance/$runId/commit.json').readAsStringSync(),
+      ) as JsonMap;
+      expect(commit['quote_repairs'], hasLength(1));
+      expect(commit['manual_corrections'], isEmpty);
+    });
+
+    test('keeps no repairs when no quote needed one', () async {
+      await update(request(), answering(chapter1Delta));
+      final run = runs().single;
+      expect(filesIn(run), isNot(contains('quote_repairs.json')));
+      final validation = readJson(run, 'run.json')['validation'] as JsonMap;
+      expect(validation['quote_repair_count'], 0);
+    });
   });
 
   group('a failed update keeps what happened:', () {

@@ -412,6 +412,51 @@ void main() {
       expect(treeOf(storePath), before);
     });
 
+    test('on, quotes that only slipped are repaired and kept', () async {
+      await buildChapter1();
+      final slipped = jsonDecode(jsonEncode(chapter2Delta)) as JsonMap;
+      final records = slipped['new_records'] as JsonMap;
+      JsonMap evidenceOf(String collection) =>
+          ((((records[collection] as List)[0] as JsonMap)['evidence']
+                  as List)[0]
+              as JsonMap);
+      // In p0006, not p0007.
+      evidenceOf('names')['paragraph_id'] = 'p0007';
+      // The book says "Captain Ilse Varga had been promoted".
+      evidenceOf('attributes')['quote'] = 'Captain Varga had been promoted';
+
+      final outcome = await update(
+        request(section: null, checkQuotes: true),
+        answering(slipped),
+      );
+      expect(outcome.status, 'committed', reason: '${outcome.issues}');
+      expect(outcome.unmatchedQuotes, 0);
+      expect(
+        [
+          for (final issue in outcome.issues)
+            if (issue.code == 'quote_repaired') issue.path,
+        ],
+        [
+          'new_records.names[0].evidence[0]',
+          'new_records.attributes[0].evidence[0]',
+        ],
+      );
+
+      final model = StoryStore(Directory(storePath)).load().model;
+      final kept = [
+        for (final collection in (model['records'] as JsonMap).values)
+          for (final record in (collection as List).cast<JsonMap>())
+            for (final evidence in (record['evidence'] as List).cast<JsonMap>())
+              if (evidence['section_id'] == 'section-003')
+                '${evidence['paragraph_id']} ${evidence['quote']}',
+      ];
+      expect(kept, contains('p0006 The engineer Mara Quill'));
+      expect(kept, contains('p0002 Captain Ilse Varga had been promoted'));
+      expect(kept, isNot(contains('p0007 The engineer Mara Quill')));
+      final sections = model['processed_sections'] as List;
+      expect((sections[1] as JsonMap)['quotes_checked'], isTrue);
+    });
+
     test(
       'remembered per section: turning it on later keeps the old ones',
       () async {

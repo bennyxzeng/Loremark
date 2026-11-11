@@ -8,6 +8,7 @@ import 'story_api_client.dart';
 import 'story_book.dart';
 import 'story_merge.dart';
 import 'story_model_choice.dart';
+import 'story_quotes.dart';
 import 'story_run_folder.dart';
 import 'story_store.dart';
 import 'story_validation.dart';
@@ -574,15 +575,18 @@ StoryUpdateOutcome finishStoryUpdate(
 
   StoryUpdateValidation? validation;
   if (call.status == 'completed') {
+    // Before the lab's checks, which are kept as they are: the answer's
+    // quotes that slipped are put back to the book's text.
+    final (candidate, repairs) = repairStoryQuotes(call.candidate, chapter);
     validation = validateUpdate(
       base,
-      call.candidate,
+      candidate,
       schema: StoryDeltaSchema.parse(request.schemaText),
       chapter: chapter,
       baseInputs: state.inputs,
       section: section,
       revision: revision,
-    );
+    ).withQuoteRepairs(repairs);
     run?.recordValidation(validation);
   }
 
@@ -698,6 +702,11 @@ Map<String, List<int>> _provenanceFiles(
       'prompt_source': _promptSource,
       'hashes': prepared.hashes,
       'manual_corrections': const <dynamic>[],
+      'quote_repair_version': storyQuoteRepairVersion,
+      'quote_repairs': [
+        for (final repair in validation.quoteRepairs)
+          ...repair.corrections(revision['created_at'] as String),
+      ],
     }),
   };
   final directory = 'provenance/${prepared.runId}';
