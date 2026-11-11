@@ -440,6 +440,14 @@ class _ReadScreenState extends State<ReadScreen> {
     await _navigate(() => session.showPassage(target));
   }
 
+  /// Keeps the reader at the passage and puts **Back to your page** away. The
+  /// passage's highlight goes with it: they have found it.
+  Future<void> _stayHere() async {
+    final session = _session;
+    setState(() => _returnTo = null);
+    if (session != null && _highlightShown) await _clearHighlight(session);
+  }
+
   /// Takes the reader back to where they were before [_visitPassage].
   Future<void> _goBack() async {
     final session = _session;
@@ -831,7 +839,7 @@ class _ReadScreenState extends State<ReadScreen> {
                   child: Center(
                     child: _BackToPage(
                       onBack: () => unawaited(_goBack()),
-                      onStay: () => setState(() => _returnTo = null),
+                      onStay: () => unawaited(_stayHere()),
                     ),
                   ),
                 ),

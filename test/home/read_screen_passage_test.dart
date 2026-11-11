@@ -99,7 +99,9 @@ void main() {
     expect(session.goToPositionCalls.last, reading);
   });
 
-  testWidgets('Stay here keeps the reader at the passage', (tester) async {
+  testWidgets('Stay here keeps the reader at the passage, unhighlighted', (
+    tester,
+  ) async {
     final session = await openBook(tester);
     await jumps.show(passage);
     await tester.pump();
@@ -109,5 +111,6 @@ void main() {
 
     expect(find.text('Back to your page'), findsNothing);
     expect(session.goToPositionCalls, isEmpty);
+    expect(session.clearHighlightCalls, 1);
   });
 }
