@@ -32,14 +32,30 @@ it, in `<book id>.runs/`. Both go when the book does.
 
 ## Behavior
 
-- **One press, one section, one paid request.** Nothing retries by itself. A retry is another
-  paid request, so it is the reader's call.
-- **Update adds the next section; Choose picks a later one.** Sections only go in reading order,
-  because each is built on those before it and an earlier one would mix in later knowledge. So the
-  reader can skip ahead, but not go back: the dialog names what a pick leaves out, for good. The map
-  doesn't mark the gap, and the slider just lists what was processed.
+- **One section, one paid request.** Nothing retries by itself. A retry is another paid request,
+  so it is the reader's call.
+- **Update adds the next section; Choose picks several.** Choose lists every section after the map
+  with a checkbox, the next one picked to begin with, and "Select all main text". The picked
+  sections run one after another, in reading order, each as its own request, and stop at the first
+  that doesn't go in (`StoryUpdater.runSections`). The run carries on if the reader leaves the
+  book. Cancel offers "Stop after this one", which keeps the section under way since it has been
+  paid for, as well as "Cancel now". The header counts the sections (`UPDATING 2/5`), and the
+  banner comes once, when the run ends. A new map's first Update opens the same list, and the
+  first picked section is where the map starts.
+- **Sections only go in reading order,** because each is built on those before it and an earlier
+  one would mix in later knowledge. So the reader can skip ahead, but not go back: the list names
+  what the picked sections leave out for good, which is every unpicked section before the last
+  picked one. The map doesn't mark the gap, and the slider just lists what was processed.
+- **The list labels what isn't the story** (`classifyStorySection`). The book's own word comes
+  first: the `epub:type`s and `doc-` roles of a section, the nav landmarks and EPUB 2 guide entries
+  pointing at it, where the landmarks say the body and back matter start, and `linear="no"`. Most
+  books say none of this, so then the title is used (English, Chinese and Japanese: 插图, 后记,
+  Afterword, Front Matter and so on), then the text: a little text around pictures is a page of
+  illustrations. It is only a label and what "Select all main text" picks, and section IDs don't
+  change: the lab cuts the same sections.
 - **A section that can't be read doesn't end the map.** Update stops there rather than stepping past
-  it unasked, and Choose gets past it. A section with no text is stepped over and not counted.
+  it unasked, and Choose gets past it: the list shows it, but it can't be picked. A section with no
+  text is stepped over and not counted.
 - **The bar shows how long an update has been running,** and the result says how long it took. The
   time is read from the clock and from when the update really began, so it stays right after the
   system holds the app back, and after leaving the book and coming back.

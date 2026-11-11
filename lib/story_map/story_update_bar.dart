@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../story_update/story_import.dart';
+import '../story_update/story_section_kind.dart';
 import '../story_update/story_updater.dart';
 import '../theme/loremark_theme.dart';
 
@@ -82,8 +83,12 @@ class StoryUpdateBar extends StatelessWidget {
     this.onKeepReading,
     this.filesBusy = false,
     this.updateStartedAt,
-    this.updateSectionId,
+    this.updateTitle,
+    this.updateStep = 0,
+    this.updateTotal = 1,
+    this.runStartedAt,
     this.cancelling = false,
+    this.stopping = false,
     this.notice,
     this.failure,
     this.now = DateTime.now,
@@ -108,15 +113,27 @@ class StoryUpdateBar extends StatelessWidget {
   /// Whether files are being exported or loaded, which an update mustn't overlap.
   final bool filesBusy;
 
-  /// When the update under way began, if one is.
+  /// When the section being added began, if one is.
   final DateTime? updateStartedAt;
 
-  /// The section asked of the update under way; null for the next one.
-  final String? updateSectionId;
+  /// The title of the section being added, if known.
+  final String? updateTitle;
+
+  /// Which of the [updateTotal] sections asked for is being added, counted
+  /// from 0.
+  final int updateStep;
+  final int updateTotal;
+
+  /// When the first of several sections began.
+  final DateTime? runStartedAt;
 
   /// Whether the reader has cancelled the update under way, which hasn't
   /// stopped yet.
   final bool cancelling;
+
+  /// Whether the reader has asked to stop once the section being added is
+  /// done.
+  final bool stopping;
 
   /// How the last update went, if it worked.
   final String? notice;
@@ -143,9 +160,17 @@ class StoryUpdateBar extends StatelessWidget {
     var showButton = true;
     if (updating && cancelling) {
       title = 'Cancelling…';
+    } else if (updating && stopping) {
+      title = updateTitle == null
+          ? 'Stopping after this section…'
+          : 'Finishing $updateTitle, then stopping…';
     } else if (updating) {
-      final adding = status?.titleOf(updateSectionId);
-      title = adding == null ? 'Building your Story Map…' : 'Adding $adding…';
+      final adding = updateTitle;
+      // The count comes first, so a long title can't push it out of sight.
+      final of = updateTotal > 1 ? '${updateStep + 1} of $updateTotal: ' : '';
+      title = adding == null
+          ? 'Building your Story Map…'
+          : 'Adding $of$adding…';
     } else if (status == null) {
       title = 'Checking this book…';
     } else if (status.isFinished) {
@@ -228,8 +253,12 @@ class StoryUpdateBar extends StatelessWidget {
           if (startedAt != null)
             _UpdatingCard(
               startedAt: startedAt,
+              step: updateStep,
+              total: updateTotal,
+              runStartedAt: runStartedAt,
               now: now,
               cancelling: cancelling,
+              stopping: stopping,
               onKeepReading: onKeepReading,
             ),
           if (detail != null) Text(detail, style: muted),
@@ -260,14 +289,27 @@ class StoryUpdateBar extends StatelessWidget {
 class _UpdatingCard extends StatelessWidget {
   const _UpdatingCard({
     required this.startedAt,
+    required this.step,
+    required this.total,
+    required this.runStartedAt,
     required this.now,
     required this.cancelling,
+    required this.stopping,
     required this.onKeepReading,
   });
 
+  /// When the section being added began.
   final DateTime startedAt;
+
+  /// Which of the [total] sections is being added, counted from 0.
+  final int step;
+  final int total;
+
+  /// When the first of them began.
+  final DateTime? runStartedAt;
   final DateTime Function() now;
   final bool cancelling;
+  final bool stopping;
   final VoidCallback? onKeepReading;
 
   @override
@@ -308,11 +350,37 @@ class _UpdatingCard extends StatelessWidget {
                   const Text('elapsed', style: muted),
                 ],
               ),
+              if (total > 1)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Row(
+                    children: [
+                      Text('Section ${step + 1} of $total', style: muted),
+                      if (runStartedAt case final runStartedAt?) ...[
+                        const Text(' · ', style: muted),
+                        StoryElapsedTime(
+                          startedAt: runStartedAt,
+                          now: now,
+                          style: muted,
+                        ),
+                        const Text(' in all', style: muted),
+                      ],
+                    ],
+                  ),
+                ),
               if (!cancelling) ...[
                 const SizedBox(height: 4),
-                const Text(
-                  'This can take a few minutes. You can keep reading, and '
-                  'you’ll be told when it’s done. Keep Loremark open.',
+                Text(
+                  stopping
+                      ? 'This section will still be added, since it’s been '
+                            'sent. No more will be started.'
+                      : total > 1
+                      ? 'Each section can take a few minutes. You can keep '
+                            'reading, and you’ll be told when they’re done. '
+                            'Keep Loremark open.'
+                      : 'This can take a few minutes. You can keep reading, '
+                            'and you’ll be told when it’s done. Keep Loremark '
+                            'open.',
                   style: muted,
                 ),
                 if (onKeepReading != null)
@@ -389,139 +457,250 @@ class _StoryElapsedTimeState extends State<StoryElapsedTime> {
   }
 }
 
-/// Asks where a new Story Map starts, and says what updating involves. Returns
-/// the section to start from, or null if the reader backs out.
-Future<String?> showStoryStartDialog(
+/// Asks which sections to add, and says what adding them involves and what it
+/// leaves out. For a new map, the first one picked is where it starts. Returns
+/// those picked, in reading order, or null if the reader backs out.
+///
+/// Only the next section is picked to begin with, so adding several is always
+/// the reader's choice.
+Future<List<StorySectionChoice>?> showStorySectionsSheet(
   BuildContext context, {
   required StoryUpdateStatus status,
   required String providerLabel,
 }) {
-  var picked = status.suggestedStart!;
-  return showDialog<String>(
+  final first = status.suggestedStart ?? status.nextSectionId;
+  return showModalBottomSheet<List<StorySectionChoice>>(
     context: context,
-    builder: (context) => StatefulBuilder(
-      builder: (context, setState) => AlertDialog(
-        title: const Text('Build a Story Map'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Each update sends one section of this book, and the map so far, '
-                'to $providerLabel using your API key, which $providerLabel '
-                'charges for.',
-              ),
-              const SizedBox(height: 16),
-              const Text('Start from'),
-              DropdownButton<String>(
-                value: picked,
-                isExpanded: true,
-                items: [
-                  for (final choice in status.choices)
-                    DropdownMenuItem(
-                      value: choice.sectionId,
-                      child: Text(
-                        choice.title,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                ],
-                onChanged: (value) {
-                  if (value != null) setState(() => picked = value);
-                },
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Sections before this one can’t be added later.',
-                style: TextStyle(fontSize: 12),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, picked),
-            child: const Text('Start'),
-          ),
-        ],
-      ),
+    isScrollControlled: true,
+    useSafeArea: true,
+    showDragHandle: true,
+    builder: (context) => _StorySectionsSheet(
+      status: status,
+      providerLabel: providerLabel,
+      picked: {?first},
     ),
   );
 }
 
-/// Asks which later section to add, and says what picking one leaves out.
-/// Returns the section, or null if the reader backs out.
-Future<String?> showStorySectionDialog(
-  BuildContext context, {
-  required StoryUpdateStatus status,
-}) {
-  var picked = status.choices.first;
-  return showDialog<String>(
-    context: context,
-    builder: (context) => StatefulBuilder(
-      builder: (context, setState) => AlertDialog(
-        title: const Text('Choose a section'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              DropdownButton<StorySectionChoice>(
-                value: picked,
-                isExpanded: true,
-                items: [
-                  for (final choice in status.choices)
-                    DropdownMenuItem(
-                      value: choice,
-                      child: Text(
-                        choice.title,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                ],
-                onChanged: (value) {
-                  if (value != null) setState(() => picked = value);
-                },
-              ),
-              if (picked.skips.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Text(_skipWarning(picked.skips)),
+class _StorySectionsSheet extends StatefulWidget {
+  const _StorySectionsSheet({
+    required this.status,
+    required this.providerLabel,
+    required this.picked,
+  });
+
+  final StoryUpdateStatus status;
+  final String providerLabel;
+
+  /// The sections picked to begin with.
+  final Set<String> picked;
+
+  @override
+  State<_StorySectionsSheet> createState() => _StorySectionsSheetState();
+}
+
+class _StorySectionsSheetState extends State<_StorySectionsSheet> {
+  late final Set<String> _picked = {...widget.picked};
+
+  List<StorySectionChoice> get _choices => widget.status.choices;
+
+  void _pickMainText() => setState(() {
+    _picked
+      ..clear()
+      ..addAll([
+        for (final choice in widget.status.pickable)
+          if (choice.kind == StorySectionKind.story) choice.sectionId,
+      ]);
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    final isNew = widget.status.isNewStore;
+    final picked = [
+      for (final choice in _choices)
+        if (_picked.contains(choice.sectionId)) choice,
+    ];
+    final lastPicked = picked.isEmpty ? -1 : _choices.indexOf(picked.last);
+    final leftOut = [
+      for (var i = 0; i < lastPicked; i++)
+        if (!_picked.contains(_choices[i].sectionId)) _choices[i].title,
+    ];
+    final provider = widget.providerLabel;
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * 0.85,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Text(
+              isNew ? 'Build a Story Map' : 'Add sections',
+              style: theme.textTheme.titleMedium,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Wrap(
+              children: [
+                TextButton(
+                  onPressed: _pickMainText,
+                  child: const Text('Select all main text'),
+                ),
+                TextButton(
+                  onPressed: _picked.isEmpty
+                      ? null
+                      : () => setState(_picked.clear),
+                  child: const Text('Clear'),
+                ),
               ],
-            ],
+            ),
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+          // The list gets most of the room, but what picking costs and leaves
+          // out keeps some, scrolling if it must.
+          Flexible(
+            flex: 3,
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                for (final choice in _choices)
+                  CheckboxListTile(
+                    value: _picked.contains(choice.sectionId),
+                    onChanged: choice.canPick
+                        ? (value) => setState(() {
+                            if (value ?? false) {
+                              _picked.add(choice.sectionId);
+                            } else {
+                              _picked.remove(choice.sectionId);
+                            }
+                          })
+                        : null,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    dense: true,
+                    title: Text(
+                      choice.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: _subtitle(choice),
+                  ),
+              ],
+            ),
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, picked.sectionId),
-            child: const Text('Add section'),
+          const Divider(height: 1),
+          Flexible(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Each section is sent to $provider with the map so far, '
+                    'as its own request, which $provider charges for. They run '
+                    'one at a time, in reading order, and stop at the first '
+                    'that doesn’t go through.',
+                    style: muted,
+                  ),
+                  if (leftOut.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      _leftOutWarning(leftOut),
+                      style: muted?.copyWith(color: theme.colorScheme.error),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+            child: OverflowBar(
+              alignment: MainAxisAlignment.end,
+              overflowAlignment: OverflowBarAlignment.end,
+              spacing: 8,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: picked.isEmpty
+                      ? null
+                      : () => Navigator.pop(context, picked),
+                  child: Text(
+                    picked.length == 1
+                        ? 'Add 1 section'
+                        : 'Add ${picked.length} sections',
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
-    ),
-  );
+    );
+  }
+
+  /// What [choice] is, beside its title: the next section, what part of the
+  /// book it looks like, or why it can't be added.
+  Widget? _subtitle(StorySectionChoice choice) {
+    final notes = [
+      if (choice.sectionId == widget.status.nextSectionId) 'Next',
+      ?choice.kind.label,
+      // Why exactly is for the bar, once Update gets there.
+      if (!choice.canPick) 'Can’t be read reliably',
+    ];
+    if (notes.isEmpty) return null;
+    return Text(
+      notes.join(' · '),
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+}
+
+/// How the reader wants to stop the sections being added.
+enum StoryStopChoice {
+  /// Let the section being added finish and go in, and start no more.
+  afterThisOne,
+
+  /// Drop the section being added, and start no more.
+  now,
 }
 
 /// Asks before the update under way is cancelled, since Cancel is where Update
-/// was, and pressing Update twice mustn't throw away a paid request. Returns
-/// whether to cancel it.
-Future<bool> showStoryCancelDialog(BuildContext context) async {
-  final confirmed = await showDialog<bool>(
+/// was, and pressing Update twice mustn't throw away a paid request. With
+/// [remaining] sections still to start after [current], it can also stop once
+/// [current] is done. Returns how to stop, or null to keep going.
+Future<StoryStopChoice?> showStoryCancelDialog(
+  BuildContext context, {
+  String? current,
+  int remaining = 0,
+}) {
+  final section = current ?? 'this section';
+  final later = remaining == 1
+      ? 'the 1 section after it isn’t started'
+      : 'the $remaining sections after it aren’t started';
+  return showDialog<StoryStopChoice>(
     context: context,
     builder: (context) => AlertDialog(
-      title: const Text('Cancel this update?'),
-      content: const SingleChildScrollView(
+      title: Text(
+        remaining == 0 ? 'Cancel this update?' : 'Stop adding sections?',
+      ),
+      content: SingleChildScrollView(
         child: Text(
-          'Nothing will be saved, but your provider may still charge for the '
-          'request.',
+          remaining == 0
+              ? 'Nothing will be saved, but your provider may still charge for '
+                    'the request.'
+              : 'Stop after this one: $section is still added, and $later.\n\n'
+                    'Cancel now: $section isn’t saved, but your provider may '
+                    'still charge for it, and $later.',
         ),
       ),
       actions: [
@@ -529,14 +708,19 @@ Future<bool> showStoryCancelDialog(BuildContext context) async {
           onPressed: () => Navigator.pop(context),
           child: const Text('Keep going'),
         ),
+        if (remaining > 0)
+          TextButton(
+            onPressed: () =>
+                Navigator.pop(context, StoryStopChoice.afterThisOne),
+            child: const Text('Stop after this one'),
+          ),
         FilledButton(
-          onPressed: () => Navigator.pop(context, true),
-          child: const Text('Cancel update'),
+          onPressed: () => Navigator.pop(context, StoryStopChoice.now),
+          child: Text(remaining == 0 ? 'Cancel update' : 'Cancel now'),
         ),
       ],
     ),
   );
-  return confirmed ?? false;
 }
 
 /// Asks before [staged] takes the place of the map here, which has
@@ -580,7 +764,15 @@ Future<bool> showStoryReplaceDialog(
   return confirmed ?? false;
 }
 
-String _skipWarning(List<String> skips) => skips.length == 1
-    ? 'This skips 1 section: ${skips.single}. It can’t be added later.'
-    : 'This skips ${skips.length} sections: ${skips.join(', ')}. They can’t be '
-          'added later.';
+/// Says that the sections called [titles] can't be added once those after
+/// them are. A long list is cut short, so the warning stays readable.
+String _leftOutWarning(List<String> titles) {
+  const shown = 5;
+  final listed = titles.length <= shown + 1
+      ? titles.join(', ')
+      : '${titles.take(shown).join(', ')} and ${titles.length - shown} more';
+  return titles.length == 1
+      ? 'This skips 1 section: $listed. It can’t be added later.'
+      : 'This skips ${titles.length} sections: $listed. They '
+            'can’t be added later.';
+}

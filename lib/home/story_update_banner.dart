@@ -17,7 +17,7 @@ class StoryUpdateBanner extends StatelessWidget {
 
   /// How the update ended, or null if none has. Kept after [visible] turns
   /// false, so the banner still has something to show as it slides away.
-  final StoryUpdateOutcome? outcome;
+  final StoryBatchOutcome? outcome;
   final bool visible;
   final VoidCallback onView;
   final VoidCallback onDismiss;
@@ -27,17 +27,7 @@ class StoryUpdateBanner extends StatelessWidget {
     final outcome = this.outcome;
     // Nothing has ended yet, so there's nothing to slide away either.
     if (outcome == null) return const SizedBox.shrink();
-    final (title, detail) = outcome.committed
-        ? (
-            'Story Map updated',
-            outcome.sectionTitle == null
-                ? 'A section was added.'
-                : 'Added ${outcome.sectionTitle}.',
-          )
-        : (
-            'The Story Map update didn’t go through',
-            'See the Story Map for why.',
-          );
+    final (title, detail) = describeStoryBatchBriefly(outcome);
     return IgnorePointer(
       ignoring: !visible,
       // Gone for a screen reader too, though it stays to slide away.
@@ -146,4 +136,39 @@ class StoryUpdateBanner extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A title and a line for how [outcome] ended, short enough for a banner. One
+/// the reader cancelled isn't shown, so isn't described.
+(String, String) describeStoryBatchBriefly(StoryBatchOutcome outcome) {
+  final total = outcome.total;
+  final lastTitle = outcome.last.sectionTitle ?? outcome.lastSection.title;
+  if (outcome.complete) {
+    return (
+      'Story Map updated',
+      total == 1
+          ? 'Added $lastTitle.'
+          : 'Added $total sections, through $lastTitle.',
+    );
+  }
+  if (outcome.stopped) {
+    return (
+      'Story Map updated',
+      'Added ${outcome.added} of $total sections, then stopped as you asked.',
+    );
+  }
+  if (outcome.added == 0) {
+    return (
+      'The Story Map update didn’t go through',
+      total == 1
+          ? 'See the Story Map for why.'
+          : 'None of the $total sections were added. See the Story Map for '
+                'why.',
+    );
+  }
+  return (
+    'Story Map update stopped',
+    'Added ${outcome.added} of $total sections. $lastTitle didn’t go '
+        'through. See the Story Map for why.',
+  );
 }

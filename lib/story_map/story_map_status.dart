@@ -15,14 +15,23 @@ import 'story_map_backend.dart';
 class StoryMapStatusController extends ChangeNotifier {
   /// Starts with the update already running for [book], if there is one, so
   /// coming back to the book shows it from the first frame.
-  StoryMapStatusController({required this.book, required this.backend})
-    : _updateStartedAt = backend.running(book)?.startedAt;
+  StoryMapStatusController({required this.book, required this.backend}) {
+    final running = backend.running(book);
+    if (running == null) return;
+    _updateStartedAt = running.currentStartedAt;
+    _step = running.index;
+    _total = running.total;
+    _stopping = running.stopping;
+  }
 
   final Book book;
   final StoryMapBackend backend;
 
   DateTime? _updateStartedAt;
+  int _step = 0;
+  int _total = 1;
   bool _cancelling = false;
+  bool _stopping = false;
   bool _mapKnown = false;
   List<StorySection>? _sections;
   int? _readerAt;
@@ -31,20 +40,34 @@ class StoryMapStatusController extends ChangeNotifier {
   StoryCoverage? _coverage;
   bool _disposed = false;
 
-  /// When the update under way began, or null if none is.
+  /// When the section being added began, or null if none is.
   DateTime? get updateStartedAt => _updateStartedAt;
+
+  /// Which of the [total] sections asked for is being added, counted from 0.
+  int get step => _step;
+
+  /// How many sections the update under way was asked to add.
+  int get total => _total;
 
   /// Whether the reader has cancelled the update under way, which hasn't
   /// stopped yet.
   bool get cancelling => _cancelling;
+
+  /// Whether the reader has asked the update under way to stop once the
+  /// section being added is done.
+  bool get stopping => _stopping;
 
   /// Where the reader's page is next to the map. [StoryCoverage.none] as soon
   /// as there is known to be no map; otherwise null until both the map and the
   /// page are known.
   StoryCoverage? get coverage => _coverage;
 
-  void updateStarted(DateTime at) {
+  /// Section [step] of [total], counted from 0, began [at].
+  void updateStarted(DateTime at, {int step = 0, int total = 1}) {
+    if (at == _updateStartedAt && step == _step && total == _total) return;
     _updateStartedAt = at;
+    _step = step;
+    _total = total;
     _cancelling = false;
     _notify();
   }
@@ -55,10 +78,19 @@ class StoryMapStatusController extends ChangeNotifier {
     _notify();
   }
 
+  void stopRequested() {
+    if (_updateStartedAt == null || _stopping) return;
+    _stopping = true;
+    _notify();
+  }
+
   void updateEnded() {
-    if (_updateStartedAt == null && !_cancelling) return;
+    if (_updateStartedAt == null && !_cancelling && !_stopping) return;
     _updateStartedAt = null;
+    _step = 0;
+    _total = 1;
     _cancelling = false;
+    _stopping = false;
     _notify();
   }
 

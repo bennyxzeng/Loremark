@@ -13,7 +13,8 @@ import 'package:loremark/story_update/story_model_choice.dart';
 import 'package:loremark/story_update/story_updater.dart';
 import 'package:loremark/theme/loremark_theme.dart';
 
-/// A book with no Story Map yet, whose updates wait for [finish].
+/// A book with no Story Map yet, whose updates wait for [finish], section by
+/// section.
 class _StoryMapBackend implements StoryMapBackend {
   Completer<StoryUpdateOutcome>? finish;
 
@@ -22,20 +23,29 @@ class _StoryMapBackend implements StoryMapBackend {
 
   @override
   Future<StoryUpdateStatus> inspect(Book book) async =>
-      const StoryUpdateStatus.ready('s3', 'Chapter 3');
+      const StoryUpdateStatus.ready(
+        's3',
+        'Chapter 3',
+        choices: [
+          StorySectionChoice('s3', 'Chapter 3', 40),
+          StorySectionChoice('s4', 'Chapter 4', 40),
+          StorySectionChoice('s5', 'Chapter 5', 40),
+        ],
+      );
 
   @override
-  RunningStoryUpdate? running(Book book) => null;
+  RunningStoryBatch? running(Book book) => null;
 
   @override
-  Future<StoryUpdateOutcome> update(
+  Future<RunningStoryBatch> update(
     Book book, {
     required AiCredentials credentials,
     required StoryModelChoice model,
     required StoryEffort effort,
     required bool checkQuotes,
-    String? sectionId,
-  }) => (finish = Completer()).future;
+    required List<StorySectionChoice> sections,
+  }) async =>
+      RunningStoryBatch(sections, (section) => (finish = Completer()).future);
 
   @override
   void cancelUpdate(Book book) {}
@@ -391,6 +401,34 @@ void main() {
       );
       expect(shown(tester, 'The Story Map update didn’t go through'), isTrue);
       expect(find.text('See the Story Map for why.'), findsOne);
+    });
+
+    testWidgets('of several sections says so once, at the end', (tester) async {
+      await pumpBook(tester, storyMapBackend: backend);
+      await openTab(tester, 'Story Map');
+      await tester.tap(find.widgetWithText(TextButton, 'Choose'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Select all main text'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Add 3 sections'));
+      await tester.pumpAndSettle();
+      await openTab(tester, 'Read');
+      expect(find.text('1/3'), findsOne);
+
+      await finish(tester, added);
+      expect(find.text('2/3'), findsOne);
+      expect(find.text('Story Map updated'), findsNothing);
+
+      await finish(tester, const StoryUpdateOutcome('schema_invalid'));
+      expect(find.text('UPDATING'), findsNothing);
+      expect(shown(tester, 'Story Map update stopped'), isTrue);
+      expect(
+        find.text(
+          'Added 1 of 3 sections. Chapter 4 didn’t go through. See the Story '
+          'Map for why.',
+        ),
+        findsOne,
+      );
     });
 
     testWidgets('that ends on the Story Map tab needs no banner', (

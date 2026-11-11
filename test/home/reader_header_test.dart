@@ -22,7 +22,7 @@ Book _book(String title) => Book(
 /// Only what the status asks of a backend: documents `c0` to `c5`.
 class _Backend implements StoryMapBackend {
   @override
-  RunningStoryUpdate? running(Book book) => null;
+  RunningStoryBatch? running(Book book) => null;
 
   @override
   Future<List<SpineItem>> spine(Book book) async => [
@@ -173,6 +173,40 @@ void main() {
       await tester.pump();
     });
 
+    testWidgets('of several sections, says which', (tester) async {
+      final semantics = tester.ensureSemantics();
+      await pumpHeader(tester);
+      status.updateStarted(now, step: 1, total: 5);
+      await tester.pump();
+      expect(find.text('UPDATING'), findsOne);
+      expect(find.text('2/5'), findsOne);
+      expect(
+        find.bySemanticsLabel(
+          'Story Map: updating, section 2 of 5. Opens the Story Map.',
+        ),
+        findsOne,
+      );
+
+      status.stopRequested();
+      await tester.pump();
+      expect(find.text('STOPPING'), findsOne);
+      expect(find.text('2/5'), findsOne);
+
+      status.updateEnded();
+      await tester.pump();
+      expect(find.text('2/5'), findsNothing);
+      semantics.dispose();
+    });
+
+    testWidgets('of one section, doesn\'t count it', (tester) async {
+      await pumpHeader(tester);
+      status.updateStarted(now);
+      await tester.pump();
+      expect(find.text('1/1'), findsNothing);
+      status.updateEnded();
+      await tester.pump();
+    });
+
     testWidgets('says when it is being cancelled', (tester) async {
       await pumpHeader(tester);
       status
@@ -240,12 +274,19 @@ void main() {
       online: false,
       title: 'A very long book title that goes on and on',
     );
-    status.updateStarted(now.subtract(const Duration(minutes: 12)));
+    status.updateStarted(
+      now.subtract(const Duration(minutes: 12)),
+      step: 11,
+      total: 12,
+    );
     await tester.pump();
     // The offline chip makes room: the banner has said what it means.
     expect(find.text('OFFLINE'), findsNothing);
     expect(find.byIcon(Icons.wifi_off), findsOne);
     expect(find.text('UPDATING'), findsOne);
+    expect(find.text('12/12'), findsOne);
+    // The Story Map tab shows the time instead.
+    expect(find.text('12:00'), findsNothing);
     expect(tester.takeException(), isNull);
     // The title isn't squeezed out, even in the test font, whose letters are
     // all as wide as they are tall.

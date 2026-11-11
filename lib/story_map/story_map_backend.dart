@@ -171,22 +171,27 @@ abstract interface class StoryMapBackend {
   /// What pressing Update would do.
   Future<StoryUpdateStatus> inspect(Book book);
 
-  /// The update already running for [book], if any.
-  RunningStoryUpdate? running(Book book);
+  /// The sections already being added to [book], if any.
+  RunningStoryBatch? running(Book book);
 
-  /// Stops the update running for [book], if it is still waiting for the
-  /// provider. Its outcome is then `cancelled`: see [StoryUpdater.cancel].
+  /// Stops the section being added to [book], if it is still waiting for the
+  /// provider, and starts no more. Its outcome is then `cancelled`: see
+  /// [StoryUpdater.cancel].
   void cancelUpdate(Book book);
 
-  /// Adds the section called [sectionId], or the next one. Never throws for a
-  /// failed update: see the outcome.
-  Future<StoryUpdateOutcome> update(
+  /// Lets the section being added to [book] finish, and starts no more.
+  void stopAfterCurrent(Book book);
+
+  /// Adds [sections] one after another, in reading order, stopping at the
+  /// first that doesn't go in: see [StoryUpdater.runSections]. Never throws for
+  /// a failed update: see the outcomes.
+  Future<RunningStoryBatch> update(
     Book book, {
     required AiCredentials credentials,
     required StoryModelChoice model,
     required StoryEffort effort,
     required bool checkQuotes,
-    String? sectionId,
+    required List<StorySectionChoice> sections,
   });
 
   /// Saves everything kept about [book]'s Story Map where the reader chooses.
@@ -425,22 +430,26 @@ class DeviceStoryMapBackend implements StoryMapBackend, AskBackend {
   }
 
   @override
-  RunningStoryUpdate? running(Book book) => StoryUpdater.running(book.id);
+  RunningStoryBatch? running(Book book) => StoryUpdater.batch(book.id);
 
   @override
   void cancelUpdate(Book book) => StoryUpdater.cancel(book.id);
 
   @override
-  Future<StoryUpdateOutcome> update(
+  void stopAfterCurrent(Book book) =>
+      StoryUpdater.batch(book.id)?.stopAfterCurrent();
+
+  @override
+  Future<RunningStoryBatch> update(
     Book book, {
     required AiCredentials credentials,
     required StoryModelChoice model,
     required StoryEffort effort,
     required bool checkQuotes,
-    String? sectionId,
+    required List<StorySectionChoice> sections,
   }) async {
     final storePath = await _storePath(book);
-    return StoryUpdater.run(
+    return StoryUpdater.runSections(
       StoryUpdateRequest(
         epubPath: book.epubPath,
         storePath: storePath,
@@ -454,8 +463,8 @@ class DeviceStoryMapBackend implements StoryMapBackend, AskBackend {
         schemaText: await rootBundle.loadString(
           'assets/story_update/story_delta.schema.json',
         ),
-        sectionId: sectionId,
       ),
+      sections,
       bookId: book.id,
       apiKey: credentials.apiKey,
       post: post,
@@ -494,7 +503,7 @@ class DeviceStoryMapBackend implements StoryMapBackend, AskBackend {
 
   @override
   Future<void> commitImport(Book book, StagedStoryImport staged) async {
-    if (StoryUpdater.running(book.id) != null) {
+    if (StoryUpdater.busy(book.id)) {
       throw const StoryImportError('An update is running. Try again after it.');
     }
     final storePath = await _storePath(book);

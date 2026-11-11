@@ -114,6 +114,8 @@ class ReaderHeader extends StatelessWidget {
             child: _StoryMapChip(
               state: status,
               startedAt: storyMap!.updateStartedAt,
+              step: storyMap.step,
+              total: storyMap.total,
               onTap: onOpenStoryMap,
               now: now,
             ),
@@ -127,6 +129,11 @@ class ReaderHeader extends StatelessWidget {
 enum _StoryMapState {
   updating('UPDATING', 'updating', _ChipColors.loud),
   cancelling('CANCELLING', 'cancelling an update', _ChipColors.loud),
+  stopping(
+    'STOPPING',
+    'finishing this section, then stopping',
+    _ChipColors.loud,
+  ),
   inMap('IN MAP', 'this page is in the map', _ChipColors.calm),
   ahead('NEEDS UPDATE', 'needs an update to reach this page', _ChipColors.warm),
   before('NOT IN MAP', 'this page is before the map starts', _ChipColors.quiet),
@@ -143,7 +150,8 @@ enum _StoryMapState {
   /// What [storyMap] has to show, or null for nothing yet.
   static _StoryMapState? of(StoryMapStatusController storyMap) {
     if (storyMap.updateStartedAt != null) {
-      return storyMap.cancelling ? cancelling : updating;
+      if (storyMap.cancelling) return cancelling;
+      return storyMap.stopping ? stopping : updating;
     }
     return switch (storyMap.coverage) {
       null => null,
@@ -187,18 +195,28 @@ class _ChipColors {
   final Color text;
 }
 
+/// Screens narrower than this are too narrow for both the time and the count
+/// of sections in the Story Map chip.
+const _narrow = 360.0;
+
 /// The Story Map's status at the end of the header, styled like the offline
 /// chip. Its tap target is the header's full height.
 class _StoryMapChip extends StatelessWidget {
   const _StoryMapChip({
     required this.state,
     required this.startedAt,
+    required this.step,
+    required this.total,
     required this.onTap,
     required this.now,
   });
 
   final _StoryMapState state;
   final DateTime? startedAt;
+
+  /// Which of the [total] sections asked for is being added, counted from 0.
+  final int step;
+  final int total;
   final VoidCallback? onTap;
   final DateTime Function() now;
 
@@ -207,9 +225,16 @@ class _StoryMapChip extends StatelessWidget {
     final colors = state.colors;
     final style = kicker(color: colors.text, size: 9);
     final startedAt = this.startedAt;
+    // Which section is under way, when there are several. On a small phone
+    // that leaves no room for the time, which the Story Map tab shows.
+    final several = startedAt != null && total > 1;
+    final showTime =
+        startedAt != null &&
+        !(several && MediaQuery.sizeOf(context).width < _narrow);
+    final spokenStep = several ? ', section ${step + 1} of $total' : '';
     return Semantics(
       button: true,
-      label: 'Story Map: ${state.spoken}. Opens the Story Map.',
+      label: 'Story Map: ${state.spoken}$spokenStep. Opens the Story Map.',
       excludeSemantics: true,
       child: InkWell(
         onTap: onTap,
@@ -229,7 +254,17 @@ class _StoryMapChip extends StatelessWidget {
                 Icon(Icons.hub, size: 13, color: colors.text),
                 const SizedBox(width: 5),
                 Text(state.label, style: style),
-                if (startedAt != null) ...[
+                if (several) ...[
+                  const SizedBox(width: 4),
+                  Text(
+                    '${step + 1}/$total',
+                    style: style.copyWith(
+                      letterSpacing: 0.4,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ],
+                if (showTime) ...[
                   const SizedBox(width: 2),
                   StoryElapsedTime(
                     startedAt: startedAt,

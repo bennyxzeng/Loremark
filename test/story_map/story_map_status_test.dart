@@ -20,12 +20,12 @@ final _book = Book(
 
 /// Only what the status asks of a backend.
 class _Backend implements StoryMapBackend {
-  RunningStoryUpdate? runningUpdate;
+  RunningStoryBatch? runningUpdate;
   final spineRead = Completer<List<SpineItem>>();
   var spineReads = 0;
 
   @override
-  RunningStoryUpdate? running(Book book) => runningUpdate;
+  RunningStoryBatch? running(Book book) => runningUpdate;
 
   @override
   Future<List<SpineItem>> spine(Book book) {
@@ -69,16 +69,51 @@ void main() {
   tearDown(() => status.dispose());
 
   group('an update', () {
-    test('already running is there from the start', () {
-      final started = DateTime.utc(2026, 1, 2);
-      backend.runningUpdate = RunningStoryUpdate(
-        Completer<StoryUpdateOutcome>().future,
-        started,
-        null,
+    test('already running is there from the start', () async {
+      final first = Completer<StoryUpdateOutcome>();
+      final batch = RunningStoryBatch(
+        [
+          for (final id in ['s1', 's2', 's3'])
+            StorySectionChoice(id, 'Section $id', 30),
+        ],
+        (section) => section.sectionId == 's1'
+            ? first.future
+            : Completer<StoryUpdateOutcome>().future,
       );
+      backend.runningUpdate = batch;
+      first.complete(const StoryUpdateOutcome('committed'));
+      await pumpEventQueue();
+      batch.stopAfterCurrent();
+
       final picked = StoryMapStatusController(book: _book, backend: backend);
       addTearDown(picked.dispose);
-      expect(picked.updateStartedAt, started);
+      expect(picked.updateStartedAt, batch.currentStartedAt);
+      expect(picked.step, 1);
+      expect(picked.total, 3);
+      expect(picked.stopping, isTrue);
+    });
+
+    test('counts the sections of several', () {
+      final first = DateTime.utc(2026);
+      final second = first.add(const Duration(minutes: 3));
+      status.updateStarted(first, total: 3);
+      expect((status.step, status.total), (0, 3));
+
+      status.updateStarted(second, step: 1, total: 3);
+      expect(status.updateStartedAt, second);
+      expect((status.step, status.total), (1, 3));
+
+      // Told again of the same section, nothing changes.
+      status.updateStarted(second, step: 1, total: 3);
+      expect(notices, 2);
+
+      status.stopRequested();
+      expect(status.stopping, isTrue);
+
+      status.updateEnded();
+      expect(status.updateStartedAt, isNull);
+      expect((status.step, status.total, status.stopping), (0, 1, false));
+      expect(notices, 4);
     });
 
     test('goes from started to cancelling to ended', () {

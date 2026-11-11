@@ -72,7 +72,7 @@ class _BookScreenState extends State<BookScreen> {
 
   /// The last update that ended away from the Story Map tab, kept while its
   /// banner slides away too.
-  StoryUpdateOutcome? _finishedUpdate;
+  StoryBatchOutcome? _finishedUpdate;
   bool _showsFinishedUpdate = false;
   Timer? _bannerTimer;
 
@@ -86,8 +86,8 @@ class _BookScreenState extends State<BookScreen> {
 
   /// Says how an update went, if the reader is somewhere they wouldn't see it.
   /// One they cancelled, they asked for.
-  void _updateFinished(StoryUpdateOutcome outcome) {
-    if (outcome.status == 'cancelled' || _selectedTab == _storyMapTab) return;
+  void _updateFinished(StoryBatchOutcome outcome) {
+    if (outcome.cancelled || _selectedTab == _storyMapTab) return;
     _bannerTimer?.cancel();
     _bannerTimer = Timer(_bannerTime, _hideFinishedUpdate);
     setState(() {
