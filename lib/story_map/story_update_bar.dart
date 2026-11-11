@@ -222,6 +222,11 @@ class StoryUpdateBar extends StatelessWidget {
                 FilledButton.tonal(
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(horizontal: 14),
+                    // Cancel is red so it doesn't read as another Update.
+                    backgroundColor: updating ? theme.colorScheme.error : null,
+                    foregroundColor: updating
+                        ? theme.colorScheme.onError
+                        : null,
                   ),
                   onPressed: updating
                       ? (cancelling ? null : onCancel)
@@ -709,12 +714,19 @@ Future<StoryStopChoice?> showStoryCancelDialog(
           child: const Text('Keep going'),
         ),
         if (remaining > 0)
-          TextButton(
+          // Olive, like Update: it stops, but the section being added is
+          // still kept.
+          FilledButton(
             onPressed: () =>
                 Navigator.pop(context, StoryStopChoice.afterThisOne),
             child: const Text('Stop after this one'),
           ),
+        // Red, like Cancel in the bar: this throws away a paid request.
         FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: Theme.of(context).colorScheme.error,
+            foregroundColor: Theme.of(context).colorScheme.onError,
+          ),
           onPressed: () => Navigator.pop(context, StoryStopChoice.now),
           child: Text(remaining == 0 ? 'Cancel update' : 'Cancel now'),
         ),
