@@ -10,6 +10,7 @@ import '../story_update/story_updater.dart';
 import 'story_map_backend.dart';
 import 'story_map_intro.dart';
 import 'story_map_screen.dart';
+import 'story_map_status.dart';
 import 'story_update_bar.dart';
 
 /// The Story Map tab of [book]: its stored map, and the button that adds to it.
@@ -22,6 +23,9 @@ class StoryMapTab extends StatefulWidget {
     required this.book,
     required this.backend,
     required this.active,
+    this.status,
+    this.onKeepReading,
+    this.onUpdateFinished,
   });
 
   final Book book;
@@ -30,6 +34,16 @@ class StoryMapTab extends StatefulWidget {
   /// Whether this is the tab showing. The reader may have read on since it last
   /// was, so coming back looks at their position again.
   final bool active;
+
+  /// Told how updates and the map change, for the rest of the book to show.
+  final StoryMapStatusController? status;
+
+  /// Goes back to the book while an update runs.
+  final VoidCallback? onKeepReading;
+
+  /// Told how each update ended, however the reader got to it, while this tab
+  /// is there to see it end.
+  final ValueChanged<StoryUpdateOutcome>? onUpdateFinished;
 
   @override
   State<StoryMapTab> createState() => _StoryMapTabState();
@@ -104,12 +118,14 @@ class _StoryMapTabState extends State<StoryMapTab> {
         _loaded = true;
         _loadError = null;
       });
+      widget.status?.mapLoaded(model?.sections);
     } on Object catch (error) {
       if (!mounted) return;
       setState(() {
         _loaded = true;
         _loadError = error;
       });
+      widget.status?.mapUnreadable();
     }
   }
 
@@ -184,13 +200,15 @@ class _StoryMapTabState extends State<StoryMapTab> {
     final settings = AiSettingsScope.of(context);
     final credentials = settings.credentials;
     if (credentials == null) return;
+    final startedAt = DateTime.now();
     setState(() {
-      _updateStartedAt = DateTime.now();
+      _updateStartedAt = startedAt;
       _updateSectionId = sectionId;
       _cancelling = false;
       _notice = null;
       _failure = null;
     });
+    widget.status?.updateStarted(startedAt);
     await _awaitOutcome(
       _backend.update(
         widget.book,
@@ -208,6 +226,7 @@ class _StoryMapTabState extends State<StoryMapTab> {
     // The update may have ended while the dialog was open.
     if (!confirmed || !mounted || _updateStartedAt == null) return;
     setState(() => _cancelling = true);
+    widget.status?.cancelRequested();
     _backend.cancelUpdate(widget.book);
   }
 
@@ -310,6 +329,7 @@ class _StoryMapTabState extends State<StoryMapTab> {
             'Cancelled after $took. Nothing was saved, but your provider may '
             'still charge for it.';
       });
+      _tellEnded(outcome);
       return;
     }
     if (!outcome.committed) {
@@ -318,6 +338,7 @@ class _StoryMapTabState extends State<StoryMapTab> {
         _cancelling = false;
         _failure = '${describeStoryUpdateFailure(outcome)} Took $took.';
       });
+      _tellEnded(outcome);
       return;
     }
     await _load();
@@ -336,6 +357,13 @@ class _StoryMapTabState extends State<StoryMapTab> {
           '${outcome.unmatchedQuotes} quote(s) couldn’t be matched to the book.',
       ].join(' ');
     });
+    _tellEnded(outcome);
+  }
+
+  /// Tells the rest of the book, once this tab shows how [outcome] went.
+  void _tellEnded(StoryUpdateOutcome outcome) {
+    widget.status?.updateEnded();
+    widget.onUpdateFinished?.call(outcome);
   }
 
   @override
@@ -392,6 +420,7 @@ class _StoryMapTabState extends State<StoryMapTab> {
           failure: _failure,
           onUpdate: _pressUpdate,
           onCancel: _pressCancel,
+          onKeepReading: widget.onKeepReading,
           onChoose: _pressChoose,
           onLoad: _pressLoad,
           onExport: _pressExport,

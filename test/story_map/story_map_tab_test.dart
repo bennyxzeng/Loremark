@@ -9,6 +9,7 @@ import 'package:loremark/settings/ai_settings.dart';
 import 'package:loremark/settings/connection_status.dart';
 import 'package:loremark/story_map/story_map_backend.dart';
 import 'package:loremark/story_map/story_map_screen.dart';
+import 'package:loremark/story_map/story_map_status.dart';
 import 'package:loremark/story_map/story_map_tab.dart';
 import 'package:loremark/story_map/story_update_bar.dart';
 import 'package:loremark/story_model/story_model.dart';
@@ -82,6 +83,11 @@ class _FakeBackend implements StoryMapBackend {
 
   @override
   RunningStoryUpdate? running(Book book) => runningUpdate;
+
+  List<SpineItem> spineItems = const [];
+
+  @override
+  Future<List<SpineItem>> spine(Book book) async => spineItems;
 
   var cancels = 0;
 
@@ -187,6 +193,9 @@ void main() {
     bool online = true,
     bool active = true,
     bool hasKey = true,
+    StoryMapStatusController? status,
+    VoidCallback? onKeepReading,
+    ValueChanged<StoryUpdateOutcome>? onUpdateFinished,
   }) async {
     settings = AiSettings(
       MemorySecretStore({
@@ -202,7 +211,14 @@ void main() {
           status: ConnectionStatus(online: online),
           child: MaterialApp(
             home: Scaffold(
-              body: StoryMapTab(book: _book, backend: backend, active: active),
+              body: StoryMapTab(
+                book: _book,
+                backend: backend,
+                active: active,
+                status: status,
+                onKeepReading: onKeepReading,
+                onUpdateFinished: onUpdateFinished,
+              ),
             ),
           ),
         ),
@@ -547,6 +563,126 @@ void main() {
       await tester.tap(find.text('Keep going'));
       backend.hold!.complete();
       await tester.pumpAndSettle();
+    });
+  });
+
+  group('the rest of the book', () {
+    testWidgets('can be gone back to while updating', (tester) async {
+      var kept = 0;
+      final backend = _FakeBackend(model: storyModelFixture())
+        ..hold = Completer<void>();
+      await pumpTab(tester, backend, onKeepReading: () => kept++);
+      await pressUpdate(tester);
+      expect(find.textContaining('You can keep reading'), findsOne);
+      await tester.tap(find.text('Keep reading'));
+      expect(kept, 1);
+
+      backend.hold!.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('Keep reading'), findsNothing);
+    });
+
+    testWidgets('isn\'t offered without somewhere to go', (tester) async {
+      final backend = _FakeBackend(model: storyModelFixture())
+        ..hold = Completer<void>();
+      await pumpTab(tester, backend);
+      await pressUpdate(tester);
+      expect(find.text('Keep reading'), findsNothing);
+      backend.hold!.complete();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('hears how an update starts, is cancelled and ends', (
+      tester,
+    ) async {
+      final backend = _FakeBackend(model: storyModelFixture())
+        ..hold = Completer<void>();
+      backend.onCancel = () {
+        backend.answer = () =>
+            const StoryUpdateOutcome('cancelled', category: 'cancelled');
+        backend.hold!.complete();
+      };
+      final status = StoryMapStatusController(book: _book, backend: backend);
+      addTearDown(status.dispose);
+      final ended = <StoryUpdateOutcome>[];
+      await pumpTab(
+        tester,
+        backend,
+        status: status,
+        onUpdateFinished: ended.add,
+      );
+      expect(status.updateStartedAt, isNull);
+
+      await pressUpdate(tester);
+      expect(status.updateStartedAt, isNotNull);
+      expect(status.cancelling, isFalse);
+
+      // Held, so the cancel can be seen before it lands.
+      final stop = backend.onCancel!;
+      backend.onCancel = () {};
+      await tester.tap(find.widgetWithText(FilledButton, 'Cancel'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cancel update'));
+      await tester.pumpAndSettle();
+      expect(status.cancelling, isTrue);
+      expect(ended, isEmpty);
+
+      stop();
+      await tester.pumpAndSettle();
+      expect(status.updateStartedAt, isNull);
+      expect(status.cancelling, isFalse);
+      expect(ended.single.status, 'cancelled');
+    });
+
+    testWidgets('hears how each update ended, failed or not', (tester) async {
+      final backend = _FakeBackend(model: storyModelFixture());
+      final ended = <StoryUpdateOutcome>[];
+      await pumpTab(tester, backend, onUpdateFinished: ended.add);
+      await pressUpdate(tester);
+      backend.answer = () =>
+          const StoryUpdateOutcome('api_error', category: 'timeout');
+      await pressUpdate(tester);
+      expect(ended.map((outcome) => outcome.status), [
+        'committed',
+        'api_error',
+      ]);
+    });
+
+    testWidgets('hears the map each time it is read', (tester) async {
+      final json = storyModelFixtureJson();
+      for (final section in (json['processed_sections'] as List)) {
+        (section as Map<String, dynamic>)['href'] =
+            'OEBPS/${section['section_id']}.xhtml';
+      }
+      final model = StoryModel.fromJson(json);
+      final backend = _FakeBackend()
+        ..spineItems = const [
+          SpineItem(path: 'OEBPS/s1.xhtml', linear: true),
+          SpineItem(path: 'OEBPS/s2.xhtml', linear: true),
+        ];
+      final status = StoryMapStatusController(book: _book, backend: backend);
+      addTearDown(status.dispose);
+      await pumpTab(tester, backend, status: status);
+      expect(status.coverage, StoryCoverage.none);
+
+      // Updating adds the first map.
+      backend.model = model;
+      await pressUpdate(tester);
+      status.readerMoved(const ReaderPosition(0, 0.5));
+      await tester.pumpAndSettle();
+      expect(status.coverage, StoryCoverage.inMap);
+    });
+
+    testWidgets('a map that can\'t be read leaves the page unplaced', (
+      tester,
+    ) async {
+      final backend = _BrokenMapBackend();
+      final status = StoryMapStatusController(book: _book, backend: backend);
+      addTearDown(status.dispose);
+      await pumpTab(tester, backend, status: status);
+      status.readerMoved(const ReaderPosition(0, 0));
+      await tester.pumpAndSettle();
+      expect(status.coverage, isNull);
     });
   });
 
@@ -918,16 +1054,17 @@ void main() {
           ),
         ),
       );
-      expect(find.textContaining('0:00 elapsed.'), findsOne);
+      expect(find.text('0:00'), findsOne);
+      expect(find.text('elapsed'), findsOne);
 
       now = started.add(const Duration(seconds: 1));
       await tester.pump(const Duration(seconds: 1));
-      expect(find.textContaining('0:01 elapsed.'), findsOne);
+      expect(find.text('0:01'), findsOne);
 
       // Held back for a while, it shows the real time rather than one more tick.
       now = started.add(const Duration(seconds: 171));
       await tester.pump(const Duration(seconds: 1));
-      expect(find.textContaining('2:51 elapsed.'), findsOne);
+      expect(find.text('2:51'), findsOne);
     });
 
     testWidgets('shows real time on coming back to a running update', (
@@ -941,7 +1078,7 @@ void main() {
           null,
         );
       await pumpTab(tester, backend);
-      expect(find.textContaining(RegExp(r'^2:0[5-9] elapsed\.')), findsOne);
+      expect(find.textContaining(RegExp(r'^2:0[5-9]$')), findsOne);
 
       finish.complete(
         const StoryUpdateOutcome('committed', sectionTitle: 'Chapter 3'),
@@ -958,12 +1095,12 @@ void main() {
         ..hold = Completer<void>();
       await pumpTab(tester, backend);
       await pressUpdate(tester);
-      expect(find.textContaining('elapsed.'), findsOne);
+      expect(find.text('elapsed'), findsOne);
       expect(find.textContaining('Keep Loremark open'), findsOne);
 
       backend.hold!.complete();
       await tester.pumpAndSettle();
-      expect(find.textContaining('elapsed.'), findsNothing);
+      expect(find.text('elapsed'), findsNothing);
       // Nothing keeps ticking: this settles, and no timer is left pending.
       await tester.pump(const Duration(seconds: 5));
       expect(tester.binding.hasScheduledFrame, isFalse);

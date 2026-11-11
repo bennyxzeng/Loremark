@@ -69,6 +69,17 @@ it, in `<book id>.runs/`. Both go when the book does.
   nothing, though the provider may still charge. An answer that has already come has been paid
   for, so it is checked and kept as usual (`StoryUpdater.cancel`). The run folder ends `cancelled`,
   which the lab doesn't have, with exit code 130.
+- **An update is hard to miss, from every tab.** On the Story Map tab a card shows how long it has
+  run, in large figures, says the reader can keep reading, and has a Keep reading button. The book's
+  header shows `UPDATING` and the same time on every tab. If the update ends while the reader is on
+  another tab, a banner slides in under the header, like the offline one, with a View button. It
+  goes after 6 seconds, and isn't shown for an update the reader cancelled. Having left the book,
+  they find the result on the Story Map tab next time.
+- **The header says whether the page is in the map.** Between updates its chip shows `IN MAP`,
+  `NEEDS UPDATE` (past the map's last section), `NOT IN MAP` (before its first) or `NO MAP YET`, and
+  tapping it opens the Story Map (`StoryMapStatusController`, `storyCoverage`). It goes by whole
+  spine documents: a stretch skipped between two sections counts as in the map, and so does all of a
+  document only some of whose sections are in it. Beside it, the offline chip shrinks to its icon.
 
 ## Where it differs from the lab
 

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../story_update/story_import.dart';
 import '../story_update/story_updater.dart';
+import '../theme/loremark_theme.dart';
 
 /// [elapsed] as minutes and seconds, such as `2:51`.
 String formatStoryElapsed(Duration elapsed) {
@@ -78,6 +79,7 @@ class StoryUpdateBar extends StatelessWidget {
     required this.onChoose,
     required this.onLoad,
     required this.onExport,
+    this.onKeepReading,
     this.filesBusy = false,
     this.updateStartedAt,
     this.updateSectionId,
@@ -99,6 +101,9 @@ class StoryUpdateBar extends StatelessWidget {
   final VoidCallback onChoose;
   final VoidCallback onLoad;
   final VoidCallback onExport;
+
+  /// Goes back to the book while an update runs; null to leave it out.
+  final VoidCallback? onKeepReading;
 
   /// Whether files are being exported or loaded, which an update mustn't overlap.
   final bool filesBusy;
@@ -221,7 +226,12 @@ class StoryUpdateBar extends StatelessWidget {
             ],
           ),
           if (startedAt != null)
-            _ElapsedTime(startedAt: startedAt, now: now, style: muted),
+            _UpdatingCard(
+              startedAt: startedAt,
+              now: now,
+              cancelling: cancelling,
+              onKeepReading: onKeepReading,
+            ),
           if (detail != null) Text(detail, style: muted),
           if (notice != null)
             Padding(
@@ -244,27 +254,110 @@ class StoryUpdateBar extends StatelessWidget {
   }
 }
 
-/// How long an update has been running, ticking once a second. It is its own
-/// widget so that a tick rebuilds this line and not the map below it.
-///
-/// Plain text rather than a spinner: an endless animation would keep widget
-/// tests from settling.
-class _ElapsedTime extends StatefulWidget {
-  const _ElapsedTime({
+/// What an update under way looks like: how long it has been running, large,
+/// so it is plain that something is happening, and that the reader can go back
+/// to the book meanwhile.
+class _UpdatingCard extends StatelessWidget {
+  const _UpdatingCard({
     required this.startedAt,
     required this.now,
-    required this.style,
+    required this.cancelling,
+    required this.onKeepReading,
   });
 
   final DateTime startedAt;
   final DateTime Function() now;
+  final bool cancelling;
+  final VoidCallback? onKeepReading;
+
+  @override
+  Widget build(BuildContext context) {
+    const muted = TextStyle(
+      fontSize: 12,
+      height: 1.4,
+      color: LoremarkColors.muted,
+    );
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Material(
+        color: LoremarkColors.card,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: const BorderSide(color: LoremarkColors.line),
+        ),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(14, 10, 14, cancelling ? 12 : 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  StoryElapsedTime(
+                    startedAt: startedAt,
+                    now: now,
+                    style: const TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w600,
+                      height: 1.1,
+                      color: LoremarkColors.ink,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Text('elapsed', style: muted),
+                ],
+              ),
+              if (!cancelling) ...[
+                const SizedBox(height: 4),
+                const Text(
+                  'This can take a few minutes. You can keep reading, and '
+                  'you’ll be told when it’s done. Keep Loremark open.',
+                  style: muted,
+                ),
+                if (onKeepReading != null)
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: onKeepReading,
+                      child: const Text('Keep reading'),
+                    ),
+                  )
+                else
+                  const SizedBox(height: 8),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// How long an update has been running, as `m:ss`, ticking once a second. It
+/// is its own widget so that a tick rebuilds this text and nothing around it.
+///
+/// Plain text rather than a spinner: an endless animation would keep widget
+/// tests from settling.
+class StoryElapsedTime extends StatefulWidget {
+  const StoryElapsedTime({
+    super.key,
+    required this.startedAt,
+    this.now = DateTime.now,
+    this.style,
+  });
+
+  final DateTime startedAt;
+
+  /// The time now; tests replace it.
+  final DateTime Function() now;
   final TextStyle? style;
 
   @override
-  State<_ElapsedTime> createState() => _ElapsedTimeState();
+  State<StoryElapsedTime> createState() => _StoryElapsedTimeState();
 }
 
-class _ElapsedTimeState extends State<_ElapsedTime> {
+class _StoryElapsedTimeState extends State<StoryElapsedTime> {
   late final Timer _ticker;
 
   @override
@@ -286,13 +379,10 @@ class _ElapsedTimeState extends State<_ElapsedTime> {
 
   @override
   Widget build(BuildContext context) {
-    final elapsed = formatStoryElapsed(
-      widget.now().difference(widget.startedAt),
-    );
     return Text(
-      '$elapsed elapsed. This can take a few minutes. Keep Loremark open.',
-      // Digits of one width, so the words after them don't shift each second.
-      style: widget.style?.copyWith(
+      formatStoryElapsed(widget.now().difference(widget.startedAt)),
+      // Digits of one width, so what is beside them doesn't shift each second.
+      style: (widget.style ?? const TextStyle()).copyWith(
         fontFeatures: const [FontFeature.tabularFigures()],
       ),
     );

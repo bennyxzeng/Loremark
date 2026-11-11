@@ -79,6 +79,48 @@ bool pastStoryMapEnd(
   return last != null && sectionIndex > last;
 }
 
+/// Where the reader's page is, next to what the Story Map covers.
+enum StoryCoverage {
+  /// The book has no Story Map.
+  none,
+
+  /// Before the map's first section, which a map started further in leaves
+  /// out for good.
+  before,
+
+  /// From the map's first section to its last.
+  inMap,
+
+  /// After the map's last section, where updating would reach.
+  ahead,
+}
+
+/// Where the spine item at [sectionIndex] is next to [sections], the Story
+/// Map's, or [StoryCoverage.none] for no map.
+///
+/// It goes by whole spine items. A stretch between two sections counts as in
+/// the map, though one skipped there isn't, and so does all of an item that
+/// only some of the map's sections are in. Sections whose document isn't in
+/// [spine] are left out; if that is all of them, nothing can be placed, and
+/// the map counts as none.
+StoryCoverage storyCoverage(
+  List<StorySection>? sections,
+  List<SpineItem> spine,
+  int sectionIndex,
+) {
+  final placed = [
+    for (final section in sections ?? const <StorySection>[])
+      ?spineIndexOf(spine, section.href ?? ''),
+  ];
+  if (placed.isEmpty) return StoryCoverage.none;
+  // In reading order already, as sections are added, but a map from a file
+  // needn't be.
+  placed.sort();
+  if (sectionIndex < placed.first) return StoryCoverage.before;
+  if (sectionIndex > placed.last) return StoryCoverage.ahead;
+  return StoryCoverage.inMap;
+}
+
 /// How exporting a book's Story Map files ended.
 enum StoryExportOutcome { saved, cancelled, nothing }
 
@@ -116,6 +158,10 @@ abstract interface class StoryMapBackend {
     Book book,
     List<StorySection> sections,
   );
+
+  /// The items of [book]'s EPUB spine, in reading order, so a reader's
+  /// `sectionIndex` can be placed next to the map's sections.
+  Future<List<SpineItem>> spine(Book book);
 
   /// The paragraphs of [book]'s Story Map that a reader at [progress] has read.
   /// Nothing past them is kept. Throws a `StoryStoreError` or a
@@ -200,9 +246,12 @@ class DeviceStoryMapBackend implements StoryMapBackend, AskBackend {
     final store = await ReadingPositionStore.open();
     await store.saved;
     final position = await store.load(book.id);
-    final spine = await (_spines[book.id] ??= readSpine(book.epubPath));
-    return (position, spine);
+    return (position, await spine(book));
   }
+
+  @override
+  Future<List<SpineItem>> spine(Book book) =>
+      _spines[book.id] ??= readSpine(book.epubPath);
 
   @override
   Future<StoryReadingProgress> readingProgress(
@@ -330,7 +379,7 @@ class DeviceStoryMapBackend implements StoryMapBackend, AskBackend {
     StorySection section,
     StoryParagraph paragraph,
   ) async {
-    final spine = await (_spines[book.id] ??= readSpine(book.epubPath));
+    final spine = await this.spine(book);
     final index = spineIndexOf(spine, section.href ?? '');
     if (index == null) return null;
     final xhtml = await readSectionMarkup(book.epubPath, spine[index].path);
@@ -345,7 +394,7 @@ class DeviceStoryMapBackend implements StoryMapBackend, AskBackend {
   Future<RecentPages?> recentPages(Book book, TextPosition end) async {
     // A page end that wasn't measured sent no page.
     if (end.progression <= 0) return null;
-    final spine = await (_spines[book.id] ??= readSpine(book.epubPath));
+    final spine = await this.spine(book);
     if (end.sectionIndex >= spine.length) return null;
     final xhtml = await readSectionMarkup(
       book.epubPath,
