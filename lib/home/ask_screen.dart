@@ -662,10 +662,8 @@ class _StageState extends State<_Stage> with SingleTickerProviderStateMixin {
             final keyboard = View.of(context).viewInsets.bottom > 0;
             if (!keyboard) _rest = height;
             // She stands only with the keyboard down, so she stands on the
-            // stage as it is without it. While the keyboard comes or goes the
-            // stage changes height, and is even briefly taller than without
-            // it, as the bar under it takes back the home indicator's room:
-            // standing on it then, she would swell and shrink back.
+            // stage as it is without it, not as the keyboard coming or going
+            // shortens it while she steps.
             final standingOn = keyboard ? _rest ?? height : height;
             return AnimatedBuilder(
               animation: _eased,
