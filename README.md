@@ -44,7 +44,7 @@ These are our six use cases and where each one stands in this beta.
 | **3 · Take notes and highlights** | **Operational** | Select text in the reader and choose **Highlight**, **Add note** or **Copy**. Highlights are drawn on the page and stay there as you turn pages. Tap a highlight to edit or remove it. The Notes tab lists every note, with search, a color filter and an **All / Notes / Highlights** toggle. Tap a note to jump back to its passage. |
 | **5 · Explore the Story Map** | **Operational** | A relationship graph of the characters, with a chapter slider. Move the slider back and facts from later chapters disappear. The **Chapter** page lists what the reader learned in that chapter. |
 | **4 · Look up a character** | **Operational** | A searchable character list, and a card for each character showing what is known as of the chosen chapter. Opening a card by tapping a name in the reader isn't in yet. |
-| **1 · Get a recap when you come back** | In progress | |
+| **1 · Get a recap when you come back** | **Operational** | When you open a book, a pop-up offers a recap up to your page. It shows in the Ask tab as numbered moments, each with the passage of the book behind it, which you can open in the reader. Needs a Story Map and an API key. |
 | **2 · Track a theory** | In progress | |
 | **6 · Ask about the story** | In progress | The Ask tab is in the app and unlocks with an API key, but it doesn't answer questions yet. |
 
