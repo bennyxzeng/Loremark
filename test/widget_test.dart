@@ -11,22 +11,26 @@ import 'package:loremark/settings/connection_status.dart';
 import 'package:loremark/theme/loremark_theme.dart';
 
 const _source = RecapSource(
-  cutoffLabel: 'Chapter 1: Arrival',
+  sectionTitle: 'Chapter 1: Arrival',
+  sectionLabel: 'Chapter 1',
+  partway: false,
+  place: (finished: 1, paragraphsRead: 0, revision: 1),
   events: [],
   characters: [],
   openQuestions: [],
-  sectionText: 'Mara walks along the quay.',
+  recentText: 'Mara walks along the quay.',
 );
 
-/// Says the reader finished [source], and writes a one-moment recap of it.
+/// Finds the reader at [start], and writes a one-moment recap of where they
+/// are.
 class _FakeRecapBackend implements RecapBackend {
-  _FakeRecapBackend({this.source = _source});
+  _FakeRecapBackend({this.start = const RecapCanStart(_source)});
 
-  final RecapSource? source;
+  final RecapStart start;
   final requests = <RecapSource>[];
 
   @override
-  Future<RecapSource?> prepare(Book book) async => source;
+  Future<RecapStart> prepare(Book book) async => start;
 
   @override
   Future<RecapResult> recap(
@@ -43,8 +47,8 @@ class _FakeRecapBackend implements RecapBackend {
             chapter: 'Chapter 1',
           ),
         ],
-        cutoffLabel: source.cutoffLabel,
-        usedStoryMap: false,
+        stopsAt: source.stopsAt,
+        place: source.place,
       ),
     );
   }
@@ -343,8 +347,46 @@ void main() {
       expect(find.text('Welcome back.'), findsNothing);
     });
 
-    testWidgets('waits until a section is finished', (tester) async {
-      await pumpBook(tester, recapBackend: _FakeRecapBackend(source: null));
+    testWidgets('partway through a chapter, says so', (tester) async {
+      const partway = RecapSource(
+        sectionTitle: 'Chapter 2: The Letter',
+        sectionLabel: 'Chapter 2',
+        partway: true,
+        place: (finished: 1, paragraphsRead: 3, revision: 1),
+        events: [],
+        characters: [],
+        openQuestions: [],
+        recentText: 'Mara opens the letter.',
+      );
+      await pumpBook(
+        tester,
+        recapBackend: _FakeRecapBackend(start: const RecapCanStart(partway)),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining('partway through Chapter 2: The Letter'),
+        findsOne,
+      );
+    });
+
+    testWidgets('waits until the reader has read some of the map', (
+      tester,
+    ) async {
+      await pumpBook(
+        tester,
+        recapBackend: _FakeRecapBackend(start: const RecapNeedsReading()),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Welcome back.'), findsNothing);
+    });
+
+    testWidgets('isn’t offered without a Story Map', (tester) async {
+      await pumpBook(
+        tester,
+        recapBackend: _FakeRecapBackend(start: const RecapNeedsStoryMap()),
+      );
       await tester.pumpAndSettle();
 
       expect(find.text('Welcome back.'), findsNothing);

@@ -12,7 +12,8 @@ import '../theme/loremark_theme.dart';
 /// is the same as **Keep reading**.
 Future<bool> showWelcomeBack(
   BuildContext context, {
-  required String cutoffLabel,
+  required String sectionTitle,
+  required bool partway,
 }) async {
   final catchUp = await showGeneralDialog<bool>(
     context: context,
@@ -27,7 +28,8 @@ Future<bool> showWelcomeBack(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 440),
             child: WelcomeBackCard(
-              cutoffLabel: cutoffLabel,
+              sectionTitle: sectionTitle,
+              partway: partway,
               onCatchUp: () => Navigator.of(context).pop(true),
               onKeepReading: () => Navigator.of(context).pop(false),
             ),
@@ -66,13 +68,17 @@ Future<bool> showWelcomeBack(
 class WelcomeBackCard extends StatelessWidget {
   const WelcomeBackCard({
     super.key,
-    required this.cutoffLabel,
+    required this.sectionTitle,
+    required this.partway,
     required this.onCatchUp,
     required this.onKeepReading,
   });
 
-  /// Where the recap would stop, such as "Chapter 3: The Letter".
-  final String cutoffLabel;
+  /// The section the recap would stop in, such as "Chapter 3: The Letter".
+  final String sectionTitle;
+
+  /// Whether the reader stopped partway through it, rather than at its end.
+  final bool partway;
 
   /// Opens the recap. Null while one is being written.
   final VoidCallback? onCatchUp;
@@ -143,8 +149,12 @@ class WelcomeBackCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Last time you finished $cutoffLabel. A little reminder '
-                    'before you turn the page?',
+                    partway
+                        ? 'Last time you stopped partway through '
+                              '$sectionTitle. A little reminder before you '
+                              'read on?'
+                        : 'Last time you finished $sectionTitle. A little '
+                              'reminder before you turn the page?',
                     style: const TextStyle(
                       fontSize: 13.5,
                       height: 1.5,

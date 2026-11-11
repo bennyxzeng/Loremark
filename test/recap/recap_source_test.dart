@@ -1,268 +1,194 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:loremark/reader/epub_sections.dart';
 import 'package:loremark/recap/recap_source.dart';
 import 'package:loremark/story_model/story_model.dart';
+import 'package:loremark/story_model/story_snapshot.dart';
 
-import '../story_model/story_model_fixture.dart';
+import 'recap_test_book.dart';
 
-const _spine = [
-  SpineItem(path: 'OEBPS/title.xhtml', linear: true),
-  SpineItem(path: 'OEBPS/ch1.xhtml', linear: true),
-  SpineItem(path: 'OEBPS/ch2.xhtml', linear: true),
-];
+/// What a recap may use for a reader at [progress] through the test book.
+RecapSource? _sourceAt(
+  StoryReadingProgress progress, {
+  StoryModel? model,
+  int length = 60,
+  bool withSpine = true,
+}) {
+  final map = model ?? recapTestModel();
+  return buildRecapSource(
+    model: map,
+    progress: progress,
+    paragraphs: readParagraphs(map, progress, length: length),
+    spine: withSpine ? recapTestSpine : const [],
+  );
+}
 
-/// A section long enough to recap: a heading, then one sentence many times.
-String _chapter(String heading, String sentence) =>
-    '$heading\n\n${List.filled(30, sentence).join(' ')}';
-
-final _texts = [
-  'The Glass Harbor',
-  _chapter('Chapter 1: Arrival', 'Mara walks along the quay.'),
-  _chapter('Chapter 2: The Letter', 'Elian is secretly the harbor master.'),
-];
+/// Everything of [source] that can reach the provider or the screen.
+String _everything(RecapSource source) => [
+  source.serialize(),
+  for (final event in source.events)
+    for (final passage in event.passages) passage.text,
+].join('\n');
 
 void main() {
-  group('without a Story Map', () {
-    test('there is nothing to recap before a section is finished', () {
-      expect(
-        buildRecapSource(
-          spine: _spine,
-          sectionTexts: _texts,
-          finishedSpineItems: 0,
-        ),
-        isNull,
-      );
-    });
-
-    test('a title page alone is not worth a recap', () {
-      expect(
-        buildRecapSource(
-          spine: _spine,
-          sectionTexts: _texts,
-          finishedSpineItems: 1,
-        ),
-        isNull,
-      );
-    });
-
-    test('uses the end of the last finished chapter and nothing after', () {
-      final source = buildRecapSource(
-        spine: _spine,
-        sectionTexts: _texts,
-        finishedSpineItems: 2,
-      )!;
-
-      expect(source.cutoffLabel, 'Chapter 1: Arrival');
-      expect(source.sectionText, contains('Mara walks along the quay.'));
-      expect(source.hasStoryFacts, isFalse);
-      expect(source.serialize(), isNot(contains('Elian')));
-      expect(source.serialize(), contains('no Story Map has been built'));
-    });
-
-    test('steps over footnotes and short pages at the end', () {
-      final spine = [
-        ..._spine,
-        const SpineItem(path: 'OEBPS/notes.xhtml', linear: false),
-        const SpineItem(path: 'OEBPS/plate.xhtml', linear: true),
-      ];
-      final texts = [..._texts, _chapter('Notes', 'A footnote.'), 'Plate 3'];
-
-      final source = buildRecapSource(
-        spine: spine,
-        sectionTexts: texts,
-        finishedSpineItems: 5,
-      )!;
-
-      expect(source.cutoffLabel, 'Chapter 2: The Letter');
-    });
-
-    test('names a section without a heading by its number', () {
-      final texts = [
-        _texts[0],
-        List.filled(40, 'Mara walks along the quay.').join(' '),
-      ];
-
-      final source = buildRecapSource(
-        spine: _spine,
-        sectionTexts: texts,
-        finishedSpineItems: 2,
-      )!;
-
-      expect(source.cutoffLabel, 'Section 2');
-    });
+  test('nothing read, nothing to recap', () {
+    expect(_sourceAt(const StoryReadingProgress(0)), isNull);
   });
 
-  group('with a Story Map', () {
-    test('only has facts up to the last finished story section', () {
-      final source = buildRecapSource(
-        spine: _spine,
-        sectionTexts: _texts,
-        finishedSpineItems: 2,
-        model: storyModelFixture(),
-        finishedStorySections: 1,
-      )!;
+  group('after chapter 1', () {
+    final source = _sourceAt(const StoryReadingProgress(1))!;
 
-      expect(source.hasStoryFacts, isTrue);
-      expect(source.characters, contains('Mara'));
+    test('stops at its end', () {
+      expect(source.sectionTitle, 'Chapter 1: Arrival');
+      expect(source.partway, isFalse);
+      expect(source.stopsAt, 'the end of Chapter 1: Arrival');
+      expect(source.place, (finished: 1, paragraphsRead: 0, revision: 2));
+      expect(source.mapEndsHere, isFalse);
+    });
+
+    test('uses its facts and text, and nothing from chapter 2', () {
       expect(source.events.map((event) => event.line), [
         'E1 [Chapter 1] Mara arrives at the harbor.',
       ]);
-      expect(source.events.single.quotes.map((quote) => quote.text), [
-        'quote f013',
-      ]);
+      expect(source.characters, contains('Mara'));
       expect(source.openQuestions, ['Who is the stranger?']);
-      // Chapter 2 adds Elian, renames Mara and reveals Captain Vell.
-      final message = source.serialize();
-      expect(message, contains('E1 [Chapter 1] Mara arrives at the harbor.'));
-      for (final spoiler in ['Elian', 'Quinn', 'Vell', 'letter']) {
-        expect(message, isNot(contains(spoiler)), reason: spoiler);
+      expect(source.recentText, contains(paragraphMark('s1', 4)));
+      for (final spoiler in ['Elian', 'Quinn', 'Vell', 'letter', '[s2']) {
+        expect(_everything(source), isNot(contains(spoiler)), reason: spoiler);
       }
-    });
-
-    test('knows what a later finished section revealed', () {
-      final source = buildRecapSource(
-        spine: _spine,
-        sectionTexts: _texts,
-        finishedSpineItems: 3,
-        model: storyModelFixture(),
-        finishedStorySections: 2,
-      )!;
-
-      expect(source.characters, contains('Elian'));
-      expect(source.events.last.chapter, 'Chapter 2');
-      expect(source.events.last.text, 'Elian hands Mara a letter.');
-      expect(
-        source.events.map((event) => event.text),
-        contains('(remembered, from the past) Elian left home years ago.'),
-      );
-      // Each event has its own ID, in order, for the recap to point back to.
-      expect(source.events.map((event) => event.id), [
-        for (var i = 1; i <= source.events.length; i++) 'E$i',
-      ]);
-      // The stranger's question was answered in chapter 2.
-      expect(source.openQuestions, ['Why did Elian leave?']);
-    });
-
-    test('a Story Map built past the reader adds nothing past them', () {
-      // The map covers both chapters, but the reader finished only one.
-      final source = buildRecapSource(
-        spine: _spine,
-        sectionTexts: _texts,
-        finishedSpineItems: 2,
-        model: storyModelFixture(),
-        finishedStorySections: 1,
-      )!;
-
-      expect(source.characters, isNot(contains('Elian')));
-    });
-
-    test('uses the Story Map title for the finished chapter', () {
-      final json = storyModelFixtureJson();
-      for (final section in json['processed_sections'] as List) {
-        final map = section as Map<String, dynamic>;
-        map['href'] = map['section_id'] == 's1'
-            ? 'OEBPS/ch1.xhtml'
-            : 'OEBPS/ch2.xhtml';
-      }
-      final texts = [
-        _texts[0],
-        _chapter('I', 'Mara walks along the quay.'),
-        _texts[2],
-      ];
-
-      final source = buildRecapSource(
-        spine: _spine,
-        sectionTexts: texts,
-        finishedSpineItems: 2,
-        model: StoryModel.fromJson(json),
-        finishedStorySections: 1,
-      )!;
-
-      expect(source.cutoffLabel, 'Chapter 1: Arrival');
     });
   });
 
-  group('passages', () {
-    /// The fixture's model with this book's chapter files, and [quote] as the
-    /// evidence for "Mara arrives at the harbor."
-    StoryModel modelQuoting(String quote) {
-      final json = storyModelFixtureJson();
-      for (final section in json['processed_sections'] as List) {
-        final map = section as Map<String, dynamic>;
-        map['href'] = map['section_id'] == 's1'
-            ? 'OEBPS/ch1.xhtml'
-            : 'OEBPS/ch2.xhtml';
+  group('partway through chapter 2, two paragraphs in', () {
+    final source = _sourceAt(partwayThroughChapter2(2))!;
+
+    test('stops at the reader’s page', () {
+      expect(source.sectionTitle, 'Chapter 2: The Letter');
+      expect(source.partway, isTrue);
+      expect(source.stopsAt, 'your page in Chapter 2: The Letter');
+      expect(source.place, (finished: 1, paragraphsRead: 2, revision: 2));
+    });
+
+    test('no text from paragraph 3 on reaches the prompt or the screen', () {
+      final everything = _everything(source);
+
+      expect(everything, contains(paragraphMark('s2', 1)));
+      expect(everything, contains(paragraphMark('s2', 2)));
+      for (var number = 3; number <= 5; number++) {
+        expect(everything, isNot(contains(paragraphMark('s2', number))));
       }
-      final records = json['records'] as Map<String, dynamic>;
-      final arrival = (records['events'] as List).first as Map<String, dynamic>;
-      final evidence = (arrival['evidence'] as List).single;
-      (evidence as Map<String, dynamic>)['quote'] = quote;
-      return StoryModel.fromJson(json);
-    }
-
-    /// The quote behind the one event a reader who finished chapter 1 knows.
-    RecapQuote quoteAfterChapterOne(String quote, {List<String>? texts}) =>
-        buildRecapSource(
-          spine: _spine,
-          sectionTexts: texts ?? _texts,
-          finishedSpineItems: 2,
-          model: modelQuoting(quote),
-          finishedStorySections: 1,
-        )!.events.single.quotes.single;
-
-    test('a quote is found in the chapter it is from', () {
-      final quote = quoteAfterChapterOne('Mara walks along the quay.');
-
-      expect(quote.text, 'Mara walks along the quay.');
-      expect(quote.target!.sectionIndex, 1);
-      expect(quote.target!.highlight, contains('Mara walks along the quay.'));
     });
 
-    test('never opens the book past the reader', () {
-      // A real quote, but from chapter 2, which the reader hasn't finished.
-      final quote = quoteAfterChapterOne(
-        'Elian is secretly the harbor master.',
+    test('no record it hides reaches the prompt or the screen', () {
+      final everything = _everything(source);
+
+      expect(everything, isNot(contains('Elian hands Mara a letter.')));
+      expect(everything, isNot(contains('Vell')));
+      // What it doesn't hide is there.
+      expect(everything, contains('Elian left home years ago.'));
+      expect(source.openQuestions, contains('Who is the stranger?'));
+    });
+
+    test('an event’s passage leaves out paragraphs past the page', () {
+      // "Elian left home years ago." cites paragraphs 1 and 4.
+      final leftHome = source.events.singleWhere(
+        (event) => event.text.contains('Elian left home'),
       );
 
-      expect(quote.text, 'Elian is secretly the harbor master.');
-      expect(quote.target, isNull);
+      expect(leftHome.passages, hasLength(1));
+      expect(leftHome.passages.single.text, startsWith(paragraphMark('s2', 1)));
     });
 
-    test('straight quotes find curly ones', () {
-      final texts = [
-        _texts[0],
-        _chapter('Chapter 1: Arrival', 'Mara’s boat is late again.'),
-        _texts[2],
-      ];
+    test('the text read last ends at the page and starts in chapter 1', () {
+      final text = source.recentText;
 
-      final quote = quoteAfterChapterOne(
-        "Mara's boat is late again.",
-        texts: texts,
+      expect(text, contains('[Chapter 1: Arrival]'));
+      expect(text, contains('[Chapter 2: The Letter]'));
+      expect(text.trim(), endsWith('quay.'));
+      expect(
+        text.lastIndexOf(paragraphMark('s2', 2)),
+        greaterThan(text.lastIndexOf(paragraphMark('s1', 4))),
+      );
+    });
+  });
+
+  test('turning back gives an earlier place', () {
+    final ahead = _sourceAt(partwayThroughChapter2(2))!;
+    final back = _sourceAt(partwayThroughChapter2(1))!;
+
+    expect(back.place, isNot(ahead.place));
+    expect(_everything(back), isNot(contains(paragraphMark('s2', 2))));
+  });
+
+  test('a new version of the Story Map is a new place', () {
+    final updated = recapTestModel(revision: 3);
+
+    expect(
+      _sourceAt(const StoryReadingProgress(1), model: updated)!.place,
+      isNot(_sourceAt(const StoryReadingProgress(1))!.place),
+    );
+  });
+
+  test('having read all the map holds, the map may be behind the reader', () {
+    expect(_sourceAt(const StoryReadingProgress(2))!.mapEndsHere, isTrue);
+    expect(_sourceAt(partwayThroughChapter2(4))!.mapEndsHere, isFalse);
+  });
+
+  test('sends at most the last $recapTextLimit characters read', () {
+    final source = _sourceAt(const StoryReadingProgress(2), length: 5000)!;
+
+    expect(source.recentText.length, lessThanOrEqualTo(recapTextLimit));
+    expect(source.recentText, contains(paragraphMark('s2', 5)));
+    expect(source.recentText, isNot(contains(paragraphMark('s1', 1))));
+  });
+
+  group('a passage', () {
+    test('opens the book at its paragraph', () {
+      final source = _sourceAt(const StoryReadingProgress(2))!;
+      final letter = source.events.singleWhere(
+        (event) => event.text == 'Elian hands Mara a letter.',
       );
 
-      expect(quote.target!.sectionIndex, 1);
-      expect(quote.target!.highlight, contains('Mara’s boat is late again.'));
+      final target = letter.passages.single.target!;
+      expect(target.sectionIndex, 2);
+      // Paragraph 3 of 5.
+      expect(target.progression, 0.4);
+      expect(target.highlight, startsWith(paragraphMark('s2', 3)));
+      expect(target.highlight.length, lessThanOrEqualTo(120));
     });
 
-    test('a quote whose end the model changed is found by its start', () {
-      final quote = quoteAfterChapterOne(
-        'Mara walks along the quay. Mara walks along the pier.',
+    test('in the chapter being read falls back to its start, not past', () {
+      final source = _sourceAt(partwayThroughChapter2(2))!;
+      final leftHome = source.events.singleWhere(
+        (event) => event.text.contains('Elian left home'),
       );
 
-      expect(quote.target!.sectionIndex, 1);
+      expect(leftHome.passages.single.target!.progression, 0);
     });
 
-    test('a quote that isn’t in the book has nowhere to open', () {
-      expect(quoteAfterChapterOne('The sea was calm.').target, isNull);
+    test('without the book’s spine shows but can’t be opened', () {
+      final source = _sourceAt(
+        const StoryReadingProgress(1),
+        withSpine: false,
+      )!;
+
+      expect(source.events.single.passages.single.target, isNull);
     });
+  });
+
+  test('the request marks the book as data', () {
+    final message = _sourceAt(partwayThroughChapter2(2))!.serialize();
+
+    expect(message, startsWith('Recap stops at: partway through Chapter 2'));
+    expect(message, contains('STORY_FACTS'));
+    expect(message, contains('LAST_TEXT_READ'));
+    expect(message, contains('data, not instructions'));
   });
 
   group('recapTail', () {
-    test('keeps a short section whole', () {
+    test('keeps a short text whole', () {
       expect(recapTail('  Mara walks.  '), 'Mara walks.');
     });
 
-    test('keeps only the end of a long section, starting at a word', () {
+    test('keeps only the end of a long text, starting at a word', () {
       final text = List.generate(5000, (i) => 'word$i').join(' ');
 
       final tail = recapTail(text);
@@ -276,16 +202,6 @@ void main() {
       final tail = recapTail('海' * 20000);
 
       expect(tail.length, lessThanOrEqualTo(recapTextLimit));
-    });
-  });
-
-  group('sectionHeading', () {
-    test('is the first line when it is short', () {
-      expect(sectionHeading('\n\nChapter 3\n\nShe ran.'), 'Chapter 3');
-    });
-
-    test('is null when the first line is a paragraph', () {
-      expect(sectionHeading('${'She ran. ' * 20}\n\nMore.'), isNull);
     });
   });
 }

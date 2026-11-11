@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../reader/epub_reader_service.dart';
+import '../recap/recap_backend.dart';
 import '../recap/recap_client.dart';
 import '../recap/recap_controller.dart';
 import '../recap/recap_source.dart';
@@ -11,11 +12,11 @@ import '../theme/decor.dart';
 import '../theme/loremark_theme.dart';
 import 'empty_state.dart';
 
-/// The Ask tab: the "welcome back" recap of the story up to the end of the
-/// last section the reader finished (use case 1).
+/// The Ask tab: the "welcome back" recap of the story up to where the reader
+/// stopped, the same place the Story Map stops (use case 1).
 ///
-/// The Read tab's welcome-back card can start a recap and bring the reader
-/// here. Questions about the story (use case 6) will go here too.
+/// The welcome-back pop-up over the Read tab can start a recap and bring the
+/// reader here. Questions about the story (use case 6) will go here too.
 class AskScreen extends StatefulWidget {
   const AskScreen({
     super.key,
@@ -23,20 +24,24 @@ class AskScreen extends StatefulWidget {
     this.active = true,
     this.onBackToBook,
     this.onOpenPassage,
+    this.onOpenStoryMap,
   });
 
   /// The book's recap, shared with the Read tab's welcome-back card.
   final RecapController controller;
 
   /// Whether the tab is showing. Where the recap stops is found again each time
-  /// the tab opens, since the reader may have read on.
+  /// the tab opens, since the reader may have read on or updated the map.
   final bool active;
 
   /// Goes back to the Read tab.
   final VoidCallback? onBackToBook;
 
-  /// Opens the book at a passage a recap moment quotes.
+  /// Opens the book at a passage behind a recap moment.
   final ValueChanged<PassageTarget>? onOpenPassage;
+
+  /// Opens the Story Map tab, where the map can be updated.
+  final VoidCallback? onOpenStoryMap;
 
   @override
   State<AskScreen> createState() => _AskScreenState();
@@ -81,21 +86,34 @@ class _AskScreenState extends State<AskScreen> {
   Widget _build(BuildContext context, AiCredentials? credentials) {
     final source = _recap.source;
     final recap = _recap.recap;
-    if (_recap.prepared &&
-        source == null &&
-        recap == null &&
-        _recap.prepareError == null) {
-      return const EmptyState(
-        image: LoremarkArt.chibiHush,
-        label: 'A THREAD BACK INTO THE STORY',
-        title: 'Where we left off.',
-        icon: Icons.chat_bubble_outline,
-        message:
-            'Finish your first chapter, and a recap will be waiting here.\n'
-            'Recaps only use the chapters you’ve finished.',
-      );
+    if (recap == null && !_recap.writing) {
+      switch (_recap.start) {
+        case RecapNeedsStoryMap():
+          return const EmptyState(
+            image: LoremarkArt.chibiHush,
+            label: 'A THREAD BACK INTO THE STORY',
+            title: 'Where we left off.',
+            icon: Icons.chat_bubble_outline,
+            message:
+                'Recaps are built from your Story Map.\n'
+                'Build it in the Story Map tab, and a recap will be waiting '
+                'here.',
+          );
+        case RecapNeedsReading():
+          return const EmptyState(
+            image: LoremarkArt.chibiHush,
+            label: 'A THREAD BACK INTO THE STORY',
+            title: 'Where we left off.',
+            icon: Icons.chat_bubble_outline,
+            message:
+                'Read a few pages, and a recap will be waiting here.\n'
+                'Recaps only use what you’ve read.',
+          );
+        case RecapCanStart() || null:
+          break;
+      }
     }
-    final through = recap?.cutoffLabel ?? source?.cutoffLabel;
+    final stopsAt = recap?.stopsAt ?? source?.stopsAt;
     final error = _recap.error;
     return PaperBackground(
       child: ListView(
@@ -104,10 +122,10 @@ class _AskScreenState extends State<AskScreen> {
           Text('A THREAD BACK INTO THE STORY', style: kicker()),
           const SizedBox(height: 9),
           Text('Where we left off.', style: serif(29, height: 1.18)),
-          if (through != null) ...[
+          if (stopsAt != null) ...[
             const SizedBox(height: 8),
             Text(
-              '${_recap.book.title} · Through $through',
+              '${_recap.book.title} · Up to $stopsAt',
               style: const TextStyle(fontSize: 13, color: LoremarkColors.muted),
             ),
           ],
@@ -198,27 +216,18 @@ class _AskScreenState extends State<AskScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'RECAP UP TO THE END OF',
-          style: kicker(color: LoremarkColors.welcomeText),
-        ),
+        Text('RECAP UP TO', style: kicker(color: LoremarkColors.welcomeText)),
         const SizedBox(height: 6),
         Text(
-          source.cutoffLabel,
+          _capitalized(source.stopsAt),
           style: serif(20, color: LoremarkColors.welcomeTitle, height: 1.25),
         ),
-        const SizedBox(height: 10),
-        Text(
-          source.hasStoryFacts
-              ? 'Built from your Story Map and the end of that section.'
-              : 'Built from the end of that section. Build the Story Map for '
-                    'a fuller recap.',
-          style: const TextStyle(
-            fontSize: 13,
-            height: 1.5,
-            color: LoremarkColors.welcomeText,
-          ),
-        ),
+        // The map is only updated when the reader asks, so once they have
+        // read all it holds, a newer recap needs a newer map.
+        if (source.mapEndsHere) ...[
+          const SizedBox(height: 8),
+          _UpdateMapHint(onOpenStoryMap: widget.onOpenStoryMap),
+        ],
         const SizedBox(height: 14),
         FilledButton(
           onPressed: _recap.writing || credentials == null
@@ -239,6 +248,56 @@ class _AskScreenState extends State<AskScreen> {
     );
   }
 }
+
+/// Points a reader who has read all the Story Map holds to updating it.
+class _UpdateMapHint extends StatelessWidget {
+  const _UpdateMapHint({required this.onOpenStoryMap});
+
+  final VoidCallback? onOpenStoryMap;
+
+  static const _style = TextStyle(
+    fontSize: 13,
+    height: 1.5,
+    color: LoremarkColors.welcomeText,
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final open = onOpenStoryMap;
+    if (open == null) {
+      return const Text(
+        'Want a newer recap? Update your Story Map.',
+        style: _style,
+      );
+    }
+    return InkWell(
+      onTap: open,
+      borderRadius: BorderRadius.circular(6),
+      child: const Padding(
+        padding: EdgeInsets.symmetric(vertical: 4),
+        child: Text.rich(
+          TextSpan(
+            style: _style,
+            children: [
+              TextSpan(text: 'Read further? '),
+              TextSpan(
+                text: 'Update your Story Map →',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  decoration: TextDecoration.underline,
+                  decorationColor: LoremarkColors.welcomeText,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+String _capitalized(String text) =>
+    text.isEmpty ? text : text[0].toUpperCase() + text.substring(1);
 
 /// The card behind where the recap stops, in the library's welcome-back look.
 class _WelcomeCard extends StatelessWidget {
@@ -313,7 +372,7 @@ class _CompanionRow extends StatelessWidget {
 }
 
 /// One numbered moment: its title, summary, chapter, and, when the Story Map
-/// quoted the book for it, a link to that passage.
+/// cites the book for it, a link to that passage.
 class _RecapItemTile extends StatelessWidget {
   const _RecapItemTile({
     required this.number,
@@ -367,7 +426,7 @@ class _RecapItemTile extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 6),
-                if (item.quotes.isEmpty)
+                if (item.passages.isEmpty)
                   Text(item.chapter, style: footer)
                 else
                   InkWell(
@@ -386,8 +445,8 @@ class _RecapItemTile extends StatelessWidget {
   }
 }
 
-/// The book's own words behind a recap moment, as the Story Map quoted them,
-/// each with a way to read it in the book.
+/// The paragraphs of the book behind a recap moment, as the Story Map cites
+/// them, each with a way to read it in the book.
 void _showPassage(
   BuildContext context,
   RecapItem item,
@@ -407,16 +466,24 @@ void _showPassage(
             children: [
               Text('FROM ${item.chapter.toUpperCase()}', style: kicker()),
               const SizedBox(height: 12),
-              for (final quote in item.quotes) ...[
-                Text(
-                  '“${quote.text}”',
-                  style: serif(
-                    17,
-                    color: LoremarkColors.readerText,
-                    height: 1.5,
+              for (final passage in item.passages) ...[
+                Container(
+                  padding: const EdgeInsets.only(left: 14),
+                  decoration: const BoxDecoration(
+                    border: Border(
+                      left: BorderSide(color: LoremarkColors.gold, width: 2),
+                    ),
+                  ),
+                  child: Text(
+                    passage.text,
+                    style: serif(
+                      16,
+                      color: LoremarkColors.readerText,
+                      height: 1.55,
+                    ),
                   ),
                 ),
-                if ((quote.target, onOpenPassage) case (
+                if ((passage.target, onOpenPassage) case (
                   final target?,
                   final open?,
                 )) ...[
@@ -433,7 +500,7 @@ void _showPassage(
                 const SizedBox(height: 18),
               ],
               const Text(
-                'Quoted by your Story Map.',
+                'The book’s words, as your Story Map cites them.',
                 style: TextStyle(fontSize: 12, color: LoremarkColors.muted),
               ),
             ],

@@ -21,7 +21,10 @@ final _book = Book(
 );
 
 const _source = RecapSource(
-  cutoffLabel: 'Chapter 2: The Letter',
+  sectionTitle: 'Chapter 2: The Letter',
+  sectionLabel: 'Chapter 2',
+  partway: false,
+  place: (finished: 2, paragraphsRead: 0, revision: 2),
   events: [
     RecapEvent(
       id: 'E1',
@@ -31,7 +34,7 @@ const _source = RecapSource(
   ],
   characters: ['Mara'],
   openQuestions: [],
-  sectionText: 'Mara reads the letter by the quay.',
+  recentText: 'Mara reads the letter by the quay.',
 );
 
 const _tar = PassageTarget(
@@ -46,7 +49,7 @@ const _recap = Recap(
       title: 'Mara reaches the harbor.',
       summary: 'She comes to Glass Harbor looking for work.',
       chapter: 'Chapter 1',
-      quotes: [RecapQuote('The harbor smelled of tar.', target: _tar)],
+      passages: [RecapPassage('The harbor smelled of tar.', target: _tar)],
     ),
     RecapItem(
       title: 'A letter changes hands.',
@@ -54,24 +57,28 @@ const _recap = Recap(
       chapter: 'Chapter 2: The Letter',
     ),
   ],
-  cutoffLabel: 'Chapter 2: The Letter',
-  usedStoryMap: true,
+  stopsAt: 'the end of Chapter 2: The Letter',
+  place: (finished: 2, paragraphsRead: 0, revision: 2),
 );
 
-/// Gives [source] and [answer], and keeps what was asked for.
+/// Finds the reader at [start], answers with [answer], and keeps what was
+/// asked for.
 class _FakeBackend implements RecapBackend {
-  _FakeBackend({this.source = _source, this.answer = const RecapReady(_recap)});
+  _FakeBackend({
+    this.start = const RecapCanStart(_source),
+    this.answer = const RecapReady(_recap),
+  });
 
-  RecapSource? source;
+  RecapStart start;
   RecapResult answer;
   Completer<void>? hold;
   int prepares = 0;
   final requests = <RecapSource>[];
 
   @override
-  Future<RecapSource?> prepare(Book book) async {
+  Future<RecapStart> prepare(Book book) async {
     prepares++;
-    return source;
+    return start;
   }
 
   @override
@@ -111,6 +118,7 @@ void main() {
     bool active = true,
     VoidCallback? onBackToBook,
     ValueChanged<PassageTarget>? onOpenPassage,
+    VoidCallback? onOpenStoryMap,
     bool settle = true,
   }) async {
     await tester.pumpWidget(
@@ -123,6 +131,7 @@ void main() {
               active: active,
               onBackToBook: onBackToBook,
               onOpenPassage: onOpenPassage,
+              onOpenStoryMap: onOpenStoryMap,
             ),
           ),
         ),
@@ -142,13 +151,16 @@ void main() {
     final backend = _FakeBackend();
     await pumpAsk(tester, controllerFor(backend));
 
-    expect(find.text('Chapter 2: The Letter'), findsOne);
+    expect(find.text('RECAP UP TO'), findsOne);
+    expect(find.text('The end of Chapter 2: The Letter'), findsOne);
     expect(
-      find.text('The Glass Harbor · Through Chapter 2: The Letter'),
+      find.text('The Glass Harbor · Up to the end of Chapter 2: The Letter'),
       findsOne,
     );
     expect(find.text('Catch me up'), findsOne);
     expect(find.text('A 30-second read.'), findsOne);
+    // The map goes past the reader, so there is nothing to update.
+    expect(find.textContaining('Update your Story Map'), findsNothing);
     expect(backend.requests, isEmpty);
   });
 
@@ -185,7 +197,7 @@ void main() {
     await tester.tap(find.text('Chapter 1 · View passage'));
     await tester.pumpAndSettle();
 
-    expect(find.text('“The harbor smelled of tar.”'), findsOne);
+    expect(find.text('The harbor smelled of tar.'), findsOne);
   });
 
   testWidgets('Read it in the book opens the book at the passage', (
@@ -207,23 +219,21 @@ void main() {
 
     expect(opened, [_tar]);
     // The passage sheet closes on the way.
-    expect(find.text('“The harbor smelled of tar.”'), findsNothing);
+    expect(find.text('The harbor smelled of tar.'), findsNothing);
   });
 
-  testWidgets('a quote that couldn’t be found in the book has no button', (
-    tester,
-  ) async {
+  testWidgets('a passage with nowhere to open has no button', (tester) async {
     const recap = Recap(
       items: [
         RecapItem(
           title: 'Mara reaches the harbor.',
           summary: 'She comes to Glass Harbor looking for work.',
           chapter: 'Chapter 1',
-          quotes: [RecapQuote('The harbor smelled of tar.')],
+          passages: [RecapPassage('The harbor smelled of tar.')],
         ),
       ],
-      cutoffLabel: 'Chapter 2: The Letter',
-      usedStoryMap: true,
+      stopsAt: 'the end of Chapter 2: The Letter',
+      place: (finished: 2, paragraphsRead: 0, revision: 2),
     );
     await pumpAsk(
       tester,
@@ -235,7 +245,7 @@ void main() {
     await tester.tap(find.text('Chapter 1 · View passage'));
     await tester.pumpAndSettle();
 
-    expect(find.text('“The harbor smelled of tar.”'), findsOne);
+    expect(find.text('The harbor smelled of tar.'), findsOne);
     expect(find.text('Read it in the book'), findsNothing);
   });
 
@@ -312,28 +322,102 @@ void main() {
     expect(find.text('Try again'), findsOne);
   });
 
-  testWidgets('before the first chapter is finished, says to read on', (
+  testWidgets('before the reader has read any of the map, says to read on', (
     tester,
   ) async {
-    await pumpAsk(tester, controllerFor(_FakeBackend(source: null)));
+    await pumpAsk(
+      tester,
+      controllerFor(_FakeBackend(start: const RecapNeedsReading())),
+    );
 
-    expect(find.textContaining('Finish your first chapter'), findsOne);
+    expect(find.textContaining('Read a few pages'), findsOne);
     expect(find.text('Catch me up'), findsNothing);
   });
 
-  testWidgets('without a Story Map, says what the recap is built from', (
+  testWidgets('without a Story Map, says to build one', (tester) async {
+    final backend = _FakeBackend(start: const RecapNeedsStoryMap());
+    await pumpAsk(tester, controllerFor(backend));
+
+    expect(find.textContaining('built from your Story Map'), findsOne);
+    expect(find.text('Catch me up'), findsNothing);
+    expect(backend.requests, isEmpty);
+  });
+
+  testWidgets('partway through a chapter, stops at the reader’s page', (
     tester,
   ) async {
     const source = RecapSource(
-      cutoffLabel: 'Chapter 1: Arrival',
+      sectionTitle: 'Chapter 3: The Storm',
+      sectionLabel: 'Chapter 3',
+      partway: true,
+      place: (finished: 2, paragraphsRead: 7, revision: 2),
       events: [],
       characters: [],
       openQuestions: [],
-      sectionText: 'Mara walks along the quay.',
+      recentText: 'Rain on the quay.',
     );
-    await pumpAsk(tester, controllerFor(_FakeBackend(source: source)));
+    await pumpAsk(
+      tester,
+      controllerFor(_FakeBackend(start: const RecapCanStart(source))),
+    );
 
-    expect(find.textContaining('Build the Story Map'), findsOne);
+    expect(find.text('Your page in Chapter 3: The Storm'), findsOne);
+  });
+
+  testWidgets('once the reader has read all the map holds, links to it', (
+    tester,
+  ) async {
+    const source = RecapSource(
+      sectionTitle: 'Chapter 2: The Letter',
+      sectionLabel: 'Chapter 2',
+      partway: false,
+      place: (finished: 2, paragraphsRead: 0, revision: 2),
+      events: [],
+      characters: [],
+      openQuestions: [],
+      recentText: 'Mara reads the letter by the quay.',
+      mapEndsHere: true,
+    );
+    var opened = 0;
+    await pumpAsk(
+      tester,
+      controllerFor(_FakeBackend(start: const RecapCanStart(source))),
+      onOpenStoryMap: () => opened++,
+    );
+
+    expect(find.text('Read further? Update your Story Map →'), findsOne);
+
+    await tester.tap(find.text('Read further? Update your Story Map →'));
+    expect(opened, 1);
+  });
+
+  testWidgets('a recap of another place isn’t shown', (tester) async {
+    final backend = _FakeBackend();
+    final controller = controllerFor(backend);
+    await pumpAsk(tester, controller);
+    await tester.tap(find.text('Catch me up'));
+    await tester.pumpAndSettle();
+    expect(find.text('Mara reaches the harbor.'), findsOne);
+
+    // The reader turns back into chapter 2, then opens the tab again.
+    backend.start = const RecapCanStart(
+      RecapSource(
+        sectionTitle: 'Chapter 2: The Letter',
+        sectionLabel: 'Chapter 2',
+        partway: true,
+        place: (finished: 1, paragraphsRead: 3, revision: 2),
+        events: [],
+        characters: [],
+        openQuestions: [],
+        recentText: 'Mara opens the letter.',
+      ),
+    );
+    await pumpAsk(tester, controller, active: false);
+    await pumpAsk(tester, controller);
+
+    expect(find.text('Mara reaches the harbor.'), findsNothing);
+    expect(find.text('Your page in Chapter 2: The Letter'), findsOne);
+    expect(find.text('Catch me up'), findsOne);
   });
 
   testWidgets('looks for the reader’s place again each time the tab opens', (

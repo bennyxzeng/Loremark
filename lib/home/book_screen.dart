@@ -7,6 +7,7 @@ import '../notes/annotation_service.dart';
 import '../reader/readium_reader_service.dart';
 import '../recap/recap_backend.dart';
 import '../recap/recap_controller.dart';
+import '../recap/recap_source.dart';
 import '../settings/ai_lock.dart';
 import '../settings/ai_settings.dart';
 import '../settings/connection_status.dart';
@@ -60,14 +61,16 @@ class _BookScreenState extends State<BookScreen> {
   /// Sends the Read tab to a note tapped in the Notes tab.
   final _noteJumps = NoteJumpController();
 
-  /// Sends the Read tab to a passage a recap quotes, in the Ask tab.
+  /// Sends the Read tab to a passage behind a recap moment, in the Ask tab.
   final _passageJumps = PassageJumpController();
 
-  /// The opening recap, shared by the welcome-back card on the Read tab and
-  /// the Ask tab.
+  /// The opening recap, shared by the welcome-back pop-up over the Read tab
+  /// and the Ask tab.
   late final RecapController _recap = RecapController(
     book: widget.book,
-    backend: widget.recapBackend,
+    // The Story Map tab's backend, so the recap stops where the map does.
+    backend:
+        widget.recapBackend ?? DeviceRecapBackend(storyMap: _storyMapBackend),
   );
 
   /// Whether the recap has looked for the reader's place since the book opened.
@@ -115,7 +118,8 @@ class _BookScreenState extends State<BookScreen> {
 
   /// The first time the recap knows where the reader stopped after the book
   /// opens, pops up the welcome back over the Read tab: once the reader has
-  /// finished a section and a recap could be written right now.
+  /// read some of what the Story Map covers and a recap could be written right
+  /// now.
   void _offerWelcomeBack() {
     if (_welcomeOffered || !_recap.prepared || !mounted) return;
     _welcomeOffered = true;
@@ -127,11 +131,15 @@ class _BookScreenState extends State<BookScreen> {
         !(ModalRoute.of(context)?.isCurrent ?? true)) {
       return;
     }
-    unawaited(_welcomeBack(source.cutoffLabel));
+    unawaited(_welcomeBack(source));
   }
 
-  Future<void> _welcomeBack(String cutoffLabel) async {
-    final catchUp = await showWelcomeBack(context, cutoffLabel: cutoffLabel);
+  Future<void> _welcomeBack(RecapSource source) async {
+    final catchUp = await showWelcomeBack(
+      context,
+      sectionTitle: source.sectionTitle,
+      partway: source.partway,
+    );
     if (!catchUp) return;
     if (!mounted) return;
     final credentials = AiSettingsScope.of(context).credentials;
@@ -173,6 +181,7 @@ class _BookScreenState extends State<BookScreen> {
                           controller: _recap,
                           active: _selectedTab == _askTab,
                           onBackToBook: () => _selectTab(_readTab),
+                          onOpenStoryMap: () => _selectTab(_storyMapTab),
                           // Reading a recap's passage goes back to the Read
                           // tab, at that passage.
                           onOpenPassage: (target) {
