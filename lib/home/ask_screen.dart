@@ -603,18 +603,38 @@ class _StageState extends State<_Stage> with SingleTickerProviderStateMixin {
   late final AnimationController _step = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 350),
+    // The keyboard goes quicker than it comes, and she keeps up with it.
+    reverseDuration: const Duration(milliseconds: 250),
     value: widget.close ? 1 : 0,
   );
   late final CurvedAnimation _eased = CurvedAnimation(
     parent: _step,
     curve: Curves.easeOutCubic,
+    // Stepping back, she sets off at once too, rather than easing away from
+    // close up while the keyboard is already gone.
+    reverseCurve: Curves.easeOutCubic.flipped,
   );
+
+  /// The stage's height when it was last laid out.
+  double? _height;
+
+  /// The stage's height when it was last laid out with the keyboard down.
+  double? _rest;
+
+  /// The stage's height when she began her latest step.
+  double? _from;
+
+  /// The stage's height the last time she stepped back from a first question
+  /// being written, which is how tall it is with the keyboard up.
+  double? _writing;
 
   @override
   void didUpdateWidget(_Stage oldWidget) {
     super.didUpdateWidget(oldWidget);
     final close = widget.close;
     if (close == oldWidget.close) return;
+    _from = _height;
+    if (!close && oldWidget.said == null) _writing = _height;
     if (MediaQuery.disableAnimationsOf(context)) {
       _step.value = close ? 1 : 0;
     } else if (close) {
@@ -635,90 +655,128 @@ class _StageState extends State<_Stage> with SingleTickerProviderStateMixin {
   Widget build(BuildContext context) {
     return PaperBackground(
       child: ClipRect(
-        child: AnimatedBuilder(
-          animation: _eased,
-          builder: (context, _) {
-            final t = _eased.value;
-            final said = widget.said;
-            return CustomMultiChildLayout(
-              delegate: _StageLayout(t),
-              children: [
-                if (t < 1)
-                  LayoutId(
-                    id: _Slot.heading,
-                    child: Opacity(opacity: 1 - t, child: const _Heading()),
-                  ),
-                LayoutId(
-                  id: _Slot.companion,
-                  // Keyed, and always here, so she carries on from the empty
-                  // thread into a conversation.
-                  child: KeyedSubtree(
-                    key: const ValueKey('companion'),
-                    child: LayoutBuilder(
-                      builder: (context, constraints) => Align(
-                        alignment: Alignment.bottomCenter,
-                        child: _Standing(
-                          height: constraints.maxHeight,
-                          shadow: 1 - t,
-                          active: widget.active,
-                          cue: widget.cue,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                // Paper over her legs at the foot of the stage, so nothing of
-                // her shows in the gap under the dialogue box, and with no box
-                // she fades out there instead of being cut off.
-                if (t > 0)
-                  LayoutId(
-                    id: _Slot.floor,
-                    child: Opacity(
-                      opacity: t,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              LoremarkColors.paper.withValues(alpha: 0),
-                              LoremarkColors.paper,
-                            ],
-                            stops: const [0, 0.7],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                if (said != null)
-                  LayoutId(
-                    id: _Slot.dialogue,
-                    child: Transform.translate(
-                      offset: Offset(0, 12 * (1 - t)),
-                      child: _DialogueBox(
-                        key: const ValueKey('dialogue'),
-                        reveal: t,
-                        scroll: widget.scroll,
-                        onLog: widget.onLog,
-                        child: said,
-                      ),
-                    ),
-                  ),
-              ],
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final height = _height = constraints.maxHeight;
+            // The Scaffold keeps the keyboard out of this tab's MediaQuery.
+            final keyboard = View.of(context).viewInsets.bottom > 0;
+            if (!keyboard) _rest = height;
+            // She stands only with the keyboard down, so she stands on the
+            // stage as it is without it. While the keyboard comes or goes the
+            // stage changes height, and is even briefly taller than without
+            // it, as the bar under it takes back the home indicator's room:
+            // standing on it then, she would swell and shrink back.
+            final standingOn = keyboard ? _rest ?? height : height;
+            return AnimatedBuilder(
+              animation: _eased,
+              builder: (context, _) => _scene(height, standingOn),
             );
           },
         ),
       ),
     );
   }
+
+  /// The stage, [height] tall, as far as she has stepped, standing on a stage
+  /// [standingOn] tall.
+  Widget _scene(double height, double standingOn) {
+    final t = _eased.value;
+    final said = widget.said;
+    // Close up, she's sized for the stage as it will be when she gets there,
+    // not as it is on the way, so the keyboard coming or going can't swell
+    // her as she steps.
+    final closeOn = switch (_step.status) {
+      // Stepping back, the keyboard going: the stage she began from.
+      AnimationStatus.reverse => _from ?? height,
+      // Stepping up as a first question is begun, the keyboard coming: the
+      // stage she had over it last time, or the stage as it is if it's
+      // shorter already.
+      AnimationStatus.forward when widget.said == null => min(
+        height,
+        _writing ?? height,
+      ),
+      _ => height,
+    };
+    return CustomMultiChildLayout(
+      delegate: _StageLayout(t, standingOn: standingOn, closeOn: closeOn),
+      children: [
+        if (t < 1)
+          LayoutId(
+            id: _Slot.heading,
+            child: Opacity(opacity: 1 - t, child: const _Heading()),
+          ),
+        LayoutId(
+          id: _Slot.companion,
+          // Keyed, and always here, so she carries on from the empty
+          // thread into a conversation.
+          child: KeyedSubtree(
+            key: const ValueKey('companion'),
+            child: LayoutBuilder(
+              builder: (context, constraints) => Align(
+                alignment: Alignment.bottomCenter,
+                child: _Standing(
+                  height: constraints.maxHeight,
+                  shadow: 1 - t,
+                  active: widget.active,
+                  cue: widget.cue,
+                ),
+              ),
+            ),
+          ),
+        ),
+        // Paper over her legs at the foot of the stage, so nothing of
+        // her shows in the gap under the dialogue box, and with no box
+        // she fades out there instead of being cut off.
+        if (t > 0)
+          LayoutId(
+            id: _Slot.floor,
+            child: Opacity(
+              opacity: t,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      LoremarkColors.paper.withValues(alpha: 0),
+                      LoremarkColors.paper,
+                    ],
+                    stops: const [0, 0.7],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        if (said != null)
+          LayoutId(
+            id: _Slot.dialogue,
+            child: Transform.translate(
+              offset: Offset(0, 12 * (1 - t)),
+              child: _DialogueBox(
+                key: const ValueKey('dialogue'),
+                reveal: t,
+                scroll: widget.scroll,
+                onLog: widget.onLog,
+                child: said,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
 }
 
 /// Places the stage's heading, companion and dialogue box, [t] of the way
-/// from the empty thread to a conversation.
+/// from standing under the heading to close up.
 class _StageLayout extends MultiChildLayoutDelegate {
-  _StageLayout(this.t);
+  _StageLayout(this.t, {required this.standingOn, required this.closeOn});
 
   final double t;
+
+  /// How tall a stage she stands on, and is close up on. Outside a step,
+  /// both are the stage's own height.
+  final double standingOn;
+  final double closeOn;
 
   static const _headingAt = Offset(22, 24);
 
@@ -749,7 +807,7 @@ class _StageLayout extends MultiChildLayoutDelegate {
       0,
       _top,
       size.width,
-      ((size.height - _top) * _closeScale).clamp(0, _tallestClose),
+      ((closeOn - _top) * _closeScale).clamp(0, _tallestClose),
     );
     var at = close;
     if (hasChild(_Slot.heading)) {
@@ -758,11 +816,11 @@ class _StageLayout extends MultiChildLayoutDelegate {
         BoxConstraints(maxWidth: max(0, size.width - 2 * _headingAt.dx)),
       );
       positionChild(_Slot.heading, _headingAt);
-      final room = size.height - _headingAt.dy - heading.height;
+      final room = standingOn - _headingAt.dy - heading.height;
       final height = (room - _above - _below).clamp(0.0, _tallestStanding);
       final standing = Rect.fromLTWH(
         0,
-        size.height - _below - height,
+        standingOn - _below - height,
         size.width,
         height,
       );
@@ -797,7 +855,10 @@ class _StageLayout extends MultiChildLayoutDelegate {
   }
 
   @override
-  bool shouldRelayout(_StageLayout oldDelegate) => oldDelegate.t != t;
+  bool shouldRelayout(_StageLayout oldDelegate) =>
+      oldDelegate.t != t ||
+      oldDelegate.standingOn != standingOn ||
+      oldDelegate.closeOn != closeOn;
 }
 
 class _Heading extends StatelessWidget {

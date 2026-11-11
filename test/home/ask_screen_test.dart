@@ -516,6 +516,57 @@ void main() {
       expect(tester.getSize(companion).height, standing);
     });
 
+    testWidgets('the keyboard coming or going never swells her', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(400, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await pumpAsk(tester);
+      final companion = find.byKey(const ValueKey('companion'));
+      double height() => tester.getSize(companion).height;
+
+      /// Her height each frame as the keyboard moves [from] one height [to]
+      /// another, while she steps.
+      Future<List<double>> keyboard(double from, double to) async {
+        final heights = <double>[];
+        for (var frame = 1; frame <= 10; frame++) {
+          tester.view.viewInsets = FakeViewPadding(
+            bottom: from + (to - from) * frame / 10,
+          );
+          await tester.pump(const Duration(milliseconds: 16));
+          heights.add(height());
+        }
+        await tester.pumpAndSettle();
+        return heights;
+      }
+
+      final input = find.byKey(const ValueKey('ask-input'));
+      final outside = find.text(
+        'Sees your recent pages · Story Map to Chapter 1: Arrival',
+      );
+      final standing = height();
+      // The first time, how tall the stage is over the keyboard isn't known.
+      await tester.tap(input);
+      await keyboard(0, 300);
+      final close = height();
+      expect(close, isNot(standing));
+      final shortest = close < standing ? close : standing;
+      final tallest = close < standing ? standing : close;
+
+      await tester.tap(outside);
+      for (final step in await keyboard(300, 0)) {
+        expect(step, inInclusiveRange(shortest - 0.5, tallest + 0.5));
+      }
+      expect(height(), standing);
+
+      await tester.tap(input);
+      for (final step in await keyboard(0, 300)) {
+        expect(step, inInclusiveRange(shortest - 0.5, tallest + 0.5));
+      }
+      expect(height(), close);
+    });
+
     testWidgets('fits a short stage, as with the keyboard up', (tester) async {
       tester.view.physicalSize = const Size(400, 420);
       tester.view.devicePixelRatio = 1;
