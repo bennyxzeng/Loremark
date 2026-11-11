@@ -112,6 +112,36 @@ void main() {
     });
   });
 
+  testWidgets('the page never drops below where it rests as the keyboard '
+      'goes', (tester) async {
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1;
+    tester.view.viewPadding = const FakeViewPadding(bottom: 34);
+    addTearDown(tester.view.reset);
+    // An iPhone's home indicator, which the keyboard covers when it's up.
+    void keyboard(double height) {
+      tester.view.viewInsets = FakeViewPadding(bottom: height);
+      tester.view.padding = FakeViewPadding(bottom: (34 - height).clamp(0, 34));
+    }
+
+    keyboard(0);
+    await pumpBook(tester);
+    await openTab(tester, 'Ask');
+    final input = find.byKey(const ValueKey('ask-input'));
+    final rest = tester.getBottomLeft(input).dy;
+
+    for (var height = 300.0; height >= 0; height -= 30) {
+      keyboard(height);
+      await tester.pump();
+      expect(
+        tester.getBottomLeft(input).dy,
+        lessThanOrEqualTo(rest),
+        reason: 'with the keyboard $height high',
+      );
+    }
+    expect(tester.getBottomLeft(input).dy, rest);
+  });
+
   testWidgets('opens on the Read tab', (tester) async {
     await pumpBook(tester);
 

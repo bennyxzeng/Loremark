@@ -1,0 +1,53 @@
+{
+  "width": 761,
+  "height": 1507,
+  "base": "body.png",
+  "layers": {
+    "eyes": {
+      "x": 386,
+      "y": 147,
+      "files": {
+        "open": "eyes-open.png",
+        "half": "eyes-half.png",
+        "closed": "eyes-closed.png"
+      }
+    },
+    "mouth": {
+      "x": 427,
+      "y": 216,
+      "files": {
+        "closed": "mouth-closed.png",
+        "half": "mouth-half.png",
+        "open": "mouth-open.png"
+      }
+    },
+    "hand": {
+      "x": 553,
+      "y": 201,
+      "files": {
+        "rest": "hand-rest.png",
+        "lift": "hand-lift.png",
+        "point": "hand-point.png"
+      }
+    }
+  },
+  "initial": {
+    "eyes": "open",
+    "mouth": "closed",
+    "hand": "rest"
+  },
+  "frames": {
+    "full": [
+      0,
+      0,
+      761,
+      1507
+    ],
+    "bust": [
+      28,
+      10,
+      733,
+      430
+    ]
+  }
+}
