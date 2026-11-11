@@ -10,7 +10,7 @@ import '../reader/epub_reader_service.dart';
 import '../reader/readium_reader_service.dart';
 import '../recap/recap_backend.dart';
 import '../recap/recap_controller.dart';
-import '../recap/recap_source.dart';
+import '../recap/recap_stop.dart';
 import '../settings/ai_lock.dart';
 import '../settings/ai_settings.dart';
 import '../settings/connection_status.dart';
@@ -23,7 +23,6 @@ import 'notes_screen.dart';
 import 'offline_banner.dart';
 import 'read_screen.dart';
 import 'reader_header.dart';
-import 'recap_panel.dart';
 import 'swipe_hint.dart';
 import 'welcome_back_card.dart';
 
@@ -45,7 +44,8 @@ class BookScreen extends StatefulWidget {
   /// Where the Ask tab gets its data; tests replace the device's.
   final AskBackend? askBackend;
 
-  /// Where the opening recap gets its data; tests replace the device's.
+  /// Where the welcome back finds where the reader stopped; tests replace the
+  /// device's.
   final RecapBackend? recapBackend;
 
   @override
@@ -57,7 +57,7 @@ class _BookScreenState extends State<BookScreen> {
   static const _askTab = 1;
   static const _storyMapTab = 3;
 
-  int _selectedTab = _readTab;
+  int _selectedTab = 0;
   late final StoryMapBackend _storyMapBackend =
       widget.storyMapBackend ?? DeviceStoryMapBackend();
 
@@ -68,9 +68,20 @@ class _BookScreenState extends State<BookScreen> {
     backend: widget.askBackend ?? DeviceStoryMapBackend(),
   );
 
+  @override
+  void dispose() {
+    _ask.dispose();
+    _recap
+      ..removeListener(_offerWelcomeBack)
+      ..dispose();
+    super.dispose();
+  }
+
+  /// Opens a passage an answer cites in the Read tab, with **Back to your
+  /// page** to return to where the reader was.
   Future<void> _openPassage(PassageTarget target) async {
     _selectTab(_readTab);
-    await _noteJumps.showPassage(target);
+    await _passageJumps.show(target);
   }
 
   /// The book's notes, shared by the Read tab, which adds and draws them, and
@@ -82,21 +93,22 @@ class _BookScreenState extends State<BookScreen> {
   /// Sends the Read tab to a note tapped in the Notes tab.
   final _noteJumps = NoteJumpController();
 
-  /// Sends the Read tab to a passage behind a recap moment, with a way back to
+  /// Sends the Read tab to a passage an Ask answer cites, with a way back to
   /// the reader's page.
   final _passageJumps = PassageJumpController();
 
-  /// The opening recap, shared by the welcome-back pop-up over the Read tab
-  /// and the top of the Ask tab, where it shows.
+  /// Where the reader stopped, for the welcome-back pop-up.
   late final RecapController _recap = RecapController(
     book: widget.book,
-    // The Story Map tab's backend, so the recap stops where the map does.
+    // The Story Map tab's backend, so the pop-up names the place the map
+    // shows up to.
     backend:
         widget.recapBackend ?? DeviceRecapBackend(storyMap: _storyMapBackend),
   );
 
-  /// Whether the recap has looked for the reader's place since the book opened.
-  /// It waits for an API key, since there is nothing to offer without one.
+  /// Whether the pop-up has looked for the reader's place since the book
+  /// opened. It waits for an API key, since there is nothing to offer without
+  /// one.
   bool _recapLooked = false;
 
   /// Whether the welcome back was offered, or passed over, for this opening.
@@ -118,24 +130,22 @@ class _BookScreenState extends State<BookScreen> {
     }
   }
 
-  @override
-  void dispose() {
-    _ask.dispose();
-    _recap
-      ..removeListener(_offerWelcomeBack)
-      ..dispose();
-    super.dispose();
-  }
-
   void _selectTab(int index) {
     setState(() {
       _selectedTab = index;
     });
   }
 
-  /// Writes the recap and opens the Ask tab, where it shows at the top.
-  void _catchUp(AiCredentials credentials) {
-    unawaited(_recap.write(credentials));
+  /// Opens the Ask tab on a new conversation that starts with a recap, so the
+  /// reader can ask more about it there.
+  void _catchUp(AiSettings settings, AiCredentials credentials) {
+    unawaited(
+      _ask.catchUp(
+        credentials: credentials,
+        model: settings.chatModel,
+        effort: settings.chatEffort,
+      ),
+    );
     _selectTab(_askTab);
   }
 
@@ -146,27 +156,28 @@ class _BookScreenState extends State<BookScreen> {
   void _offerWelcomeBack() {
     if (_welcomeOffered || !_recap.prepared || !mounted) return;
     _welcomeOffered = true;
-    final source = _recap.source;
-    if (source == null ||
+    final stop = _recap.stop;
+    if (stop == null ||
         _selectedTab != _readTab ||
         !AiSettingsScope.of(context).hasKey ||
         !ConnectionScope.of(context).isOnline ||
         !(ModalRoute.of(context)?.isCurrent ?? true)) {
       return;
     }
-    unawaited(_welcomeBack(source));
+    unawaited(_welcomeBack(stop));
   }
 
-  Future<void> _welcomeBack(RecapSource source) async {
+  Future<void> _welcomeBack(RecapStop stop) async {
     final catchUp = await showWelcomeBack(
       context,
-      sectionTitle: source.sectionTitle,
-      partway: source.partway,
+      sectionTitle: stop.sectionTitle,
+      partway: stop.partway,
     );
     if (!catchUp) return;
     if (!mounted) return;
-    final credentials = AiSettingsScope.of(context).credentials;
-    if (credentials != null) _catchUp(credentials);
+    final settings = AiSettingsScope.of(context);
+    final credentials = settings.credentials;
+    if (credentials != null) _catchUp(settings, credentials);
   }
 
   @override
@@ -207,27 +218,13 @@ class _BookScreenState extends State<BookScreen> {
                           active: _selectedTab == _askTab,
                           onOpenStoryMap: () => _selectTab(_storyMapTab),
                           onOpenPassage: _openPassage,
-                          // The welcome-back recap, above the conversation,
-                          // so a follow-up question is right below it.
-                          recap: RecapPanel(
-                            controller: _recap,
-                            active: _selectedTab == _askTab,
-                            onBackToBook: () => _selectTab(_readTab),
-                            onOpenStoryMap: () => _selectTab(_storyMapTab),
-                            // A recap's passage opens in the Read tab, with a
-                            // way back to the reader's page.
-                            onOpenPassage: (target) {
-                              _selectTab(_readTab);
-                              unawaited(_passageJumps.show(target));
-                            },
-                          ),
                         ),
                       ),
                       // Tapping a note goes back to the Read tab, at its passage.
                       NotesScreen(
                         notes: _notes,
                         onOpenNote: (note) {
-                          _selectTab(_readTab);
+                          _selectTab(0);
                           unawaited(_noteJumps.show(note));
                         },
                       ),

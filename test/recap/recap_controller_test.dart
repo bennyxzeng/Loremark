@@ -3,62 +3,23 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loremark/library/book.dart';
 import 'package:loremark/recap/recap_backend.dart';
-import 'package:loremark/recap/recap_client.dart';
 import 'package:loremark/recap/recap_controller.dart';
-import 'package:loremark/recap/recap_source.dart';
-import 'package:loremark/settings/ai_settings.dart';
-import 'package:loremark/story_update/story_store.dart';
+import 'package:loremark/recap/recap_stop.dart';
 
 import 'recap_test_book.dart';
 
-const _credentials = AiCredentials(
-  provider: AiProvider.deepseek,
-  apiKey: 'sk-test',
-);
+RecapCanStart _stoppedIn(String sectionTitle) =>
+    RecapCanStart(RecapStop(sectionTitle: sectionTitle, partway: true));
 
-/// A source for a reader [paragraphs] paragraphs into chapter 2.
-RecapSource _sourceAt(int paragraphs) => RecapSource(
-  sectionTitle: 'Chapter 2: The Letter',
-  sectionLabel: 'Chapter 2',
-  partway: true,
-  place: (finished: 1, paragraphsRead: paragraphs, revision: 2),
-  events: const [],
-  characters: const [],
-  openQuestions: const [],
-  recentText: 'Mara reads the letter by the quay.',
-);
-
-Recap _recapOf(RecapSource source) => Recap(
-  items: const [
-    RecapItem(
-      title: 'Mara reaches the harbor.',
-      summary: 'She comes looking for work.',
-      chapter: 'Chapter 1',
-    ),
-  ],
-  stopsAt: source.stopsAt,
-  place: source.place,
-);
-
-/// Answers each look at the reader's place, and each recap, when told to.
+/// Answers each look at the reader's place when told to.
 class _Backend implements RecapBackend {
   final looks = <Completer<RecapStart>>[];
-  final recaps = <Completer<RecapResult>>[];
-  final asked = <RecapSource>[];
 
   @override
   Future<RecapStart> prepare(Book book) {
     final look = Completer<RecapStart>();
     looks.add(look);
     return look.future;
-  }
-
-  @override
-  Future<RecapResult> recap(RecapSource source, AiCredentials credentials) {
-    asked.add(source);
-    final answer = Completer<RecapResult>();
-    recaps.add(answer);
-    return answer.future;
   }
 }
 
@@ -73,139 +34,57 @@ void main() {
 
   tearDown(() => controller.dispose());
 
-  /// Finds the reader at [start].
-  Future<void> lookAt(RecapStart start) async {
+  test('says where the reader stopped', () async {
+    var heard = 0;
+    controller.addListener(() => heard++);
+
     final looking = controller.prepare();
-    backend.looks.last.complete(start);
+    expect(controller.prepared, isFalse);
+    backend.looks.single.complete(_stoppedIn('Chapter 2: The Letter'));
     await looking;
-  }
-
-  /// Writes a recap of the current source, answered with [result] or a recap
-  /// of it.
-  Future<void> writeRecap([RecapResult? result]) async {
-    final writing = controller.write(_credentials);
-    backend.recaps.last.complete(
-      result ?? RecapReady(_recapOf(controller.source!)),
-    );
-    await writing;
-  }
-
-  test('nothing is sent until a recap is asked for', () async {
-    await lookAt(RecapCanStart(_sourceAt(2)));
 
     expect(controller.prepared, isTrue);
-    expect(controller.source?.place.paragraphsRead, 2);
-    expect(backend.recaps, isEmpty);
+    expect(controller.stop?.sectionTitle, 'Chapter 2: The Letter');
+    expect(heard, 1);
   });
 
-  test('with nothing read, no recap and no request', () async {
-    await lookAt(const RecapNeedsReading());
-    await controller.write(_credentials);
+  test('with nothing to recap, has no stop', () async {
+    final looking = controller.prepare();
+    backend.looks.single.complete(const RecapNeedsReading());
+    await looking;
 
     expect(controller.start, isA<RecapNeedsReading>());
-    expect(controller.source, isNull);
-    expect(controller.recap, isNull);
-    expect(backend.asked, isEmpty);
+    expect(controller.stop, isNull);
   });
 
-  test('without a Story Map, no recap and no request', () async {
-    await lookAt(const RecapNeedsStoryMap());
-    await controller.write(_credentials);
-
-    expect(controller.start, isA<RecapNeedsStoryMap>());
-    expect(backend.asked, isEmpty);
-  });
-
-  test(
-    'after turning back, the recap ends earlier, never the old one',
-    () async {
-      await lookAt(RecapCanStart(_sourceAt(4)));
-      await writeRecap();
-      expect(controller.recap?.place.paragraphsRead, 4);
-
-      await lookAt(RecapCanStart(_sourceAt(2)));
-
-      expect(controller.recap, isNull);
-      expect(controller.source?.place.paragraphsRead, 2);
-      await writeRecap();
-      expect(backend.asked.last.place.paragraphsRead, 2);
-    },
-  );
-
-  test('in the same place, the recap stays', () async {
-    await lookAt(RecapCanStart(_sourceAt(2)));
-    await writeRecap();
-    final recap = controller.recap;
-
-    await lookAt(RecapCanStart(_sourceAt(2)));
-
-    expect(controller.recap, same(recap));
-  });
-
-  test('text that can’t be read ends in an error, with no recap', () async {
-    await lookAt(RecapCanStart(_sourceAt(2)));
-    await writeRecap();
-
+  test('a Story Map that can\'t be read offers nothing', () async {
     final looking = controller.prepare();
-    backend.looks.last.completeError(const StoryStoreError('missing text'));
+    backend.looks.single.completeError(const FormatException('bad map'));
     await looking;
-    await controller.write(_credentials);
 
-    expect(controller.prepareError, isNotNull);
-    expect(controller.source, isNull);
-    expect(controller.recap, isNull);
-    expect(backend.asked, hasLength(1));
+    expect(controller.prepared, isTrue);
+    expect(controller.stop, isNull);
   });
 
-  test('a slower, older look can’t replace a newer one', () async {
+  test('a slower, older look can\'t replace a newer one', () async {
     final older = controller.prepare();
     final newer = controller.prepare();
 
-    backend.looks.last.complete(RecapCanStart(_sourceAt(3)));
+    backend.looks.last.complete(_stoppedIn('Chapter 2: The Letter'));
     await newer;
-    backend.looks.first.complete(RecapCanStart(_sourceAt(1)));
+    backend.looks.first.complete(_stoppedIn('Chapter 1: Arrival'));
     await older;
 
-    expect(controller.source?.place.paragraphsRead, 3);
-    expect(controller.preparing, isFalse);
+    expect(controller.stop?.sectionTitle, 'Chapter 2: The Letter');
   });
 
-  group('writing', () {
-    setUp(() => lookAt(RecapCanStart(_sourceAt(2))));
+  test('a look that ends after the book closes is dropped quietly', () async {
+    final looking = controller.prepare();
+    controller.dispose();
+    // Replaced so tearDown has something to dispose.
+    controller = RecapController(book: recapTestBook, backend: _Backend());
 
-    test('one request at a time', () async {
-      final writing = controller.write(_credentials);
-      unawaited(controller.write(_credentials));
-
-      expect(controller.writing, isTrue);
-      expect(backend.recaps, hasLength(1));
-
-      backend.recaps.single.complete(RecapReady(_recapOf(_sourceAt(2))));
-      await writing;
-
-      expect(controller.writing, isFalse);
-      expect(controller.recap, isNotNull);
-      expect(controller.error, isNull);
-    });
-
-    test('a failure keeps the last recap and says why', () async {
-      await writeRecap();
-      final recap = controller.recap;
-
-      await writeRecap(const RecapFailed('DeepSeek is busy.'));
-
-      expect(controller.recap, same(recap));
-      expect(controller.error, 'DeepSeek is busy.');
-    });
-
-    test('an answer after the book closes is dropped quietly', () async {
-      final writing = controller.write(_credentials);
-      controller.dispose();
-      // Replaced so tearDown has something to dispose.
-      controller = RecapController(book: recapTestBook, backend: _Backend());
-
-      backend.recaps.single.complete(RecapReady(_recapOf(_sourceAt(2))));
-      await expectLater(writing, completes);
-    });
+    backend.looks.single.complete(_stoppedIn('Chapter 1: Arrival'));
+    await expectLater(looking, completes);
   });
 }

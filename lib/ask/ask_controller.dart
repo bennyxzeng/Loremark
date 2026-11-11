@@ -13,6 +13,15 @@ import 'ask_engine.dart';
 import 'ask_history.dart';
 import 'ask_stream.dart';
 
+/// The prompt a recap is asked with, in `assets/chat/`: Ask's own rules, with
+/// recapping in place of answering.
+const askRecapPromptName = 'recap_v1.txt';
+
+/// What a recap is asked as. It shows in the conversation as the reader's
+/// question, and later questions see it as one, so a follow-up such as "who is
+/// she again?" reads naturally after the recap.
+const askRecapQuestion = 'Catch me up on the story so far.';
+
 /// Where a question is.
 enum AskStage {
   /// Working out how far the reader has read.
@@ -37,9 +46,13 @@ const askIdleGap = Duration(minutes: 5);
 
 /// The question being answered, or the last one, if it failed.
 class AskPending {
-  AskPending(this.question);
+  AskPending(this.question, {this.recap = false});
 
   final String question;
+
+  /// Whether it is a recap, asked with the recap prompt: see
+  /// [AskController.catchUp].
+  final bool recap;
   AskStage stage = AskStage.reading;
 
   /// The answer so far, while it arrives.
@@ -64,11 +77,15 @@ class AskController extends ChangeNotifier {
     Future<AskHistoryStore> Function()? openHistory,
     this.post = postAskRequest,
     Future<String> Function()? loadPrompt,
+    Future<String> Function()? loadRecapPrompt,
     DateTime Function()? now,
   }) : _openHistory = openHistory ?? AskHistoryStore.open,
        _loadPrompt =
            loadPrompt ??
            (() => rootBundle.loadString('assets/chat/$askPromptName')),
+       _loadRecapPrompt =
+           loadRecapPrompt ??
+           (() => rootBundle.loadString('assets/chat/$askRecapPromptName')),
        _now = now ?? DateTime.now;
 
   final Book book;
@@ -78,6 +95,7 @@ class AskController extends ChangeNotifier {
   final AskHttpPost post;
   final Future<AskHistoryStore> Function() _openHistory;
   final Future<String> Function() _loadPrompt;
+  final Future<String> Function() _loadRecapPrompt;
   final DateTime Function() _now;
 
   /// The question being written.
@@ -155,10 +173,47 @@ class AskController extends ChangeNotifier {
     required AiCredentials credentials,
     required StoryModelChoice model,
     required StoryEffort effort,
+  }) => _ask(
+    question,
+    recap: false,
+    credentials: credentials,
+    model: model,
+    effort: effort,
+  );
+
+  /// Starts a new conversation with a recap of the story so far, up to the end
+  /// of the reader's page (use case 1): the welcome back's **Catch me up**.
+  ///
+  /// It is a question like any other, asked as [askRecapQuestion] with the
+  /// recap prompt, and kept with the book's conversations, so the reader can
+  /// ask more about it in the same conversation. The one shown before stays in
+  /// [conversations]. Does nothing while a question is under way.
+  Future<void> catchUp({
+    required AiCredentials credentials,
+    required StoryModelChoice model,
+    required StoryEffort effort,
+  }) async {
+    if (busy) return;
+    startNew();
+    await _ask(
+      askRecapQuestion,
+      recap: true,
+      credentials: credentials,
+      model: model,
+      effort: effort,
+    );
+  }
+
+  Future<void> _ask(
+    String question, {
+    required bool recap,
+    required AiCredentials credentials,
+    required StoryModelChoice model,
+    required StoryEffort effort,
   }) async {
     final text = question.trim();
     if (text.isEmpty || busy) return;
-    final pending = _pending = AskPending(text);
+    final pending = _pending = AskPending(text, recap: recap);
     _notify();
 
     // Where the reader is now, held for the whole question.
@@ -189,7 +244,7 @@ class AskController extends ChangeNotifier {
       answer = await askStory(
         boundary: boundary,
         question: text,
-        prompt: await _loadPrompt(),
+        prompt: await (recap ? _loadRecapPrompt : _loadPrompt)(),
         model: model,
         effort: effort,
         apiKey: credentials.apiKey,
@@ -263,8 +318,9 @@ class AskController extends ChangeNotifier {
     final failed = _pending;
     if (failed == null || failed.running) return;
     _pending = null;
-    await ask(
+    await _ask(
       failed.question,
+      recap: failed.recap,
       credentials: credentials,
       model: model,
       effort: effort,

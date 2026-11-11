@@ -240,7 +240,7 @@ When #2 merges:
 
 **Story model / AI pipeline (Vitalii, Mark, Frank).** `PassageExtractor(await readSectionTexts(book.epubPath))` gives the finished sections up to the boundary. A section counts as finished only once the reader reaches its last page (exactly 1.0), so the AI never gets the chapter the reader is still in. Section index is the key to store per-chapter story data under: `story_model/<section>/…` in the living doc's layout. The living doc's `SectionBuilder` (group spine items into chapters, or ~5,000-word chunks when there's no TOC) can be built on `readSectionTexts` + `tableOfContents`; it isn't built yet.
 
-**Opening recap / Ask (Use cases 1 and 6).** Both stop where the Story Map stops: `StoryMapBackend.readingProgress`, down to the paragraph, not the saved position alone. The recap shows that section's title as its cutoff. See [opening-recap.md](opening-recap.md).
+**Opening recap / Ask (Use cases 1 and 6).** Both stop where Ask's boundary stops: the end of the reader's page, through `AskBackend.askReach`, not the saved position alone. The recap is an Ask question with its own prompt; its pop-up names the Story Map section the reader is in. See [opening-recap.md](opening-recap.md) and [ask.md](ask.md).
 
 **Notes and highlights (Benjamin, use case 3).** The plugin already supports what notes need, and none of it is wired up yet:
 - `ReadiumReaderWidget(onTextSelected: …)` gives the selected text plus a Readium locator for exactly where it is;

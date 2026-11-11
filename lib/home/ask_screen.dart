@@ -27,7 +27,6 @@ class AskScreen extends StatefulWidget {
     required this.active,
     required this.onOpenStoryMap,
     required this.onOpenPassage,
-    this.recap,
   });
 
   final AskController controller;
@@ -40,11 +39,6 @@ class AskScreen extends StatefulWidget {
 
   /// Shows a passage an answer cites in the Read tab.
   final Future<void> Function(PassageTarget target) onOpenPassage;
-
-  /// The welcome-back recap (use case 1), shown above the conversation, so a
-  /// follow-up question goes right below it. It hides itself when there is
-  /// nothing to recap.
-  final Widget? recap;
 
   @override
   State<AskScreen> createState() => _AskScreenState();
@@ -384,7 +378,6 @@ class _AskScreenState extends State<AskScreen> {
     final Widget conversation;
     if (exchanges.isEmpty && pending == null) {
       conversation = EmptyState(
-        top: widget.recap,
         image: LoremarkArt.chibiHush,
         label: 'A THREAD BACK INTO THE STORY',
         title: 'Ask about what you’ve read.',
@@ -400,7 +393,6 @@ class _AskScreenState extends State<AskScreen> {
         controller: _scroll,
         padding: const EdgeInsets.fromLTRB(14, 14, 14, 18),
         children: [
-          ?widget.recap,
           for (final exchange in exchanges) ...[
             _Question(exchange.question),
             _Answer(

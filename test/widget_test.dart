@@ -1,57 +1,29 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:loremark/ask/ask_backend.dart';
+import 'package:loremark/ask/ask_boundary.dart';
+import 'package:loremark/ask/ask_controller.dart';
 import 'package:loremark/home/book_screen.dart';
 import 'package:loremark/library/book.dart';
 import 'package:loremark/recap/recap_backend.dart';
-import 'package:loremark/recap/recap_client.dart';
-import 'package:loremark/recap/recap_source.dart';
+import 'package:loremark/recap/recap_stop.dart';
 import 'package:loremark/settings/ai_settings.dart';
 import 'package:loremark/settings/connection_status.dart';
 import 'package:loremark/theme/loremark_theme.dart';
 
-const _source = RecapSource(
-  sectionTitle: 'Chapter 1: Arrival',
-  sectionLabel: 'Chapter 1',
-  partway: false,
-  place: (finished: 1, paragraphsRead: 0, revision: 1),
-  events: [],
-  characters: [],
-  openQuestions: [],
-  recentText: 'Mara walks along the quay.',
-);
+import 'ask/fake_ask_backend.dart';
 
-/// Finds the reader at [start], and writes a one-moment recap of where they
-/// are.
+const _stop = RecapStop(sectionTitle: 'Chapter 1: Arrival', partway: false);
+
+/// Finds the reader at [start].
 class _FakeRecapBackend implements RecapBackend {
-  _FakeRecapBackend({this.start = const RecapCanStart(_source)});
+  _FakeRecapBackend({this.start = const RecapCanStart(_stop)});
 
   final RecapStart start;
-  final requests = <RecapSource>[];
 
   @override
   Future<RecapStart> prepare(Book book) async => start;
-
-  @override
-  Future<RecapResult> recap(
-    RecapSource source,
-    AiCredentials credentials,
-  ) async {
-    requests.add(source);
-    return RecapReady(
-      Recap(
-        items: const [
-          RecapItem(
-            title: 'Mara reaches the harbor.',
-            summary: 'She comes looking for work.',
-            chapter: 'Chapter 1',
-          ),
-        ],
-        stopsAt: source.stopsAt,
-        place: source.place,
-      ),
-    );
-  }
 }
 
 // Smoke tests for an open book's tabs. They only check navigation, not the
@@ -72,6 +44,7 @@ void main() {
     bool hasKey = true,
     ConnectionStatus? connection,
     RecapBackend? recapBackend,
+    AskBackend? askBackend,
   }) async {
     final settings = AiSettings(
       MemorySecretStore({
@@ -87,7 +60,11 @@ void main() {
           status: connection ?? ConnectionStatus(),
           child: MaterialApp(
             theme: buildLoremarkTheme(),
-            home: BookScreen(book: book, recapBackend: recapBackend),
+            home: BookScreen(
+              book: book,
+              recapBackend: recapBackend,
+              askBackend: askBackend,
+            ),
           ),
         ),
       ),
@@ -285,12 +262,18 @@ void main() {
       expect(selectedTab(tester), 0);
       expect(find.text('Welcome back.'), findsOne);
       expect(find.textContaining('you finished Chapter 1: Arrival'), findsOne);
-      expect(backend.requests, isEmpty);
     });
 
-    testWidgets('Catch me up opens Ask with the recap', (tester) async {
-      final backend = _FakeRecapBackend();
-      await pumpBook(tester, recapBackend: backend);
+    testWidgets('Catch me up asks for a recap in a new Ask conversation', (
+      tester,
+    ) async {
+      // Nothing for Ask to read, so nothing goes to the network: what matters
+      // here is that the recap is asked in Ask.
+      await pumpBook(
+        tester,
+        recapBackend: _FakeRecapBackend(),
+        askBackend: FakeAskBackend(reach: AskReach.none),
+      );
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('Catch me up'));
@@ -298,21 +281,13 @@ void main() {
 
       expect(find.text('Welcome back.'), findsNothing);
       expect(selectedTab(tester), 1);
-      expect(backend.requests, [_source]);
-      expect(find.text('Mara reaches the harbor.'), findsOne);
-
-      // The recap sits above the Ask conversation.
-      expect(find.text('WHERE WE LEFT OFF'), findsOne);
-      await tester.ensureVisible(find.text('Back to the book →'));
-      await tester.tap(find.text('Back to the book →'));
-      await tester.pumpAndSettle();
-      expect(selectedTab(tester), 0);
-      expect(find.text('Welcome back.'), findsNothing);
+      expect(find.text(askRecapQuestion), findsOne);
     });
 
-    testWidgets('Keep reading puts it away without a request', (tester) async {
-      final backend = _FakeRecapBackend();
-      await pumpBook(tester, recapBackend: backend);
+    testWidgets('Keep reading puts it away and stays on the book', (
+      tester,
+    ) async {
+      await pumpBook(tester, recapBackend: _FakeRecapBackend());
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('Keep reading'));
@@ -320,21 +295,19 @@ void main() {
 
       expect(find.text('Welcome back.'), findsNothing);
       expect(selectedTab(tester), 0);
-      expect(backend.requests, isEmpty);
     });
 
     testWidgets('tapping beside it is the same as Keep reading', (
       tester,
     ) async {
-      final backend = _FakeRecapBackend();
-      await pumpBook(tester, recapBackend: backend);
+      await pumpBook(tester, recapBackend: _FakeRecapBackend());
       await tester.pumpAndSettle();
 
       await tester.tapAt(const Offset(10, 10));
       await tester.pumpAndSettle();
 
       expect(find.text('Welcome back.'), findsNothing);
-      expect(backend.requests, isEmpty);
+      expect(selectedTab(tester), 0);
     });
 
     testWidgets('comes once each time the book opens', (tester) async {
@@ -351,15 +324,9 @@ void main() {
     });
 
     testWidgets('partway through a chapter, says so', (tester) async {
-      const partway = RecapSource(
+      const partway = RecapStop(
         sectionTitle: 'Chapter 2: The Letter',
-        sectionLabel: 'Chapter 2',
         partway: true,
-        place: (finished: 1, paragraphsRead: 3, revision: 1),
-        events: [],
-        characters: [],
-        openQuestions: [],
-        recentText: 'Mara opens the letter.',
       );
       await pumpBook(
         tester,
