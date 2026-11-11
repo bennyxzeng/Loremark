@@ -20,6 +20,7 @@ import '../story_model/story_model.dart';
 import '../story_update/story_paragraphs.dart';
 import '../theme/decor.dart';
 import '../theme/loremark_theme.dart';
+import 'eased_keyboard.dart';
 
 /// The Ask tab: questions about the book, answered from the page the reader is
 /// on and what they read before it, and nothing after.
@@ -669,12 +670,15 @@ class _StageState extends State<_Stage> with SingleTickerProviderStateMixin {
     }
   }
 
+  /// How high the keyboard reached for the tab when it was last laid out. The
+  /// Scaffold keeps it out of this tab's MediaQuery.
+  double _inset = 0;
+
   /// Where the keyboard's top is on the screen, or the screen's bottom with
-  /// none up. The Scaffold keeps the keyboard out of this tab's MediaQuery.
+  /// none up.
   double _keyboardTop() {
     final view = View.of(context);
-    return (view.physicalSize.height - view.viewInsets.bottom) /
-        view.devicePixelRatio;
+    return view.physicalSize.height / view.devicePixelRatio - _inset;
   }
 
   /// How much shorter the keyboard makes the stage. The tab ends at the
@@ -690,8 +694,7 @@ class _StageState extends State<_Stage> with SingleTickerProviderStateMixin {
     final tab = widget.tab.currentContext?.findRenderObject();
     if (tab is! RenderBox || !tab.attached || !tab.hasSize) return;
     final bottom = tab.localToGlobal(Offset(0, tab.size.height)).dy;
-    final keyboard = View.of(context).viewInsets.bottom > 0;
-    if (!keyboard || bottom < _keyboardTop() - 0.5) _bottom = bottom;
+    if (_inset == 0 || bottom < _keyboardTop() - 0.5) _bottom = bottom;
   }
 
   @override
@@ -708,6 +711,7 @@ class _StageState extends State<_Stage> with SingleTickerProviderStateMixin {
         child: LayoutBuilder(
           builder: (context, constraints) {
             final height = _height = constraints.maxHeight;
+            _inset = EasedKeyboard.insetOf(context);
             final rest = _rest = height + _covered();
             WidgetsBinding.instance.addPostFrameCallback((_) => _measure());
             return AnimatedBuilder(
