@@ -1,0 +1,1054 @@
+import Flutter
+import Combine
+import UIKit
+import MediaPlayer
+import ReadiumNavigator
+import ReadiumShared
+
+/// A Flutter asset (JS or CSS) to inject into every EPUB HTML resource.
+struct InjectionAsset {
+  let assetPath: String
+  let packageName: String?
+
+  init(assetPath: String, packageName: String? = nil) {
+    self.assetPath = assetPath
+    self.packageName = packageName
+  }
+
+  init?(from map: [String: Any]) {
+    guard let assetPath = map["assetPath"] as? String else { return nil }
+    self.assetPath = assetPath
+    self.packageName = map["package"] as? String
+  }
+}
+
+/// Reports resource read failures during publication open (audio streaming
+/// errors are otherwise swallowed inside upstream AudioNavigator — no handler
+/// set means no-op). Module scope: installed in `openPublication` before the
+/// audio navigator that will register a handler for it even exists.
+internal let resourceReadErrorObserver = ResourceReadErrorObserver()
+
+public class FlutterReadiumPlugin: NSObject, FlutterPlugin, ReadiumShared.WarningLogger, TimebasedListener {
+
+  static var registrar: FlutterPluginRegistrar? = nil
+  public static var instance: FlutterReadiumPlugin? = nil
+
+  public var currentPublicationUrlStr: String?
+  public var currentPublication: Publication?
+  public var currentReaderView: (any ReadiumReaderView)?
+
+  /// Extra CSS assets injected alongside the built-in helpers.
+  var cssInjections: [InjectionAsset] = []
+
+  /// Extra JavaScript assets injected alongside the built-in helpers.
+  var javaScriptInjections: [InjectionAsset] = []
+
+  /// Incremented each time a new publication is successfully opened.
+  /// Used to guard against stale `closePublication` calls from a previous
+  /// Dart session (hot restart) clobbering a freshly opened publication.
+  private var publicationGeneration: Int = 0
+
+  /// TTS Decoration style
+  internal var ttsUtteranceDecorationStyle: Decoration.Style? = .highlight(tint: .yellow)
+  internal var ttsRangeDecorationStyle: Decoration.Style? = .underline(tint: .black)
+
+  /// General event-stream handlers
+  internal var errorStreamHandler: EventStreamHandler?
+  internal var readerStatusStreamHandler: EventStreamHandler?
+  internal var textLocatorStreamHandler: EventStreamHandler?
+
+  /// Narration-sync state stream (true = in sync, false = manual mode)
+  internal var narrationSyncStreamHandler: EventStreamHandler?
+
+  /// Timebased player events & state
+  internal var timebasedPlayerStateStreamHandler: EventStreamHandler?
+  internal var lastTimebasedPlayerState: ReadiumTimebasedState? = nil
+  internal var externalPlaybackCommandStreamHandler: EventStreamHandler?
+
+  /// Timebased Navigator. Can be TTS, Audio or MediaOverlay implementations.
+  internal var timebasedNavigator: FlutterTimebasedNavigator? = nil
+
+  /// For EPUB profile, maps document path to a list of all the cssSelectors in the document.
+  /// This is used to find the current toc item.
+  private var currentPublicationCssSelectorMap: [String: [String]]?
+
+  /// For EPUB profile, maps document path to ToC container selectors (not yielded by the
+  /// ContentService) and the first content selector inside each.
+  private var currentPublicationTocAnchorMap: [String: [String: String]]?
+
+  /// TTS-only: handles page-break *elements* during content iteration. Not
+  /// related to `EPUBReaderView.setMOActive`'s column-break CSS (MO-only).
+  private var pageBreakIteratorFactory: PageBreakSkippingContentIteratorFactory?
+
+  lazy var fallbackChapterTitle: LocalizedString = LocalizedString.localized([
+    "en": "Chapter",
+    "da": "Kapitel",
+    "sv": "Kapitel",
+    "no": "Kapittel",
+    "is": "Kafli",
+  ])
+
+  public static func register(with registrar: FlutterPluginRegistrar) {
+    let channel = FlutterMethodChannel(name: "dk.nota.flutter_readium/main", binaryMessenger: registrar.messenger())
+
+    // Create
+    let plugin = FlutterReadiumPlugin()
+    registrar.addMethodCallDelegate(plugin, channel: channel)
+    plugin.timebasedPlayerStateStreamHandler = EventStreamHandler(withName: "timebased-state", messenger: registrar.messenger())
+    plugin.externalPlaybackCommandStreamHandler = EventStreamHandler(withName: "external-playback-command", messenger: registrar.messenger())
+    // text-locator and reader-status opt in to buffering: the EPUB platform view
+    // can fire its first event before the Dart onListen handshake completes, so
+    // the buffer ensures that event is never silently dropped.
+    plugin.textLocatorStreamHandler = EventStreamHandler(withName: "text-locator", messenger: registrar.messenger(), bufferLatestEvent: true)
+    plugin.readerStatusStreamHandler = EventStreamHandler(withName: "reader-status", messenger: registrar.messenger(), bufferLatestEvent: true)
+    plugin.errorStreamHandler = EventStreamHandler(withName: "error", messenger: registrar.messenger())
+    plugin.narrationSyncStreamHandler = EventStreamHandler(withName: "narration-sync", messenger: registrar.messenger())
+    instance = plugin
+
+    // Register reader view factory
+    let factory = ReadiumReaderViewFactory(registrar: registrar)
+    registrar.register(factory, withId: readiumReaderViewType)
+
+    self.registrar = registrar
+  }
+
+  internal func getCurrentPublication() -> Publication? {
+    return currentPublication
+  }
+
+  /// Registers `readerView` as the active reader view.
+  /// The previous view (if any) is released *after* the assignment to avoid
+  /// triggering its deinit mid-write (Swift exclusivity enforcement).
+  /// To unregister, use `clearCurrentReaderView(ifIs:)` instead.
+  internal func registerAsCurrentReaderView(_ readerView: any ReadiumReaderView) {
+    let old = currentReaderView
+    currentReaderView = readerView
+    // `audioEnable` sets MO-active through an optional-chained `currentReaderView?`,
+    // so a view registering later must pick the flag up from the navigator itself.
+    readerView.setMOActive(timebasedNavigator is FlutterMediaOverlayNavigator)
+    _ = old // released here, safely outside the write
+  }
+
+  /// Clears `currentReaderView` only if it is still `viewToClear`.
+  /// Called from deinit/dispose of platform views so that a late-arriving
+  /// deinit of a superseded view does not clobber the newly registered one.
+  internal func clearCurrentReaderView(ifIs viewToClear: any ReadiumReaderView) {
+    guard currentReaderView === viewToClear else { return }
+    let old = currentReaderView
+    currentReaderView = nil
+    _ = old
+  }
+
+  public func log(_ warning: Warning) {
+    Log.readium.error("Error while using ReadiumShared deserializer: \(warning)")
+  }
+
+  public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    switch call.method {
+    case "setLogLevel":
+      if let value = call.arguments as? Int,
+         let level = LogLevel(rawValue: value) {
+        ReadiumPluginLogger.level = level
+      }
+      result(nil)
+    case "dispose":
+      Task { @MainActor in
+        await closePublication(ifGeneration: nil)
+        timebasedPlayerStateStreamHandler?.dispose()
+        timebasedPlayerStateStreamHandler = nil
+        externalPlaybackCommandStreamHandler?.dispose()
+        externalPlaybackCommandStreamHandler = nil
+        textLocatorStreamHandler?.dispose()
+        textLocatorStreamHandler = nil
+        readerStatusStreamHandler?.dispose()
+        readerStatusStreamHandler = nil
+        errorStreamHandler?.dispose()
+        errorStreamHandler = nil
+        narrationSyncStreamHandler?.dispose()
+        narrationSyncStreamHandler = nil
+        result(nil)
+      }
+    case "closePublication":
+      let generationAtDispatch = publicationGeneration
+      Task { @MainActor in
+        await self.closePublication(ifGeneration: generationAtDispatch)
+        result(nil)
+      }
+    case "openPublication":
+      let args = call.arguments as! [Any?]
+      let pubUrlStr = args[0] as! String
+
+      Task.detached(priority: .high) {
+        do {
+          // If Publication is already open, just return it.
+          if (self.currentPublicationUrlStr == pubUrlStr) {
+            if let jsonManifest = self.currentPublication?.jsonManifest {
+              await MainActor.run {
+                result(jsonManifest)
+              }
+              return
+            }
+          }
+          if (self.currentPublication != nil) {
+            await self.closePublication(ifGeneration: nil)
+          }
+          let pub: Publication = try await self.loadPublication(fromUrlStr: pubUrlStr).get()
+          self.currentPublication = pub
+          self.currentPublicationUrlStr = pubUrlStr
+          await MainActor.run { self.publicationGeneration += 1 }
+
+          let jsonManifest = pub.jsonManifest
+          await MainActor.run {
+            result(jsonManifest)
+          }
+        } catch let err as ReadiumError {
+          await MainActor.run {
+            result(err.toFlutterError())
+          }
+        }
+      }
+    case "loadPublication":
+      let args = call.arguments as! [Any?]
+      let pubUrlStr = args[0] as! String
+
+      Task.detached(priority: .high) {
+        do {
+          var pubJsonManifest: String?
+          if (self.currentPublicationUrlStr == pubUrlStr) {
+            /// If Publication is already open, just fetch jsonManifest from current.
+            pubJsonManifest = self.currentPublication?.jsonManifest
+          } else {
+            /// Load Publication and serialize its json manifest, before closing it again.
+            let pub: Publication = try await self.loadPublication(fromUrlStr: pubUrlStr).get()
+
+            pubJsonManifest = pub.jsonManifest
+            pub.close()
+          }
+
+          await MainActor.run { [pubJsonManifest] in
+            result(pubJsonManifest)
+          }
+        } catch let err as ReadiumError {
+          await MainActor.run {
+            result(err.toFlutterError())
+          }
+        }
+      }
+    case "setCssInjections":
+      let items = call.arguments as? [[String: Any]] ?? []
+      self.cssInjections = items.compactMap { InjectionAsset(from: $0) }
+      result(nil)
+    case "setJavaScriptInjections":
+      let items = call.arguments as? [[String: Any]] ?? []
+      self.javaScriptInjections = items.compactMap { InjectionAsset(from: $0) }
+      result(nil)
+    case "setCustomHeaders":
+      guard let args = call.arguments as? [String: Any],
+            let httpHeaders = args["httpHeaders"] as? [String: String] else {
+        return result(FlutterError.init(
+          code: "InvalidArgument",
+          message: "Invalid custom headers map",
+          details: nil))
+      }
+      sharedReadium.setAdditionalHeaders(httpHeaders)
+      result(nil)
+    case "setAudioRecoveryPolicy":
+      let args = call.arguments as? [String: Any]
+      AudioRecoveryPolicy.current = AudioRecoveryPolicy.fromMap(args)
+      result(nil)
+    case "ttsEnable":
+      Task.detached(priority: .high) {
+        do {
+          let args = call.arguments as? Dictionary<String, Any>,
+              ttsPrefs = (try? TTSPreferences(fromMap: args ?? [:])) ?? TTSPreferences()
+
+          guard let publication = self.currentPublication else {
+            throw ReadiumError.notFound("No publication opened")
+          }
+
+          Task { @MainActor in
+            // Destroy any previous TTS session to prevent double playback if the
+            // old navigator's synthesizer survived a background interruption.
+            self.timebasedNavigator?.dispose()
+            self.timebasedNavigator = nil
+
+            // Start TTS from the reader's current location
+            self.applyPageBreakBehavior(from: ttsPrefs)
+            let currentLocation = self.currentReaderView?.getCurrentLocation()
+            self.timebasedNavigator = FlutterTTSNavigator(publication: publication, preferences: ttsPrefs, initialLocator: currentLocation)
+            self.timebasedNavigator?.listener = self
+            do {
+              try await self.timebasedNavigator?.initNavigator()
+              result(nil)
+            } catch {
+              result(FlutterError.init(
+                code: "TTSError",
+                message: "Failed to enable TTS: \(error.localizedDescription)",
+                details: nil))
+            }
+          }
+        } catch {
+          Task { @MainActor in
+            result(FlutterError.init(
+              code: "TTSError",
+              message: "Failed to enable TTS: \(error.localizedDescription)",
+              details: nil))
+          }
+        }
+      }
+    case "ttsGetAvailableVoices":
+      guard let ttsNavigator = self.timebasedNavigator as? FlutterTTSNavigator else {
+        result(AVTTSEngine().availableVoices.map { $0.jsonString })
+        return
+      }
+      let availableVoices = ttsNavigator.ttsGetAvailableVoices()
+      result(availableVoices.map { $0.jsonString } )
+    case "ttsSetVoice":
+      let args = call.arguments as! [Any?]
+      let voiceIdentifier = args[0] as! String
+      // TODO: language might be supplied as args[1], ignored on iOS for now.
+
+      guard let ttsNavigator = self.timebasedNavigator as? FlutterTTSNavigator else {
+        return result(FlutterError.init(
+          code: "TTSError",
+          message: "TTS Navigator not initialized",
+          details: nil))
+      }
+
+      do {
+        try ttsNavigator.ttsSetVoice(voiceIdentifier: voiceIdentifier)
+        result(nil)
+      } catch ReadiumError.voiceNotFound {
+        result(ReadiumError.voiceNotFound.toFlutterError())
+      } catch {
+        result(FlutterError.init(
+          code: "TTSError",
+          message: "Invalid voice identifier: \(error.localizedDescription)",
+          details: nil))
+      }
+    case "setDecorationStyle":
+      let args = call.arguments as! [Any?]
+
+      // Explicitly set to nil when the arg is null — do NOT skip the assignment.
+      // An `if let` guard would leave the previous style in place when null is
+      // passed, which prevents the caller from clearing an active decoration.
+      ttsUtteranceDecorationStyle = (args[0] as? [String: Any]).map { try! Decoration.Style(fromMap: $0) }
+      ttsRangeDecorationStyle = (args[1] as? [String: Any]).map { try! Decoration.Style(fromMap: $0) }
+      Task { @MainActor in
+        self.timebasedNavigator?.decorationsUpdated()
+      }
+
+      result(nil)
+    case "ttsSetPreferences":
+      let args = call.arguments as? Dictionary<String, Any>
+      guard let ttsNavigator = self.timebasedNavigator as? FlutterTTSNavigator else {
+        return result(FlutterError.init(
+          code: "TTSError",
+          message: "TTS Navigator not initialized",
+          details: nil))
+      }
+      do {
+        let ttsPrefs = try TTSPreferences(fromMap: args!)
+        applyPageBreakBehavior(from: ttsPrefs)
+        ttsNavigator.ttsSetPreferences(prefs: ttsPrefs)
+        result(nil)
+      } catch {
+        result(FlutterError.init(
+          code: "TTSError",
+          message: "Failed to deserialize TTSPreferences: \(error.localizedDescription)",
+          details: nil))
+      }
+    case "play":
+      let args = call.arguments as! [Any?]
+      var locator: Locator? = nil
+      if let locatorJson = args.first as? Dictionary<String, Any> {
+        locator = try? Locator(json: JSONValue(locatorJson), warnings: self)
+      }
+
+      Task.detached(priority: .high) {
+        if locator == nil {
+          /// If no locator provided, try to re-start from latest timebased locator, or lastly the current ReaderView position.
+          if let currentTimebasedLocator = self.timebasedNavigator?.currentLocator {
+            locator = currentTimebasedLocator
+          } else {
+            locator = await self.currentReaderView?.getFirstVisibleLocator()
+          }
+        }
+        await self.timebasedNavigator?.play(fromLocator: locator)
+
+        await MainActor.run {
+          result(nil)
+        }
+      }
+    case "stop":
+      Task { @MainActor in
+        if self.timebasedNavigator != nil {
+          let wasMO = self.timebasedNavigator is FlutterMediaOverlayNavigator
+          self.timebasedNavigator?.dispose()
+          self.timebasedNavigator = nil
+          if let json = ReadiumTimebasedState(state: .none).toJsonString() {
+            self.timebasedPlayerStateStreamHandler?.sendEvent(json)
+          } else {
+            Log.navigator.error("Failed to serialize timebased-state .none sentinel")
+          }
+          self.updateReaderViewTimebasedDecorations([])
+          if wasMO {
+            self.currentReaderView?.setMOActive(false)
+          }
+        }
+        // Reset narration sync state and return comic to full-page view.
+        self.currentReaderView?.resetForNarrationStop()
+      }
+      result(nil)
+    case "pause":
+      Task { @MainActor in
+        await self.timebasedNavigator?.pause()
+      }
+      result(nil)
+    case "resume":
+      Task { @MainActor in
+        await self.timebasedNavigator?.resume()
+      }
+      result(nil)
+    case "togglePlayback":
+      Task { @MainActor in
+        await self.timebasedNavigator?.togglePlayPause()
+      }
+      result(nil)
+    case "next":
+      Task { @MainActor in
+        await self.timebasedNavigator?.seekForward()
+      }
+      result(nil)
+    case "previous":
+      Task { @MainActor in
+        await self.timebasedNavigator?.seekBackward()
+      }
+      result(nil)
+    case "goToProgression":
+      Task.detached(priority: .high) {
+        guard let progression = call.arguments as? Double
+        else {
+          await MainActor.run {
+            result(FlutterError.init(
+              code: "InvalidArgument",
+              message: "Failed to parse progression",
+              details: nil))
+          }
+          return
+        }
+        var navigated = false
+        /// Only navigate on the TimebasedNavigator OR the ReaderView.
+        /// If a TimebasedNavigator is playing, it will sync the underlying reader after seeking.
+        if (self.timebasedNavigator != nil) {
+          navigated = await self.timebasedNavigator?.seek(toProgression: progression) ?? false
+        }
+        else if let readerView = self.currentReaderView {
+          navigated = await readerView.goToProgression(progression, animated: false)
+        }
+        await MainActor.run { [navigated] in
+          result(navigated)
+        }
+      }
+    case "goToLocator":
+      Task.detached(priority: .high) {
+        guard let args = call.arguments as? [Any?],
+              let locatorJson = args.first as? Dictionary<String, Any>,
+              let locator = try? Locator(json: JSONValue(locatorJson), warnings: self)
+        else {
+          await MainActor.run {
+            result(FlutterError.init(
+              code: "InvalidArgument",
+              message: "Failed to parse locator",
+              details: nil))
+          }
+          return
+        }
+        var navigated = false
+
+        // Timebased Naviagor seek
+        if (self.timebasedNavigator != nil) {
+          navigated = await self.timebasedNavigator?.seek(toLocator: locator) ?? false
+        }
+        // ReaderView goTo
+        else if let readerView = self.currentReaderView {
+          navigated = await readerView.goToLocator(locator, animated: false)
+        }
+        await MainActor.run { [navigated] in
+          result(navigated)
+        }
+      }
+    case "audioEnable":
+      guard let args = call.arguments as? [Any?],
+            let publication = currentPublication,
+            let pubUrlStr = currentPublicationUrlStr else {
+        return result(FlutterError.init(
+          code: "InvalidArgument",
+          message: "No publication open or Invalid parameters to audioEnable: \(call.arguments.debugDescription)",
+          details: nil))
+      }
+      Task.detached(priority: .high) {
+        // Destroy any previous audio/TTS session to prevent double playback.
+        await MainActor.run {
+          self.timebasedNavigator?.dispose()
+          self.timebasedNavigator = nil
+        }
+
+        // Get preferences via arg, or use defaults (empty map).
+        let prefsMap = args[0] as? Dictionary<String, Any>,
+            prefs = try FlutterAudioPreferences.init(fromMap: prefsMap ?? [:])
+        var locator: Locator? = nil
+        if let locatorJson = args[1] as? Dictionary<String, Any> {
+          locator = try? Locator(json: JSONValue(locatorJson), warnings: self)
+        }
+
+        if (publication.containsSyncNarration) {
+          do {
+            // MediaOverlayNavigator will modify the Publication readingOrder, so we first load a modifiable copy.
+            let modifiablePublicationCopy = try await self.loadPublication(fromUrlStr: pubUrlStr).get()
+            await MainActor.run { [locator] in
+              self.timebasedNavigator = FlutterMediaOverlayNavigator(publication: modifiablePublicationCopy, preferences: prefs, initialLocator: locator)
+            }
+          } catch (let err) {
+            return result(FlutterError.init(
+              code: "ResourceReadError",
+              message: "Failed to reload a modifiable publication copy from: \(pubUrlStr)",
+              details: err))
+          }
+        } else {
+          if (!publication.conforms(to: Publication.Profile.audiobook)) {
+            return result(FlutterError.init(
+              code: "InvalidArgument",
+              message: "Publication does not contain MediaOverlays or conforms to AudioBook profile. Args: \(call.arguments.debugDescription)",
+              details: nil))
+          }
+          self.timebasedNavigator = await FlutterAudioNavigator(publication: publication, preferences: prefs, initialLocator: locator)
+        }
+
+        self.timebasedNavigator?.listener = self
+        resourceReadErrorObserver.setHandler { [weak self] href, error in
+          Task { @MainActor in
+            guard let audioNavigator = self?.timebasedNavigator as? FlutterAudioNavigator else { return }
+            audioNavigator.handleResourceReadError(href: href, error: error)
+          }
+        }
+        do {
+          try await self.timebasedNavigator?.initNavigator()
+        } catch (let err) {
+          await MainActor.run {
+            result(err.toReadiumError().toFlutterError())
+          }
+          return
+        }
+
+        if self.timebasedNavigator is FlutterMediaOverlayNavigator {
+          await MainActor.run {
+            self.currentReaderView?.setMOActive(true)
+          }
+        }
+
+        await MainActor.run {
+          result(nil)
+        }
+      }
+    case "audioSetPreferences":
+      Task.detached(priority: .high) {
+        guard let audioNavigator = self.timebasedNavigator as? FlutterAudioNavigator,
+              let prefsMap = call.arguments as? Dictionary<String, Any>,
+              let prefs = try? FlutterAudioPreferences.init(fromMap: prefsMap) else {
+          return result(FlutterError.init(
+            code: "InvalidArgument",
+            message: "AudioNavigator not initialized or Invalid parameters to audioSetPreferences: \(call.arguments.debugDescription)",
+            details: nil))
+        }
+        Task { @MainActor in
+          audioNavigator.setAudioPreferences(prefs)
+          result(nil)
+        }
+      }
+    case "audioSeekBy":
+      Task { @MainActor in
+        guard let seekOffset = call.arguments as? Double else {
+          return result(FlutterError.init(
+            code: "InvalidArgument",
+            message: "Invalid parameters to audioSeek: \(call.arguments.debugDescription)",
+            details: nil))
+        }
+        let _ = await self.timebasedNavigator?.seekRelative(byOffsetSeconds: seekOffset)
+        result(nil)
+      }
+    case "searchInPublication":
+          guard let publication = getCurrentPublication(),
+                let query = call.arguments as? String
+          else {
+            result(
+              FlutterError(
+                code: "InvalidArgument",
+                message: "No publication open or invalid parameters to searchInPublication",
+                details: nil))
+            return
+          }
+          Task {
+            do {
+              let searchResults = await publication.searchInContentForQuery(query)
+              switch searchResults {
+              case .failure(let err):
+                throw err
+              case .success(let searchResultsCols):
+                let fallbackTitle = searchResultsCols.first?.metadata.title ?? publication.metadata.title ?? "Unknown chapter"
+                // TODO: Should we try to find physical page-numbers for the results?
+                let results = searchResultsCols.flatMap { $0.locators.map { l in TextSearchResult(locator: l, chapterTitle: l.title ?? fallbackTitle, pageNumbers: nil) } }
+                let searchResultsJson = try results.compactMap { try $0.toJsonString() }
+                await MainActor.run {
+                  result(searchResultsJson)
+                }
+              }
+            } catch {
+              await MainActor.run {
+                result(
+                  FlutterError(
+                    code: "SearchError",
+                    message: "Failed to perform search with query: \(query)",
+                    details: error.localizedDescription))
+              }
+            }
+          }
+
+    case "getResourceUrl":
+      guard let publication = getCurrentPublication() else {
+        return result(FlutterError(
+          code: "NoPublication",
+          message: "No publication currently open",
+          details: nil))
+      }
+      guard let args = call.arguments as? [String: Any],
+            let href = args["href"] as? String else {
+        return result(FlutterError(
+          code: "InvalidArgument",
+          message: "getResourceUrl requires a 'href' string argument",
+          details: nil))
+      }
+      Log.reader.debug("::getResourceUrl. href=\(href)")
+      Task.detached(priority: .userInitiated) {
+        guard let cacheFileURL = try? ResourceFileCache.fileURL(forHref: href) else {
+          Log.reader.error("::getResourceUrl. Could not compute cache path for href: \(href)")
+          await MainActor.run {
+            result(FlutterError(
+              code: "ResourceReadError",
+              message: "Could not compute cache path for href: \(href)",
+              details: ["reason": ReadiumErrorReason.cache.rawValue]))
+          }
+          return
+        }
+        if FileManager.default.fileExists(atPath: cacheFileURL.path) {
+          Log.reader.debug("::getResourceUrl. href=\(href) reused cache file")
+          await MainActor.run {
+            result(cacheFileURL.absoluteString)
+          }
+          return
+        }
+        guard let relativeURL = RelativeURL(string: href),
+              let link = publication.linkWithHREF(relativeURL) else {
+          Log.reader.warn("::getResourceUrl. No link found for href: \(href)")
+          await MainActor.run {
+            result(FlutterError(
+              code: "ResourceReadError",
+              message: "No resource found for href: \(href)",
+              details: ["reason": ReadiumErrorReason.notFound.rawValue]))
+          }
+          return
+        }
+        guard let resource = publication.get(link) else {
+          Log.reader.warn("::getResourceUrl. Could not open resource for href: \(href)")
+          await MainActor.run {
+            result(FlutterError(
+              code: "ResourceReadError",
+              message: "Could not open resource for href: \(href)",
+              details: ["reason": ReadiumErrorReason.notFound.rawValue]))
+          }
+          return
+        }
+        FileManager.default.createFile(atPath: cacheFileURL.path, contents: nil)
+        guard let fileHandle = try? FileHandle(forWritingTo: cacheFileURL) else {
+          Log.reader.error("::getResourceUrl. Could not open cache file for writing: \(cacheFileURL.path)")
+          await MainActor.run {
+            result(FlutterError(
+              code: "ResourceReadError",
+              message: "Could not open cache file for writing for href: \(href)",
+              details: ["reason": ReadiumErrorReason.cache.rawValue]))
+          }
+          return
+        }
+        let streamResult = await resource.stream { chunk in
+          fileHandle.write(chunk)
+        }
+        try? fileHandle.close()
+        switch streamResult {
+        case .success:
+          Log.reader.debug("::getResourceUrl. href=\(href) cached to \(cacheFileURL.path)")
+          await MainActor.run {
+            result(cacheFileURL.absoluteString)
+          }
+        case .failure(let error):
+          try? FileManager.default.removeItem(at: cacheFileURL)
+          Log.reader.error("::getResourceUrl. Read failed for href: \(href). \(error.localizedDescription)")
+          await MainActor.run {
+            result(FlutterError(
+              code: "ResourceReadError",
+              message: "Failed to read resource for href: \(href). \(error.localizedDescription)",
+              details: nil))
+          }
+        }
+      }
+
+    case "setNarrationSyncEnabled":
+      guard let enabled = call.arguments as? Bool else {
+        return result(FlutterError(
+          code: "InvalidArgument",
+          message: "setNarrationSyncEnabled expects a Bool argument",
+          details: nil))
+      }
+      Task { @MainActor in
+        if let readerView = self.currentReaderView as? EPUBReaderView {
+          readerView.setNarrationSyncEnabled(enabled)
+        }
+        result(nil)
+      }
+
+    default:
+      result(FlutterMethodNotImplemented)
+    }
+  }
+
+  /// Shared by "ttsEnable" and "ttsSetPreferences" — both can set this.
+  private func applyPageBreakBehavior(from ttsPrefs: TTSPreferences) {
+    pageBreakIteratorFactory?.pageBreakBehavior = ttsPrefs.pageBreakBehavior ?? .readAsIs
+  }
+
+  public func timebasedNavigator(_: any FlutterTimebasedNavigator, didChangeState state: ReadiumTimebasedState) {
+    Log.navigator.debug("ReadiumTimebasedState: \(state.state)")
+
+    Task.detached(priority: .high) {
+      /// Enrich the Locator with ToC if missing.
+      if var locator = state.currentLocator,
+         locator.locations.otherLocations["tocHref"] == nil {
+        var tocLink: Link?
+        /// Find ToC link via time fragment if present, or via the ContentService if not.
+        if locator.locations.time?.begin != nil {
+          tocLink = self.currentTocLinkFromTimeLocator(locator)
+        }
+        // Sync Narration locators have a time but their ToC links point at text ids,
+        // so fall back to the text position when the time lookup finds nothing.
+        if tocLink == nil, locator.locations.cssSelector != nil || locator.locations.time?.begin == nil {
+          tocLink = try? await self.currentTocLinkFromLocator(locator)
+        }
+        if let tocLink = tocLink {
+          locator.locations.otherLocations["tocHref"] = .string(tocLink.href)
+          locator.title = tocLink.title
+          Log.navigator.debug("ReadiumTimebasedState: enriched with tocHref: \(String(describing: tocLink.href))")
+          state.currentLocator = locator
+        }
+      }
+
+      Task { @MainActor [state] in
+        self.lastTimebasedPlayerState = state
+        if let json = state.toJsonString() {
+          self.timebasedPlayerStateStreamHandler?.sendEvent(json)
+        } else {
+          Log.navigator.error("Failed to serialize timebased player state: \(state.state)")
+        }
+      }
+    }
+  }
+
+  public func timebasedNavigator(_: any FlutterTimebasedNavigator, encounteredError error: any Error, withDescription description: String?) {
+    Log.readium.error("TimebasedNavigator error: \(error), description: \(String(describing: description))")
+    var data: [String: Any] = ["reason": ReadiumErrorReason.navigator.rawValue]
+    if let description { data["message"] = description }
+    FlutterReadiumPlugin.instance?.errorStreamHandler?.sendEvent(FlutterReadiumError(message: error.localizedDescription, code: "ResourceReadError", data: data).toJsonString())
+  }
+
+  public func timebasedNavigator(_: any FlutterTimebasedNavigator, reachedLocator locator: ReadiumShared.Locator, segmentDuration: TimeInterval?, isWordRange: Bool) {
+    Log.navigator.debug("TimebasedNavigator reachedLocator: \(locator)")
+
+    Task { @MainActor [locator] in
+      await currentReaderView?.syncToLocator(locator, animated: false, segmentDuration: segmentDuration, isWordRange: isWordRange)
+    }
+  }
+
+  public func timebasedNavigator(_: any FlutterTimebasedNavigator, requestsHighlightAt locator: ReadiumShared.Locator?, withWordLocator wordLocator: ReadiumShared.Locator?) {
+    Log.readium.debug("TimebasedNavigator requestsHighlightAt: \(String(describing: locator)), withWordLocator: \(String(describing: wordLocator))")
+
+    // Update Reader text decorations
+    var decorations: [Decoration] = []
+    if let uttLocator = locator,
+       let uttDecorationStyle = ttsUtteranceDecorationStyle {
+      decorations.append(Decoration(
+        id: "tts-utt", locator: uttLocator, style: uttDecorationStyle
+      ))
+    }
+    if let rangeLocator = wordLocator,
+       let rangeDecorationStyle = ttsRangeDecorationStyle {
+      decorations.append(Decoration(
+        id: "tts-range", locator: rangeLocator, style: rangeDecorationStyle
+      ))
+    }
+    Task { @MainActor [decorations] in
+      updateReaderViewTimebasedDecorations(decorations)
+    }
+  }
+}
+
+/// Extension for handling publication interactions
+extension FlutterReadiumPlugin {
+
+  @MainActor
+  func updateReaderViewTimebasedDecorations(_ decorations: [Decoration]) {
+    currentReaderView?.applyDecorations(decorations, forGroup: "timebased-highlight")
+  }
+
+  func clearNowPlaying() {
+    NowPlayingInfo.shared.clear()
+  }
+
+  @MainActor
+  func emitExternalPlaybackCommand(_ command: ReadiumExternalPlaybackCommand) {
+    externalPlaybackCommandStreamHandler?.sendEvent(command.toMap())
+  }
+
+  private func loadPublication (
+    fromUrlStr: String,
+  ) async -> Result<Publication, ReadiumError> {
+    var url: URL
+    if fromUrlStr.hasPrefix("http") {
+      guard let httpUrl = URL(string: fromUrlStr) else {
+        return .failure(ReadiumError.notFound("Invalid pub URL: \(fromUrlStr)"))
+      }
+      url = httpUrl
+    } else {
+      url = URL(fileURLWithPath: fromUrlStr)
+    }
+    guard let absUrl = url.anyURL.absoluteURL else {
+      return .failure(ReadiumError.notFound("Failed to get AbsoluteUrl: \(url)"))
+    }
+
+    Log.readium.info("Attempting to open publication at: \(absUrl)")
+    do {
+      let pub: (Publication, Format) = try await self.openPublication(at: absUrl, allowUserInteraction: true, sender: nil)
+      let mediaType: String = pub.1.mediaType?.string ?? "unknown"
+      Log.readium.info("Opened publication: identifier: \(pub.0.metadata.identifier ?? "[no-ident]") format: \(mediaType)")
+      return .success(pub.0)
+    } catch let error {
+      Log.readium.error("Failed to open publication: \(error)")
+      return .failure(error)
+    }
+  }
+
+  private func openPublication(
+    at url: AbsoluteURL,
+    allowUserInteraction: Bool,
+    sender: UIViewController?
+  ) async throws(ReadiumError) -> (Publication, Format) {
+    do {
+      let asset: Asset
+      if let knownFormat = Self.knownFormat(for: url) {
+        // Skip the FormatSniffer (HEAD + sniff GET) when the URL clearly names an RWPM manifest.
+        // `retrieve(url:format:)` only opens the resource — no HEAD, no sniff body GET — so
+        // we go straight to the parser's manifest fetch with our custom headers/UA intact.
+        // The .rwpm specification is all the parser checks for dispatch; the manifest body
+        // drives the final webpub/audiobook/divina classification.
+        Log.readium.info("Skipping FormatSniffer for known manifest URL: \(url)")
+        asset = try await sharedReadium.assetRetriever!.retrieve(url: url, format: knownFormat).get()
+      } else {
+        asset = try await sharedReadium.assetRetriever!.retrieve(url: url).get()
+      }
+
+      let publication = try await sharedReadium.publicationOpener!.open(
+        asset: asset,
+        allowUserInteraction: allowUserInteraction,
+        onCreatePublication: { manifest, container, services in
+          /// Report resource read failures (audio streaming errors are otherwise
+          /// swallowed inside upstream AudioNavigator — no handler set means no-op).
+          container = ReadErrorReportingContainer(wrapping: container, observer: resourceReadErrorObserver)
+
+          if manifest.conforms(to: .epub) {
+            let factory = PageBreakSkippingContentIteratorFactory()
+            self.pageBreakIteratorFactory = factory
+            services.setContentServiceFactory(
+              DefaultContentService.makeFactory(
+                resourceContentIteratorFactories: [factory]
+              )
+            )
+            // Bare manifests would otherwise HEAD every chapter before first paint.
+            // See docs/plans/android-webpub-head-storm.md.
+            if case .resource = asset {
+              services.setPositionsServiceFactory(
+                PerResourcePositionsService.makeFactory(fallbackMediaType: .xhtml)
+              )
+            }
+          }
+        },
+        sender: sender
+      ).get()
+
+      return (publication, asset.format)
+    } catch let err {
+      throw err.toReadiumError()
+    }
+  }
+
+  /// Returns a known `Format` for URLs whose path clearly names a recognised
+  /// publication entry-point (currently RWPM `manifest.json`). When non-nil,
+  /// `AssetRetriever.retrieve(url:format:)` can be used to skip the sniffer's
+  /// HEAD + sniff-GET, which is valuable on flaky/slow OPDS hosts where the
+  /// extra round-trips can stall and where custom headers (e.g. sanitised
+  /// User-Agent) must reach the manifest GET.
+  private static func knownFormat(for url: AbsoluteURL) -> Format? {
+    guard url.lastPathSegment == "manifest.json" else { return nil }
+    return Format(
+      specifications: .json, .rwpm,
+      mediaType: .readiumWebPubManifest,
+      fileExtension: "json"
+    )
+  }
+
+  /// Cleans up all publication-scoped state. Must be awaited — Dart relies on
+  /// `closePublication` finishing before the next `openPublication` starts.
+  ///
+  /// Pass `ifGeneration: nil` to force-close unconditionally (e.g. from
+  /// `openPublication` internals or `dispose`).  Pass the generation captured
+  /// at method-channel dispatch time to guard against stale close calls from a
+  /// previous Dart session (hot restart) clobbering a freshly opened publication.
+  @MainActor
+  private func closePublication(ifGeneration expectedGeneration: Int?) async {
+    if let expected = expectedGeneration, expected != self.publicationGeneration {
+      Log.readium.info("closePublication: skipped — generation mismatch (expected \(expected), current \(self.publicationGeneration))")
+      return
+    }
+    Log.readium.info("closePublication: disposing timebased navigator and current publication")
+    self.timebasedNavigator?.dispose()
+    self.timebasedNavigator = nil
+    resourceReadErrorObserver.setHandler(nil)
+    currentPublication?.close()
+    currentPublication = nil
+    currentPublicationUrlStr = nil
+    currentPublicationCssSelectorMap = [:]
+    currentPublicationTocAnchorMap = [:]
+    pageBreakIteratorFactory = nil
+    ResourceFileCache.purgeAll()
+    // Clear the stream buffers so that a subscriber opening the next publication
+    // never receives a stale locator or status from this closed publication.
+    textLocatorStreamHandler?.clearBuffer()
+    readerStatusStreamHandler?.clearBuffer()
+  }
+}
+
+/// Extension for finding current ToC location
+extension FlutterReadiumPlugin {
+
+  /// Find the current table of content item from a locator.
+  func currentTocLinkFromLocator(_ locator: Locator) async throws -> Link? {
+    guard let publication = currentPublication else {
+      Log.toc.warn("no currentPublication")
+      return nil
+    }
+
+    /// If we already have a ToC ID from the viewer, use that for lookup.
+    if let tocId = locator.locations.otherLocations["tocId"]?.string {
+      let tocHref = "\(locator.href.string)#\(tocId)"
+      let tocLink = publication.getFlattenedToC().first(where: { $0.href == tocHref })
+      return tocLink
+    }
+
+    guard let cssSelector = locator.locations.cssSelector else {
+      Log.toc.warn("No cssSelector on locator")
+      return nil
+    }
+
+    let cleanHrefPath = locator.href.path
+    let contentIds = try await epubGetAllDocumentCssSelectors(hrefPath: cleanHrefPath)
+
+    /// Note this uses ToC directly from manifest, and thus does not support LCP PDFs.
+    let tocForHref = publication.getFlattenedToC()
+      .filter { RelativeURL(epubHREF: $0.href)?.path == cleanHrefPath }
+      .map { (selector: "#\(RelativeURL(epubHREF: $0.href)?.fragment ?? "")", link: $0) }
+    let anchors = try await epubGetTocAnchors(
+      hrefPath: cleanHrefPath,
+      tocSelectors: tocForHref.map(\.selector),
+      contentIds: contentIds
+    )
+
+    guard let index = tocEntryIndexFor(
+      cssSelector: cssSelector,
+      contentSelectors: contentIds,
+      tocSelectors: tocForHref.map(\.selector),
+      tocAnchors: anchors
+    ) else { return nil }
+    return tocForHref[index].link
+  }
+
+  func currentTocLinkFromTimeLocator(_ timeLocator: Locator) -> Link? {
+    guard let toc = currentPublication?.getFlattenedToC(),
+          let time = timeLocator.locations.time?.begin else {
+      return nil
+    }
+    let flattenedTocForHref = toc.filter {
+      $0.hrefPath == timeLocator.href.path
+    }
+    var matchedTocItem: Link?
+    for tocLink in flattenedTocForHref {
+      guard let tocTime = tocLink.timeFragmentBegin else {
+        continue
+      }
+      // Save to matchedTocItem, unless timeFromFragment is past time
+      if tocTime > time {
+        break
+      }
+      matchedTocItem = tocLink
+    }
+    return matchedTocItem
+  }
+
+  /// Get all cssSelectors for an EPUB file.
+  @MainActor
+  func epubGetAllDocumentCssSelectors(hrefPath: String) async throws -> [String] {
+    if currentPublicationCssSelectorMap == nil {
+      currentPublicationCssSelectorMap = [:]
+    }
+
+    if let cached = currentPublicationCssSelectorMap?[hrefPath] {
+      return cached
+    }
+
+    let selectors = await currentPublication?.findAllCssSelectors(hrefRelativePath: hrefPath) ?? []
+
+    currentPublicationCssSelectorMap?[hrefPath] = selectors
+    return selectors
+  }
+
+  /// Get the first content selector inside each ToC target that is not itself content.
+  @MainActor
+  func epubGetTocAnchors(hrefPath: String, tocSelectors: [String], contentIds: [String]) async throws -> [String: String] {
+    if currentPublicationTocAnchorMap == nil {
+      currentPublicationTocAnchorMap = [:]
+    }
+
+    if let cached = currentPublicationTocAnchorMap?[hrefPath] {
+      return cached
+    }
+
+    let contentSet = Set(contentIds.map { String($0.dropFirst()) })
+    let containers = tocSelectors.map { String($0.dropFirst()) }.filter { !$0.isEmpty && !contentSet.contains($0) }
+    var anchors: [String: String] = [:]
+    if !containers.isEmpty, let tree = await currentPublication?.xhtmlIdTree(hrefRelativePath: hrefPath) {
+      for container in containers {
+        if let first = tree.firstDescendant(of: container, in: contentSet) {
+          anchors["#\(container)"] = "#\(first)"
+        }
+      }
+    }
+
+    currentPublicationTocAnchorMap?[hrefPath] = anchors
+    return anchors
+  }
+}

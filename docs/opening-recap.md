@@ -1,8 +1,9 @@
 # Opening recap
 
 When a book opens, a "welcome back" pop-up offers a recap of the story up to
-where the reader stopped (use case 1). The recap itself shows in the Ask tab.
-It is one paid request to the reader's own provider, sent only when they press
+where the reader stopped (use case 1). The recap itself shows at the top of
+the Ask tab, above the Ask conversation (use case 6), so a follow-up question
+goes right below it (use case 1, 3a). It is one paid request to the reader's own provider, sent only when they press
 **Catch me up**.
 
 A recap is built from the book's Story Map and stops exactly where the Story
@@ -23,8 +24,9 @@ Map has no recap.
      opened again.
    - Readium draws the book natively. If a phone can't blur a native view, the
      book is still dimmed.
-2. **Catch me up** sends one request and opens the Ask tab. While it runs, the
-   buttons are off, so one press is one request.
+2. **Catch me up** sends one request and opens the Ask tab, scrolled to the
+   recap at its top. While it runs, the buttons are off, so one press is one
+   request.
 3. **The recap** is four to eight numbered moments in story order, the last one
    where the reader stopped. Each has a short title, a one- or two-sentence
    summary and its chapter. A moment the Story Map has evidence for has **View
@@ -33,14 +35,16 @@ Map has no recap.
      highlighted. **Back to your page** then returns the reader to where they
      were, or the × keeps them at the passage.
 4. **Back to the book →** returns to the Read tab. **New recap** asks again,
-   which is another paid request.
+   which is another paid request. "Questions about it? Ask below." points to the
+   Ask conversation under the recap.
 5. **If it fails,** the tab says why (a rejected key, no credit, no connection,
    a busy provider) and offers **Try again**. Nothing retries by itself.
-6. **The Ask tab on its own** shows where the recap would stop and its own
-   **Catch me up**, so a reader who closed the pop-up can still get one.
-   - Without a Story Map, it says to build one in the Story Map tab.
-   - Before the reader has read any of what the map covers, it says to read on
-     (use case 1, exception 1a).
+6. **The top of the Ask tab on its own** shows where the recap would stop and
+   its own **Catch me up**, so a reader who closed the pop-up can still get
+   one.
+   - Without a Story Map, or before the reader has read any of what it covers
+     (use case 1, exception 1a), it shows nothing: Ask's own line under the
+     header already says what the Story Map covers and offers to open it.
    - If the reader has read everything the map holds, it offers **Read
      further? Update your Story Map →**, which opens the Story Map tab: the map
      is only updated when they ask, so it can be behind them.
@@ -72,9 +76,15 @@ map, the old recap is dropped and **Catch me up** asks again.
 
 - `RecapController` (`lib/recap/recap_controller.dart`) holds one open book's
   recap. `BookScreen` makes it and shares it with the pop-up
-  (`lib/home/welcome_back_card.dart`) and the Ask tab
-  (`lib/home/ask_screen.dart`), so a recap started from the pop-up shows in
+  (`lib/home/welcome_back_card.dart`) and `RecapPanel`
+  (`lib/home/recap_panel.dart`), so a recap started from the pop-up shows in
   Ask.
+- `RecapPanel` is passed to the Ask tab as `AskScreen.recap`, which puts it
+  above the conversation, or above its empty state (`EmptyState.top`) before
+  the first question. The Ask conversation itself is separate
+  (`AskController`, see [ask.md](ask.md)). When a recap starts or arrives, the
+  panel scrolls itself into view, since the conversation may have been
+  scrolled to its end.
 - It looks for the reader's place when the book opens (once there is a key),
   and again each time the Ask tab opens, never on a page turn. A slower, older
   look can't replace a newer one.
@@ -84,8 +94,9 @@ map, the old recap is dropped and **Catch me up** asks again.
 - `RecapBackend.prepare` returns a `RecapStart`: `RecapNeedsStoryMap`,
   `RecapNeedsReading`, or `RecapCanStart` with the `RecapSource`.
 - **Read it in the book** goes through `PassageJumpController`
-  (`lib/home/read_screen.dart`), like a tapped note goes through
-  `NoteJumpController`. Each paragraph's place (`RecapPassage.target`) is its
+  (`lib/home/read_screen.dart`), which adds **Back to your page**. An Ask
+  answer's citations go through `NoteJumpController.showPassage` instead, since
+  they are usually on the reader's recent pages. Each paragraph's place (`RecapPassage.target`) is its
   section's document and its first words, which Readium finds on the page. If
   they aren't found, a paragraph in the chapter being read opens at the
   chapter's start, never past the reader.
@@ -146,7 +157,8 @@ DeepSeek Flash.
   can't be read, and one request at a time.
 - `test/recap/recap_client_test.dart`: the request for each provider, how
   moments are checked, and the messages for each failure, with a fake provider.
-- `test/home/ask_screen_test.dart`: the Ask tab, with a fake backend.
+- `test/home/recap_panel_test.dart`: the recap at the top of the Ask tab, with
+  a fake backend.
 - `test/home/read_screen_passage_test.dart`: opening the book at a passage,
   and **Back to your page**.
 - `test/widget_test.dart` (`welcome back`): the pop-up over the Read tab, and

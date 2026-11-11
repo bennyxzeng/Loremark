@@ -1,13 +1,19 @@
+import 'dart:io';
 import 'dart:isolate';
 
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/services.dart';
+// Its TextPosition is a caret's; this file means a reader's.
+import 'package:flutter/services.dart' hide TextPosition;
 import 'package:path_provider/path_provider.dart';
 
+import '../ask/ask_backend.dart';
+import '../ask/ask_boundary.dart';
 import '../library/book.dart';
+import '../reader/epub_reader_service.dart';
 import '../reader/epub_sections.dart';
 import '../reader/reader_position.dart';
 import '../reader/reading_position_store.dart';
+import '../reading/text_position.dart';
 import '../search/search_cutoff.dart';
 import '../settings/ai_settings.dart';
 import '../story_model/story_model.dart';
@@ -25,18 +31,23 @@ import '../story_update/story_updater.dart';
 /// its whole document, since a page just turned to hasn't been read yet. The last
 /// page of the book has nothing to turn to, so reaching it is enough. Without a
 /// position it is none.
+///
+/// With [wholePage], as Ask counts, the page being read counts as read too, so
+/// reaching a document's last page finishes it.
 int finishedStorySections(
   List<StorySection> sections,
   List<SpineItem> spine,
-  ReaderPosition? current,
-) {
+  ReaderPosition? current, {
+  bool wholePage = false,
+}) {
   if (current == null) return 0;
-  final atBookEnd =
+  final onLastPage =
       current.progression == 1 &&
-      current.sectionIndex == spine.lastIndexWhere((item) => item.linear);
+      (wholePage ||
+          current.sectionIndex == spine.lastIndexWhere((item) => item.linear));
   // Takes a furthest position too, for when the reader's is kept.
   final cutoff = completedSectionCutoff(
-    current: atBookEnd ? current : ReaderPosition(current.sectionIndex, 0),
+    current: onLastPage ? current : ReaderPosition(current.sectionIndex, 0),
   );
   final finishedItems = cutoff.progression == 1
       ? cutoff.sectionIndex + 1
@@ -48,6 +59,24 @@ int finishedStorySections(
     count++;
   }
   return count;
+}
+
+/// Whether the spine item at [sectionIndex] comes after the last of
+/// [sections], all of which the reader has finished at [progress], so updating
+/// the map would reach it.
+///
+/// A stretch between two of [sections] doesn't count: whatever is there has no
+/// text, or was skipped when a later section was added, and sections only go in
+/// in reading order, so it can never be added.
+bool pastStoryMapEnd(
+  List<StorySection> sections,
+  List<SpineItem> spine,
+  StoryReadingProgress progress,
+  int sectionIndex,
+) {
+  if (sections.isEmpty || progress.finished < sections.length) return false;
+  final last = spineIndexOf(spine, sections.last.href ?? '');
+  return last != null && sectionIndex > last;
 }
 
 /// How exporting a book's Story Map files ended.
@@ -81,8 +110,8 @@ abstract interface class StoryMapBackend {
   Future<StoryModel?> loadModel(Book book);
 
   /// How far the reader has got through [sections], down to the paragraph in the
-  /// section they are partway through. The map, and anything answering the
-  /// reader, go by this.
+  /// section they are partway through, up to the start of their page. The map
+  /// goes by this; Ask takes the rest of the page too (`AskBackend.askReach`).
   Future<StoryReadingProgress> readingProgress(
     Book book,
     List<StorySection> sections,
@@ -125,10 +154,16 @@ abstract interface class StoryMapBackend {
 
   /// Throws [staged] away.
   Future<void> discardImport(StagedStoryImport staged);
+
+  /// Whether the reader has closed the Story Map intro, in any book.
+  Future<bool> introSeen();
+
+  /// Remembers that the reader closed the intro, so it doesn't show again.
+  Future<void> markIntroSeen();
 }
 
 /// The real thing: the store on disk, the reader's saved position, the provider.
-class DeviceStoryMapBackend implements StoryMapBackend {
+class DeviceStoryMapBackend implements StoryMapBackend, AskBackend {
   DeviceStoryMapBackend({
     this.post = postStoryRequest,
     this.saveFile = _saveWithDialog,
@@ -176,17 +211,7 @@ class DeviceStoryMapBackend implements StoryMapBackend {
     if (start == null || start.sectionIndex != position?.sectionIndex) {
       return StoryReadingProgress(finished);
     }
-    final onPage = [
-      for (final section
-          in sections
-              .skip(finished)
-              .takeWhile(
-                (section) =>
-                    spineIndexOf(spine, section.href ?? '') ==
-                    start.sectionIndex,
-              ))
-        section.id,
-    ];
+    final onPage = _sectionsIn(sections, spine, finished, start.sectionIndex);
     if (onPage.isEmpty) return StoryReadingProgress(finished);
     final path = await _storePath(book);
     final epub = book.epubPath;
@@ -200,6 +225,132 @@ class DeviceStoryMapBackend implements StoryMapBackend {
         cssSelector: selector,
       ),
     );
+  }
+
+  /// The ids of [sections], from the [finished]th on, whose document is the
+  /// spine item at [sectionIndex].
+  List<String> _sectionsIn(
+    List<StorySection> sections,
+    List<SpineItem> spine,
+    int finished,
+    int sectionIndex,
+  ) => [
+    for (final section
+        in sections
+            .skip(finished)
+            .takeWhile(
+              (section) =>
+                  spineIndexOf(spine, section.href ?? '') == sectionIndex,
+            ))
+      section.id,
+  ];
+
+  @override
+  Future<AskReach> askReach(Book book, List<StorySection> sections) async {
+    final (position, spine) = await _readingPlace(book);
+    if (position == null) return AskReach.none;
+    final store = await ReadingPositionStore.open();
+    final onLastPage = position.progression == 1;
+    final saved = onLastPage ? null : await store.loadPageEnd(book.id);
+    // A page end kept from another section says nothing about this page.
+    final end = saved?.sectionIndex == position.sectionIndex ? saved : null;
+    final through = onLastPage
+        ? TextPosition(position.sectionIndex, 1)
+        : end == null
+        ? null
+        : TextPosition(end.sectionIndex, end.textProgression);
+
+    var progress = const StoryReadingProgress(0);
+    if (sections.isNotEmpty) {
+      final finished = finishedStorySections(
+        sections,
+        spine,
+        position,
+        wholePage: true,
+      );
+      if (onLastPage) {
+        progress = StoryReadingProgress(finished);
+      } else if (end == null) {
+        // Unmeasured: where the page starts, as the map goes.
+        progress = await readingProgress(book, sections);
+      } else {
+        final onPage = _sectionsIn(sections, spine, finished, end.sectionIndex);
+        final path = await _storePath(book);
+        final epub = book.epubPath;
+        final block = end.block;
+        progress = onPage.isEmpty
+            ? StoryReadingProgress(finished)
+            : await Isolate.run(
+                () => readStoryProgressToPageEnd(
+                  path,
+                  epub,
+                  finished: finished,
+                  sectionsOnPage: onPage,
+                  endBlock: block,
+                ),
+              );
+      }
+    }
+
+    AskPage? page;
+    if (through != null && through.sectionIndex < spine.length) {
+      final xhtml = await readSectionMarkup(
+        book.epubPath,
+        spine[through.sectionIndex].path,
+      );
+      final progression = through.progression;
+      final text = xhtml == null
+          ? null
+          : await Isolate.run(() => textBeforePageEnd(xhtml, progression));
+      if (text != null && text.isNotEmpty) page = AskPage(text, through);
+    }
+
+    return AskReach(
+      progress: progress,
+      // Unmeasured, only the section is sure.
+      limit: through ?? TextPosition(position.sectionIndex, 0),
+      page: page,
+      pastMap: pastStoryMapEnd(
+        sections,
+        spine,
+        progress,
+        position.sectionIndex,
+      ),
+    );
+  }
+
+  @override
+  Future<PassageTarget?> passageTarget(
+    Book book,
+    StorySection section,
+    StoryParagraph paragraph,
+  ) async {
+    final spine = await (_spines[book.id] ??= readSpine(book.epubPath));
+    final index = spineIndexOf(spine, section.href ?? '');
+    if (index == null) return null;
+    final xhtml = await readSectionMarkup(book.epubPath, spine[index].path);
+    if (xhtml == null) return null;
+    final text = paragraph.text;
+    return Isolate.run(
+      () => storyPassageTarget(index, sectionPlainText(xhtml), text),
+    );
+  }
+
+  @override
+  Future<RecentPages?> recentPages(Book book, TextPosition end) async {
+    // A page end that wasn't measured sent no page.
+    if (end.progression <= 0) return null;
+    final spine = await (_spines[book.id] ??= readSpine(book.epubPath));
+    if (end.sectionIndex >= spine.length) return null;
+    final xhtml = await readSectionMarkup(
+      book.epubPath,
+      spine[end.sectionIndex].path,
+    );
+    if (xhtml == null) return null;
+    final progression = end.progression;
+    final page = await Isolate.run(() => pageTextBefore(xhtml, progression));
+    if (page == null || page.lines.isEmpty) return null;
+    return RecentPages(end.sectionIndex, page);
   }
 
   @override
@@ -296,4 +447,18 @@ class DeviceStoryMapBackend implements StoryMapBackend {
   @override
   Future<void> discardImport(StagedStoryImport staged) =>
       Isolate.run(() => discardStoryImport(staged));
+
+  /// An empty file whose presence means the intro was closed.
+  Future<File> _introSeenFile() async {
+    final support = await getApplicationSupportDirectory();
+    return File('${support.path}/story_map_intro_seen');
+  }
+
+  @override
+  Future<bool> introSeen() async => (await _introSeenFile()).exists();
+
+  @override
+  Future<void> markIntroSeen() async {
+    await (await _introSeenFile()).create(recursive: true);
+  }
 }

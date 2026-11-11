@@ -136,6 +136,13 @@ class SettingsScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     _StoryMapSettings(settings: settings),
+                    // Only once there is a provider: the models depend on it.
+                    if (credentials != null) ...[
+                      const SizedBox(height: 26),
+                      Text('ASK', style: kicker(color: LoremarkColors.muted)),
+                      const SizedBox(height: 8),
+                      _AskSettings(settings: settings),
+                    ],
                   ],
                 ),
               ),
@@ -244,6 +251,7 @@ class _StoryMapSettings extends StatelessWidget {
             // The choices depend on the provider, so they wait for a key.
             if (provider != null) ...[
               _Choice<StoryModelChoice>(
+                key: const ValueKey('story-model'),
                 label: 'Model',
                 value: settings.storyModel,
                 options: StoryModelChoice.forProvider(provider.name),
@@ -251,6 +259,7 @@ class _StoryMapSettings extends StatelessWidget {
                 onChanged: settings.setStoryModel,
               ),
               _Choice<StoryEffort>(
+                key: const ValueKey('story-effort'),
                 label: 'Reasoning effort',
                 value: settings.storyEffort,
                 options: settings.storyModel.efforts,
@@ -284,8 +293,56 @@ class _StoryMapSettings extends StatelessWidget {
   }
 }
 
+/// What Ask answers with, chosen apart from what Story Map updates use.
+class _AskSettings extends StatelessWidget {
+  const _AskSettings({required this.settings});
+
+  final AiSettings settings;
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = settings.credentials!.provider;
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _Choice<StoryModelChoice>(
+              key: const ValueKey('ask-model'),
+              label: 'Model',
+              value: settings.chatModel,
+              options: StoryModelChoice.forProvider(provider.name),
+              optionLabel: (model) => model.label,
+              onChanged: settings.setChatModel,
+            ),
+            _Choice<StoryEffort>(
+              key: const ValueKey('ask-effort'),
+              label: 'Reasoning effort',
+              value: settings.chatEffort,
+              options: settings.chatModel.efforts,
+              optionLabel: (effort) => effort.label,
+              onChanged: settings.setChatEffort,
+            ),
+            const Padding(
+              padding: EdgeInsets.only(top: 2, bottom: 6),
+              child: Text(
+                'Used for answers in Ask, apart from Story Map updates. A '
+                'question can take a few requests while it looks things up.',
+                style: TextStyle(fontSize: 12, color: LoremarkColors.muted),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _Choice<T> extends StatelessWidget {
   const _Choice({
+    super.key,
     required this.label,
     required this.value,
     required this.options,

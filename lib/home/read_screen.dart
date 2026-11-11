@@ -11,6 +11,7 @@ import '../notes/highlight_colors.dart';
 import '../notes/note.dart';
 import '../notes/note_list.dart';
 import '../reader/epub_reader_service.dart';
+import '../reader/page_end.dart';
 import '../reader/page_start.dart';
 import '../reader/reader_position.dart';
 import '../reader/reading_position_store.dart';
@@ -85,9 +86,11 @@ class ReadScreen extends StatefulWidget {
   State<ReadScreen> createState() => _ReadScreenState();
 }
 
-/// Lets other code send the Read tab to a saved note's passage.
+/// Lets other code send the Read tab to a saved note's passage, or to any
+/// passage, such as one an answer in Ask cites.
 class NoteJumpController {
   Future<void> Function(Note note)? _jumper;
+  Future<void> Function(PassageTarget target)? _passageJumper;
 
   /// Called by the screen that shows the book. [detach] undoes it.
   void attach(Future<void> Function(Note note) jumper) => _jumper = jumper;
@@ -96,8 +99,20 @@ class NoteJumpController {
     if (_jumper == jumper) _jumper = null;
   }
 
+  /// Called by the screen that shows the book. [detachPassages] undoes it.
+  void attachPassages(Future<void> Function(PassageTarget target) jumper) =>
+      _passageJumper = jumper;
+
+  void detachPassages(Future<void> Function(PassageTarget target) jumper) {
+    if (_passageJumper == jumper) _passageJumper = null;
+  }
+
   /// Jumps to [note]'s passage and highlights it, if a book is showing.
   Future<void> show(Note note) async => _jumper?.call(note);
+
+  /// Jumps to [target] and highlights it, if a book is showing.
+  Future<void> showPassage(PassageTarget target) async =>
+      _passageJumper?.call(target);
 }
 
 /// Lets other code send the Read tab to a passage, keeping the reader's place
@@ -126,6 +141,7 @@ class _ReadScreenState extends State<ReadScreen> {
   StreamSubscription<ReaderPosition>? _positionSubscription;
   StreamSubscription<TextPosition>? _pageTextSubscription;
   StreamSubscription<PageStart>? _pageStartSubscription;
+  StreamSubscription<PageEnd>? _pageEndSubscription;
   StreamSubscription<TocEntry>? _chapterSubscription;
   StreamSubscription<PassageSelection>? _selectionSubscription;
   StreamSubscription<String>? _highlightTapSubscription;
@@ -202,6 +218,7 @@ class _ReadScreenState extends State<ReadScreen> {
     super.initState();
     widget.searchController?.attach(_openSearchSheet);
     widget.noteJumps?.attach(_showNote);
+    widget.noteJumps?.attachPassages(_showPassage);
     widget.passageJumps?.attach(_visitPassage);
     unawaited(_open());
     unawaited(_openNotes());
@@ -216,7 +233,9 @@ class _ReadScreenState extends State<ReadScreen> {
     }
     if (oldWidget.noteJumps != widget.noteJumps) {
       oldWidget.noteJumps?.detach(_showNote);
+      oldWidget.noteJumps?.detachPassages(_showPassage);
       widget.noteJumps?.attach(_showNote);
+      widget.noteJumps?.attachPassages(_showPassage);
     }
     if (oldWidget.passageJumps != widget.passageJumps) {
       oldWidget.passageJumps?.detach(_visitPassage);
@@ -237,6 +256,7 @@ class _ReadScreenState extends State<ReadScreen> {
     _pickTimer?.cancel();
     widget.searchController?.detach(_openSearchSheet);
     widget.noteJumps?.detach(_showNote);
+    widget.noteJumps?.detachPassages(_showPassage);
     widget.passageJumps?.detach(_visitPassage);
     _notes?.removeListener(_drawNoteHighlights);
     _releaseSession();
@@ -291,6 +311,7 @@ class _ReadScreenState extends State<ReadScreen> {
       _positionSubscription = session.positions.listen(_onPosition);
       _pageTextSubscription = session.pageTextEnds.listen(_onPageTextEnd);
       _pageStartSubscription = session.pageStarts.listen(_onPageStart);
+      _pageEndSubscription = session.pageEnds.listen(_onPageEnd);
       _chapterSubscription = session.chapterChanges.listen(
         (chapter) => setState(() => _chapter = chapter),
       );
@@ -421,23 +442,23 @@ class _ReadScreenState extends State<ReadScreen> {
   }
 
   /// Jumps to [note]'s passage and highlights it, as a search hit is.
-  Future<void> _showNote(Note note) async {
+  Future<void> _showNote(Note note) => _showPassage(_passageOf(note));
+
+  /// Jumps to [target] and highlights it.
+  Future<void> _showPassage(PassageTarget target) async {
     final session = _session;
     if (session == null || !mounted) return;
     _stopRestoring();
     _highlightShown = true;
-    await _navigate(() => session.showPassage(_passageOf(note)));
+    await _navigate(() => session.showPassage(target));
   }
 
   /// Shows [target], keeping the reader's place for **Back to your page**.
   /// Before the saved position has shown, that is where the reader is.
   Future<void> _visitPassage(PassageTarget target) async {
-    final session = _session;
-    if (session == null || !mounted) return;
+    if (_session == null || !mounted) return;
     setState(() => _returnTo ??= _restoring ?? _position);
-    _stopRestoring();
-    _highlightShown = true;
-    await _navigate(() => session.showPassage(target));
+    await _showPassage(target);
   }
 
   /// Keeps the reader at the passage and puts **Back to your page** away. The
@@ -483,6 +504,8 @@ class _ReadScreenState extends State<ReadScreen> {
     _pageTextSubscription = null;
     unawaited(_pageStartSubscription?.cancel());
     _pageStartSubscription = null;
+    unawaited(_pageEndSubscription?.cancel());
+    _pageEndSubscription = null;
     unawaited(_chapterSubscription?.cancel());
     _chapterSubscription = null;
     unawaited(_selectionSubscription?.cancel());
@@ -623,6 +646,26 @@ class _ReadScreenState extends State<ReadScreen> {
       await store.savePageStart(widget.book.id, start);
     } on Object catch (error) {
       debugPrint('Could not save where the page starts: $error');
+    }
+  }
+
+  /// Keeps where this page ends, for Ask, which may use all of it. Kept the
+  /// same way as [_onPageStart].
+  void _onPageEnd(PageEnd end) {
+    final store = _store;
+    if (store == null ||
+        _restoring != null ||
+        end.sectionIndex != _position?.sectionIndex) {
+      return;
+    }
+    unawaited(_savePageEnd(store, end));
+  }
+
+  Future<void> _savePageEnd(ReadingPositionStore store, PageEnd end) async {
+    try {
+      await store.savePageEnd(widget.book.id, end);
+    } on Object catch (error) {
+      debugPrint('Could not save where the page ends: $error');
     }
   }
 

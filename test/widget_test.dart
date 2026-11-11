@@ -301,6 +301,9 @@ void main() {
       expect(backend.requests, [_source]);
       expect(find.text('Mara reaches the harbor.'), findsOne);
 
+      // The recap sits above the Ask conversation.
+      expect(find.text('WHERE WE LEFT OFF'), findsOne);
+      await tester.ensureVisible(find.text('Back to the book →'));
       await tester.tap(find.text('Back to the book →'));
       await tester.pumpAndSettle();
       expect(selectedTab(tester), 0);

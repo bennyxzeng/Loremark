@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 
 import '../reading/text_position.dart';
+import 'page_end.dart';
 import 'page_start.dart';
 import 'reader_position.dart';
 
@@ -42,6 +43,11 @@ abstract interface class EpubReaderSession {
   /// plain text (`readSectionTexts`), counted in characters, not of its
   /// pages. A page the renderer can't measure reports nothing.
   Stream<TextPosition> get pageTextEnds;
+
+  /// Where each page the reader lands on ends, as [pageTextEnds] reports it
+  /// and with the text block it ends in. The last page of a spine item, and a
+  /// page the renderer can't measure, report nothing.
+  Stream<PageEnd> get pageEnds;
 
   /// Where each page the reader lands on starts. A page the renderer can't
   /// place reports nothing.
@@ -133,6 +139,7 @@ class PassageTarget {
     required this.highlight,
     this.before = '',
     this.after = '',
+    this.also = const [],
   });
 
   final int sectionIndex;
@@ -145,6 +152,20 @@ class PassageTarget {
   /// lines apart.
   final String before;
   final String after;
+
+  /// More of the passage to highlight with this, such as the paragraphs after
+  /// it when several are cited together. The jump goes to this one.
+  final List<PassageTarget> also;
+
+  /// This, with [more] to highlight too.
+  PassageTarget alsoHighlighting(List<PassageTarget> more) => PassageTarget(
+    sectionIndex: sectionIndex,
+    progression: progression,
+    highlight: highlight,
+    before: before,
+    after: after,
+    also: [...also, ...more],
+  );
 
   @override
   String toString() => 'PassageTarget($sectionIndex, $progression, $highlight)';

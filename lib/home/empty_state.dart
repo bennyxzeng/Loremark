@@ -15,6 +15,7 @@ class EmptyState extends StatelessWidget {
     required this.icon,
     required this.message,
     this.image,
+    this.top,
   });
 
   final String label;
@@ -23,6 +24,9 @@ class EmptyState extends StatelessWidget {
   final String message;
   final String? image;
 
+  /// Shown above the heading, such as the Ask tab's recap.
+  final Widget? top;
+
   @override
   Widget build(BuildContext context) {
     final image = this.image;
@@ -30,6 +34,7 @@ class EmptyState extends StatelessWidget {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(22, 24, 22, 32),
         children: [
+          ?top,
           Text(label, style: kicker()),
           const SizedBox(height: 9),
           Text(title, style: serif(29, height: 1.18)),

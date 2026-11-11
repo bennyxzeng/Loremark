@@ -1,0 +1,115 @@
+buildscript {
+  ext.kotlin_version = '2.3.21'
+  ext.readium_version = '3.4.0'
+
+  repositories {
+    google()
+    mavenCentral()
+  }
+
+  dependencies {
+    classpath 'com.android.tools.build:gradle:8.13.2'
+    classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+  }
+}
+
+plugins {
+  id 'org.jetbrains.kotlin.plugin.serialization' version '2.3.21'
+}
+
+group 'dk.nota.flutterreadium'
+version '1.0-SNAPSHOT'
+
+rootProject.allprojects {
+  repositories {
+    google()
+    mavenCentral()
+    maven { url 'https://jitpack.io' } // Needed for readium-adapter-pdfium
+  }
+}
+
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-parcelize'
+
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
+android {
+  if (project.android.hasProperty('namespace')) {
+    namespace 'dk.nota.flutterreadium'
+  }
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_18
+    targetCompatibility JavaVersion.VERSION_18
+  }
+
+  kotlin {
+    compilerOptions {
+      jvmTarget = JvmTarget.JVM_18
+    }
+  }
+
+  compileSdkVersion 37
+
+  sourceSets {
+    main.res.srcDirs += 'src/main/res'
+  }
+  defaultConfig {
+    minSdkVersion 24
+
+    // Max number of media-overlay JSON files fetched in parallel by the Sync
+    // Audiobook navigator. Consumers can override by adding to their
+    // `android/gradle.properties`:
+    //
+    //   flutterReadium.mediaOverlayFetchConcurrency=16
+    def defaultMediaOverlayFetchConcurrency = 8
+    def configuredMediaOverlayFetchConcurrency =
+      project.findProperty("flutterReadium.mediaOverlayFetchConcurrency")?.toString()?.trim()
+    def parsedMediaOverlayFetchConcurrency = configuredMediaOverlayFetchConcurrency?.isInteger()
+      ? configuredMediaOverlayFetchConcurrency.toInteger()
+      : defaultMediaOverlayFetchConcurrency
+    def mediaOverlayFetchConcurrency = Math.max(1, parsedMediaOverlayFetchConcurrency)
+
+    buildConfigField(
+      "int",
+      "MEDIA_OVERLAY_FETCH_CONCURRENCY",
+      mediaOverlayFetchConcurrency.toString()
+    )
+  }
+
+  buildFeatures {
+    viewBinding = true
+    buildConfig = true
+  }
+}
+
+dependencies {
+  implementation 'androidx.fragment:fragment-ktx:1.8.9'
+
+  implementation fileTree(include: ['*.jar'], dir: 'libs')
+  implementation "org.readium.kotlin-toolkit:readium-shared:$readium_version"
+  implementation "org.readium.kotlin-toolkit:readium-streamer:$readium_version"
+  implementation "org.readium.kotlin-toolkit:readium-opds:$readium_version"
+  implementation "org.readium.kotlin-toolkit:readium-navigator:$readium_version"
+  implementation "org.readium.kotlin-toolkit:readium-navigator-media-common:$readium_version"
+  implementation "org.readium.kotlin-toolkit:readium-navigator-media-tts:$readium_version"
+  implementation "org.readium.kotlin-toolkit:readium-navigator-media-audio:$readium_version"
+  implementation "org.readium.kotlin-toolkit:readium-adapter-exoplayer-audio:$readium_version"
+  implementation "org.readium.kotlin-toolkit:readium-adapter-pdfium:$readium_version"
+  //implementation "org.readium.kotlin-toolkit:readium-lcp:$readium_version"
+
+  // Used for media-session controls
+  def media_version = "1.11.1"
+  implementation "androidx.media3:media3-common:$media_version"
+  implementation "androidx.media3:media3-session:$media_version"
+  implementation "androidx.media3:media3-exoplayer:$media_version"
+
+  implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2'
+  implementation "org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0"
+  implementation 'androidx.constraintlayout:constraintlayout:2.2.1'
+
+  testImplementation 'junit:junit:4.13.2'
+  testImplementation 'org.robolectric:robolectric:4.17'
+  // The android.jar stub throws on every org.json call, so unit tests need a real implementation.
+  testImplementation 'org.json:json:20260814'
+}

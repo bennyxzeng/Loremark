@@ -2,12 +2,16 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:archive/archive.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter/services.dart' hide TextPosition;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:loremark/ask/ask_boundary.dart';
 import 'package:loremark/library/book.dart';
+import 'package:loremark/reader/epub_sections.dart';
+import 'package:loremark/reader/page_end.dart';
 import 'package:loremark/reader/page_start.dart';
 import 'package:loremark/reader/reader_position.dart';
 import 'package:loremark/reader/reading_position_store.dart';
+import 'package:loremark/reading/text_position.dart';
 import 'package:loremark/settings/ai_settings.dart';
 import 'package:loremark/story_map/story_map_backend.dart';
 import 'package:loremark/story_model/story_snapshot.dart';
@@ -153,6 +157,61 @@ void main() {
     await positions.save(book.id, const ReaderPosition(2, 0));
     expect((await progress()).finished, 1);
 
+    // Ask goes to the end of the page, where the map stops at its start.
+    Future<AskReach> reach() => backend.askReach(book, model.sections);
+    await positions.save(book.id, const ReaderPosition(1, 0.5));
+    await positions.savePageStart(
+      book.id,
+      const PageStart(1, ':root > :nth-child(2) > :nth-child(3)'),
+    );
+    // Without the page's end, it goes by the start, with no page to show.
+    var ask = await reach();
+    expect(
+      ask.progress.paragraphsReadInNext,
+      (await progress()).paragraphsReadInNext,
+    );
+    expect(ask.page, isNull);
+    expect(ask.limit, const TextPosition(1, 0));
+    // The page ends five characters into "No one in Greyford knew...", the
+    // sixth block: the five before it are all on the page.
+    final chapter1 = (await readSectionMarkup(epub.path, 'OEBPS/ch1.xhtml'))!;
+    final end = textProgressionOfBlock(chapter1, 5, characters: 5)!;
+    await positions.savePageEnd(book.id, PageEnd(1, 5, end));
+    ask = await reach();
+    expect(ask.progress.paragraphsReadInNext, 5);
+    expect(
+      (await backend.paragraphs(book, ask.progress)).ofSection('section-002'),
+      hasLength(5),
+    );
+    expect(ask.page!.text, startsWith('CHAPTER 1 THE SIGNAL'));
+    expect(ask.page!.text, endsWith('No one'));
+    expect(ask.limit, TextPosition(1, end));
+    expect(ask.pastMap, isFalse);
+    // An answer's recent pages come back from its limit, line for line as
+    // they were sent, and each line can be found in the book.
+    final recent = (await backend.recentPages(book, ask.limit))!;
+    expect([for (final line in recent.lines) line.text], ask.page!.lines);
+    expect(recent.sectionIndex, 1);
+    final first = recent.target(1);
+    expect(first.sectionIndex, 1);
+    expect(recent.lines.first.text, startsWith(first.highlight));
+    expect(recent.target(recent.lines.length).highlight, 'No one');
+    expect(await backend.recentPages(book, const TextPosition(1, 0)), isNull);
+    // An end kept from another file says nothing about this page.
+    await positions.savePageEnd(book.id, const PageEnd(2, 1, 0.5));
+    expect((await reach()).page, isNull);
+    // On a file's last page all of it is read, for Ask, not yet for the map.
+    await positions.save(book.id, const ReaderPosition(1, 1));
+    ask = await reach();
+    expect(ask.progress.finished, 1);
+    expect(ask.page!.text, endsWith('hunt down the Grey Fox.'));
+    expect((await progress()).finished, 0);
+    // Further on, the reader is somewhere the map doesn't cover yet.
+    await positions.save(book.id, const ReaderPosition(2, 0.3));
+    ask = await reach();
+    expect(ask.pastMap, isTrue);
+    expect(ask.page!.text, startsWith('CHAPTER 2 THE STORM'));
+
     // That update left a run folder, and exporting takes it and the store.
     final library = '${temp.path}/library/story_models/${book.id}';
     final runs = Directory('$library.runs').listSync().whereType<Directory>();
@@ -204,6 +263,12 @@ void main() {
     await loader.discardImport(again);
     expect(Directory('$library.importing').existsSync(), isFalse);
     expect((await loader.loadModel(book))!.sections.single.id, 'section-002');
+  });
+
+  test('remembers that the intro was closed', () async {
+    expect(await DeviceStoryMapBackend().introSeen(), isFalse);
+    await DeviceStoryMapBackend().markIntroSeen();
+    expect(await DeviceStoryMapBackend().introSeen(), isTrue);
   });
 
   test('has nothing to export for a book with no files', () async {

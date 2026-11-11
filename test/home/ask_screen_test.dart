@@ -1,440 +1,617 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:loremark/ask/ask_boundary.dart';
+import 'package:loremark/ask/ask_controller.dart';
+import 'package:loremark/ask/ask_history.dart';
+import 'package:loremark/ask/ask_stream.dart';
 import 'package:loremark/home/ask_screen.dart';
 import 'package:loremark/library/book.dart';
 import 'package:loremark/reader/epub_reader_service.dart';
-import 'package:loremark/recap/recap_backend.dart';
-import 'package:loremark/recap/recap_client.dart';
-import 'package:loremark/recap/recap_controller.dart';
-import 'package:loremark/recap/recap_source.dart';
+import 'package:loremark/reading/text_position.dart';
+import 'package:loremark/settings/ai_lock.dart';
 import 'package:loremark/settings/ai_settings.dart';
+import 'package:loremark/settings/connection_status.dart';
+import 'package:loremark/story_model/story_snapshot.dart';
+import 'package:loremark/theme/loremark_theme.dart';
 
-final _book = Book(
-  id: 'book-1',
-  title: 'The Glass Harbor',
-  author: null,
-  epubPath: '/nowhere.epub',
-  coverPath: null,
-  importedAt: DateTime.utc(2026),
-);
+import '../ask/ask_test_support.dart';
+import '../ask/fake_ask_backend.dart';
+import '../story_model/story_model_fixture.dart';
 
-const _source = RecapSource(
-  sectionTitle: 'Chapter 2: The Letter',
-  sectionLabel: 'Chapter 2',
-  partway: false,
-  place: (finished: 2, paragraphsRead: 0, revision: 2),
-  events: [
-    RecapEvent(
-      id: 'E1',
-      chapter: 'Chapter 1',
-      text: 'Mara arrives at the harbor.',
-    ),
-  ],
-  characters: ['Mara'],
-  openQuestions: [],
-  recentText: 'Mara reads the letter by the quay.',
-);
+/// The book's conversations in memory, by id.
+class _MemoryHistory extends AskHistoryStore {
+  _MemoryHistory([Map<String, List<AskExchange>>? saved])
+    : saved = saved ?? {},
+      super(Directory('unused'));
 
-const _tar = PassageTarget(
-  sectionIndex: 1,
-  progression: 0.2,
-  highlight: 'The harbor smelled of tar.',
-);
-
-const _recap = Recap(
-  items: [
-    RecapItem(
-      title: 'Mara reaches the harbor.',
-      summary: 'She comes to Glass Harbor looking for work.',
-      chapter: 'Chapter 1',
-      passages: [RecapPassage('The harbor smelled of tar.', target: _tar)],
-    ),
-    RecapItem(
-      title: 'A letter changes hands.',
-      summary: 'Elian gives Mara a letter he won’t explain.',
-      chapter: 'Chapter 2: The Letter',
-    ),
-  ],
-  stopsAt: 'the end of Chapter 2: The Letter',
-  place: (finished: 2, paragraphsRead: 0, revision: 2),
-);
-
-/// Finds the reader at [start], answers with [answer], and keeps what was
-/// asked for.
-class _FakeBackend implements RecapBackend {
-  _FakeBackend({
-    this.start = const RecapCanStart(_source),
-    this.answer = const RecapReady(_recap),
-  });
-
-  RecapStart start;
-  RecapResult answer;
-  Completer<void>? hold;
-  int prepares = 0;
-  final requests = <RecapSource>[];
+  final Map<String, List<AskExchange>> saved;
 
   @override
-  Future<RecapStart> prepare(Book book) async {
-    prepares++;
-    return start;
-  }
+  Future<List<AskConversation>> list(String bookId) async => [
+    for (final MapEntry(:key, :value) in saved.entries)
+      if (value.isNotEmpty) AskConversation(key, value),
+  ]..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 
   @override
-  Future<RecapResult> recap(
-    RecapSource source,
-    AiCredentials credentials,
-  ) async {
-    requests.add(source);
-    await hold?.future;
-    return answer;
-  }
+  Future<List<AskExchange>> load(String bookId, String id) async =>
+      List.of(saved[id] ?? const []);
+
+  @override
+  Future<void> save(
+    String bookId,
+    String id,
+    List<AskExchange> exchanges,
+  ) async => saved[id] = List.of(exchanges);
+
+  @override
+  Future<void> delete(String bookId, String id) async => saved.remove(id);
+
+  @override
+  Future<void> deleteBook(String bookId) async => saved.clear();
 }
 
-void main() {
-  late AiSettings settings;
+AskExchange _exchange(String question, String answer) => AskExchange(
+  question: question,
+  answer: answer,
+  limit: const TextPosition(1, 0),
+  askedAt: DateTime.utc(2026),
+);
 
-  setUp(() async {
-    settings = AiSettings(
+void main() {
+  final book = Book(
+    id: 'book',
+    title: 'The Glass Harbor',
+    author: null,
+    epubPath: 'book.epub',
+    coverPath: null,
+    importedAt: DateTime.utc(2026),
+  );
+  const page = AskPage('Mara looked out at the water.', TextPosition(2, 0.5));
+  final model = storyModelFixture();
+  final all = paragraphsOf(
+    model.sections,
+    count: 3,
+    firstId: 1,
+    textOf: (section, number) => 'Text of ${section.id} $number.',
+  );
+  const atChapterOne = AskReach(
+    progress: StoryReadingProgress(1),
+    limit: TextPosition(2, 0.5),
+    page: page,
+  );
+
+  late FakeAskBackend backend;
+  late List<String> openedMap;
+  late List<PassageTarget> jumps;
+
+  setUp(() {
+    backend = FakeAskBackend(model: model, reach: atChapterOne, all: all);
+    openedMap = [];
+    jumps = [];
+  });
+
+  Future<AskController> pumpAsk(
+    WidgetTester tester, {
+    AskHttpPost? post,
+    List<(int, String)> replies = const [],
+    _MemoryHistory? history,
+    ConnectionStatus? connection,
+    ValueNotifier<bool>? active,
+    DateTime Function()? now,
+  }) async {
+    final settings = AiSettings(
       MemorySecretStore({
         'ai_onboarding_seen': 'true',
-        'ai_provider': 'deepseek',
+        'ai_provider': 'openai',
         'ai_api_key': 'sk-test',
       }),
     );
     await settings.load();
-  });
-
-  RecapController controllerFor(_FakeBackend backend) {
-    final controller = RecapController(book: _book, backend: backend);
+    final controller = AskController(
+      book: book,
+      backend: backend,
+      openHistory: () async => history ?? _MemoryHistory(),
+      post: post ?? FakeAskProvider(replies).post,
+      loadPrompt: () async => 'PROMPT',
+      now: now,
+    );
     addTearDown(controller.dispose);
-    return controller;
-  }
-
-  Future<void> pumpAsk(
-    WidgetTester tester,
-    RecapController controller, {
-    bool active = true,
-    VoidCallback? onBackToBook,
-    ValueChanged<PassageTarget>? onOpenPassage,
-    VoidCallback? onOpenStoryMap,
-    bool settle = true,
-  }) async {
     await tester.pumpWidget(
       AiSettingsScope(
         settings: settings,
-        child: MaterialApp(
-          home: Scaffold(
-            body: AskScreen(
-              controller: controller,
-              active: active,
-              onBackToBook: onBackToBook,
-              onOpenPassage: onOpenPassage,
-              onOpenStoryMap: onOpenStoryMap,
+        child: ConnectionScope(
+          status: connection ?? ConnectionStatus(),
+          child: MaterialApp(
+            theme: buildLoremarkTheme(),
+            home: Scaffold(
+              body: AiLock(
+                feature: 'Ask',
+                needsConnection: true,
+                child: ValueListenableBuilder(
+                  valueListenable: active ?? ValueNotifier(true),
+                  builder: (context, active, _) => AskScreen(
+                    controller: controller,
+                    active: active,
+                    onOpenStoryMap: () => openedMap.add('opened'),
+                    onOpenPassage: (target) async => jumps.add(target),
+                  ),
+                ),
+              ),
             ),
           ),
         ),
       ),
     );
-    // While a recap is being written, its progress bar never settles.
-    if (settle) {
-      await tester.pumpAndSettle();
-    } else {
-      await tester.pump();
-    }
+    await tester.pumpAndSettle();
+    return controller;
   }
 
-  testWidgets('shows where the recap stops before asking for one', (
-    tester,
-  ) async {
-    final backend = _FakeBackend();
-    await pumpAsk(tester, controllerFor(backend));
+  Future<void> askQuestion(WidgetTester tester, String question) async {
+    await tester.enterText(find.byKey(const ValueKey('ask-input')), question);
+    await tester.pump();
+    await tester.tap(find.byTooltip('Ask'));
+    await tester.pumpAndSettle();
+  }
 
-    expect(find.text('RECAP UP TO'), findsOne);
-    expect(find.text('The end of Chapter 2: The Letter'), findsOne);
+  IconButton newConversation(WidgetTester tester) => tester.widget(
+    find.ancestor(
+      of: find.byIcon(Icons.add_comment_outlined),
+      matching: find.byType(IconButton),
+    ),
+  );
+
+  /// The passages a citation sheet marks as cited, top to bottom.
+  List<String> highlighted(WidgetTester tester) => [
+    for (final box in tester.widgetList<Container>(find.byType(Container)))
+      if (box.decoration case BoxDecoration(color: LoremarkColors.noteQuote))
+        (box.child! as Text).data!,
+  ];
+
+  String answer(String text) => sse([
+    completed([message(text)]),
+  ]);
+
+  testWidgets('says what answers can use, before any question', (tester) async {
+    await pumpAsk(tester);
     expect(
-      find.text('The Glass Harbor · Up to the end of Chapter 2: The Letter'),
+      find.text('Sees your recent pages · Story Map to Chapter 1: Arrival'),
       findsOne,
     );
-    expect(find.text('Catch me up'), findsOne);
-    expect(find.text('A 30-second read.'), findsOne);
-    // The map goes past the reader, so there is nothing to update.
-    expect(find.textContaining('Update your Story Map'), findsNothing);
-    expect(backend.requests, isEmpty);
+    expect(find.text('Ask about what you’ve read.'), findsOne);
+    expect(newConversation(tester).onPressed, isNull);
   });
 
-  testWidgets('Catch me up shows the recap as numbered moments', (
+  testWidgets('asks, and shows the answer with where it comes from', (
     tester,
   ) async {
-    final backend = _FakeBackend();
-    await pumpAsk(tester, controllerFor(backend));
-
-    await tester.tap(find.text('Catch me up'));
-    await tester.pumpAndSettle();
-
-    expect(backend.requests, [_source]);
-    expect(find.text('Your story companion'), findsOne);
-    expect(find.text('01'), findsOne);
-    expect(find.text('Mara reaches the harbor.'), findsOne);
-    expect(find.text('She comes to Glass Harbor looking for work.'), findsOne);
-    expect(find.text('02'), findsOne);
-    expect(find.text('A letter changes hands.'), findsOne);
-    expect(find.text('New recap'), findsOne);
-    expect(find.text('Catch me up'), findsNothing);
-  });
-
-  testWidgets('View passage shows the book’s own words', (tester) async {
-    final controller = controllerFor(_FakeBackend());
-    await pumpAsk(tester, controller);
-    await tester.tap(find.text('Catch me up'));
-    await tester.pumpAndSettle();
-
-    // Only a moment the Story Map quoted has a passage.
-    expect(find.text('Chapter 1 · View passage'), findsOne);
-    expect(find.text('Chapter 2: The Letter'), findsOne);
-
-    await tester.tap(find.text('Chapter 1 · View passage'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('The harbor smelled of tar.'), findsOne);
-  });
-
-  testWidgets('Read it in the book opens the book at the passage', (
-    tester,
-  ) async {
-    final opened = <PassageTarget>[];
     await pumpAsk(
       tester,
-      controllerFor(_FakeBackend()),
-      onOpenPassage: opened.add,
+      replies: [(200, answer('Mara is a dock clerk [s1/p0001, page].'))],
     );
-    await tester.tap(find.text('Catch me up'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Chapter 1 · View passage'));
-    await tester.pumpAndSettle();
+    await askQuestion(tester, 'Who is Mara?');
 
-    await tester.tap(find.text('Read it in the book'));
-    await tester.pumpAndSettle();
+    expect(find.text('Who is Mara?'), findsOne);
+    expect(find.textContaining('Mara is a dock clerk'), findsOne);
+    expect(find.text('1'), findsOne);
+    // An older kind of citation: the recent pages, with no line.
+    expect(find.text('recent pages'), findsOne);
+    expect(find.text('No passage cited.'), findsNothing);
 
-    expect(opened, [_tar]);
-    // The passage sheet closes on the way.
-    expect(find.text('The harbor smelled of tar.'), findsNothing);
+    // The citation opens the paragraph, without moving the reader...
+    await tester.tap(find.text('1'));
+    await tester.pumpAndSettle();
+    expect(find.text('Text of s1 1.'), findsOne);
+    expect(find.text('Text of s1 2.'), findsOne);
+    expect(find.text('Chapter 1: Arrival'), findsOne);
+    expect(jumps, isEmpty);
+    // ...until the reader asks to go there.
+    await tester.tap(find.text('Open in book'));
+    await tester.pumpAndSettle();
+    expect(jumps.single.highlight, 'Text of s1 1.');
+    expect(backend.placed.single.id, 'p0001');
+    expect(find.text('Text of s1 2.'), findsNothing);
   });
 
-  testWidgets('a passage with nowhere to open has no button', (tester) async {
-    const recap = Recap(
-      items: [
-        RecapItem(
-          title: 'Mara reaches the harbor.',
-          summary: 'She comes to Glass Harbor looking for work.',
-          chapter: 'Chapter 1',
-          passages: [RecapPassage('The harbor smelled of tar.')],
-        ),
+  testWidgets('paragraphs next to each other are one citation', (tester) async {
+    await pumpAsk(
+      tester,
+      replies: [
+        (200, answer('Mara is a dock clerk [s1/p0001, s1/p0002, s1/p0003].')),
       ],
-      stopsAt: 'the end of Chapter 2: The Letter',
-      place: (finished: 2, paragraphsRead: 0, revision: 2),
     );
-    await pumpAsk(
-      tester,
-      controllerFor(_FakeBackend(answer: const RecapReady(recap))),
-      onOpenPassage: (_) {},
-    );
-    await tester.tap(find.text('Catch me up'));
+    await askQuestion(tester, 'Who is Mara?');
+    expect(find.text('1'), findsOne);
+    expect(find.text('2'), findsNothing);
+    await tester.tap(find.text('1'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Chapter 1 · View passage'));
+    expect(highlighted(tester), [
+      'Text of s1 1.',
+      'Text of s1 2.',
+      'Text of s1 3.',
+    ]);
+    await tester.tap(find.text('Open in book'));
     await tester.pumpAndSettle();
-
-    expect(find.text('The harbor smelled of tar.'), findsOne);
-    expect(find.text('Read it in the book'), findsNothing);
-  });
-
-  testWidgets('Back to the book goes back to the Read tab', (tester) async {
-    var back = 0;
-    await pumpAsk(
-      tester,
-      controllerFor(_FakeBackend()),
-      onBackToBook: () => back++,
-    );
-    await tester.tap(find.text('Catch me up'));
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('Back to the book →'));
-
-    expect(back, 1);
-  });
-
-  testWidgets('one press is one request, even if pressed again', (
-    tester,
-  ) async {
-    final backend = _FakeBackend()..hold = Completer<void>();
-    await pumpAsk(tester, controllerFor(backend));
-
-    await tester.tap(find.text('Catch me up'));
-    await tester.pump();
-    expect(find.text('Writing your recap…'), findsOne);
-
-    await tester.tap(find.text('Catch me up'));
-    await tester.pump();
-    expect(backend.requests, hasLength(1));
-
-    backend.hold!.complete();
-    await tester.pumpAndSettle();
-    expect(find.text('Mara reaches the harbor.'), findsOne);
-  });
-
-  testWidgets('a recap started elsewhere shows here when it comes', (
-    tester,
-  ) async {
-    // The Read tab's welcome-back card starts the recap, then opens this tab.
-    final backend = _FakeBackend()..hold = Completer<void>();
-    final controller = controllerFor(backend);
-    await pumpAsk(tester, controller, active: false);
-    await controller.prepare();
-    unawaited(controller.write(settings.credentials!));
-
-    await pumpAsk(tester, controller, settle: false);
-    expect(find.text('Writing your recap…'), findsOne);
-    expect(backend.prepares, 1);
-
-    backend.hold!.complete();
-    await tester.pumpAndSettle();
-    expect(find.text('Mara reaches the harbor.'), findsOne);
-  });
-
-  testWidgets('a failed recap says why and offers to try again', (
-    tester,
-  ) async {
-    final backend = _FakeBackend(
-      answer: const RecapFailed(
-        'DeepSeek rejected your API key. Check it in Settings.',
-      ),
-    );
-    await pumpAsk(tester, controllerFor(backend));
-
-    await tester.tap(find.text('Catch me up'));
-    await tester.pumpAndSettle();
-
+    expect(jumps.single.highlight, 'Text of s1 1.');
     expect(
-      find.text('DeepSeek rejected your API key. Check it in Settings.'),
+      [for (final more in jumps.single.also) more.highlight],
+      ['Text of s1 2.', 'Text of s1 3.'],
+    );
+    expect(backend.placed, hasLength(3));
+  });
+
+  testWidgets('a citation past where the reader is now can\'t be opened', (
+    tester,
+  ) async {
+    final controller = await pumpAsk(
+      tester,
+      history: _MemoryHistory({
+        'c1': [
+          AskExchange(
+            question: 'Later?',
+            answer: 'Elian came [s2/p0001].',
+            limit: const TextPosition(9, 0),
+            askedAt: DateTime.utc(2026),
+          ),
+        ],
+      }),
+    );
+    controller.open('c1');
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Past where you are now'), findsOne);
+    await tester.tap(find.text('1'));
+    await tester.pumpAndSettle();
+    expect(find.text('Open in book'), findsNothing);
+  });
+
+  testWidgets('says so when an answer cites nothing', (tester) async {
+    await pumpAsk(tester, replies: [(200, answer('Just words.'))]);
+    await askQuestion(tester, 'Who?');
+    expect(find.text('No passage cited.'), findsOne);
+  });
+
+  testWidgets('without a map, says the page is all it has', (tester) async {
+    backend
+      ..model = null
+      ..reach = const AskReach(
+        progress: StoryReadingProgress(0),
+        limit: TextPosition(2, 0.5),
+        page: page,
+      );
+    await pumpAsk(tester);
+    expect(find.text('Sees your recent pages · No Story Map yet'), findsOne);
+    expect(find.textContaining('Build a Story Map'), findsOne);
+    await tester.tap(find.text('Story Map'));
+    expect(openedMap, hasLength(1));
+  });
+
+  testWidgets('says when the reader is past what the map covers', (
+    tester,
+  ) async {
+    backend.reach = const AskReach(
+      progress: StoryReadingProgress(1),
+      limit: TextPosition(4, 0.2),
+      page: page,
+      pastMap: true,
+    );
+    await pumpAsk(tester);
+    expect(find.textContaining('past what the Story Map covers'), findsOne);
+  });
+
+  testWidgets('with nothing read, there is nothing to ask', (tester) async {
+    backend
+      ..model = null
+      ..reach = AskReach.none;
+    await pumpAsk(tester);
+    expect(find.textContaining('Read a page first.'), findsOne);
+    final input = tester.widget<TextField>(
+      find.byKey(const ValueKey('ask-input')),
+    );
+    expect(input.enabled, isFalse);
+  });
+
+  testWidgets('a failed question can be tried again', (tester) async {
+    await pumpAsk(
+      tester,
+      replies: [
+        (401, '{"error":{"message":"bad key"}}'),
+        (200, answer('Mara [s1/p0001].')),
+      ],
+    );
+    await askQuestion(tester, 'Who?');
+    expect(
+      find.text('Your API key was rejected. Check it in Settings.'),
       findsOne,
     );
-    expect(find.text('Try again'), findsOne);
-  });
-
-  testWidgets('before the reader has read any of the map, says to read on', (
-    tester,
-  ) async {
-    await pumpAsk(
-      tester,
-      controllerFor(_FakeBackend(start: const RecapNeedsReading())),
-    );
-
-    expect(find.textContaining('Read a few pages'), findsOne);
-    expect(find.text('Catch me up'), findsNothing);
-  });
-
-  testWidgets('without a Story Map, says to build one', (tester) async {
-    final backend = _FakeBackend(start: const RecapNeedsStoryMap());
-    await pumpAsk(tester, controllerFor(backend));
-
-    expect(find.textContaining('built from your Story Map'), findsOne);
-    expect(find.text('Catch me up'), findsNothing);
-    expect(backend.requests, isEmpty);
-  });
-
-  testWidgets('partway through a chapter, stops at the reader’s page', (
-    tester,
-  ) async {
-    const source = RecapSource(
-      sectionTitle: 'Chapter 3: The Storm',
-      sectionLabel: 'Chapter 3',
-      partway: true,
-      place: (finished: 2, paragraphsRead: 7, revision: 2),
-      events: [],
-      characters: [],
-      openQuestions: [],
-      recentText: 'Rain on the quay.',
-    );
-    await pumpAsk(
-      tester,
-      controllerFor(_FakeBackend(start: const RecapCanStart(source))),
-    );
-
-    expect(find.text('Your page in Chapter 3: The Storm'), findsOne);
-  });
-
-  testWidgets('once the reader has read all the map holds, links to it', (
-    tester,
-  ) async {
-    const source = RecapSource(
-      sectionTitle: 'Chapter 2: The Letter',
-      sectionLabel: 'Chapter 2',
-      partway: false,
-      place: (finished: 2, paragraphsRead: 0, revision: 2),
-      events: [],
-      characters: [],
-      openQuestions: [],
-      recentText: 'Mara reads the letter by the quay.',
-      mapEndsHere: true,
-    );
-    var opened = 0;
-    await pumpAsk(
-      tester,
-      controllerFor(_FakeBackend(start: const RecapCanStart(source))),
-      onOpenStoryMap: () => opened++,
-    );
-
-    expect(find.text('Read further? Update your Story Map →'), findsOne);
-
-    await tester.tap(find.text('Read further? Update your Story Map →'));
-    expect(opened, 1);
-  });
-
-  testWidgets('a recap of another place isn’t shown', (tester) async {
-    final backend = _FakeBackend();
-    final controller = controllerFor(backend);
-    await pumpAsk(tester, controller);
-    await tester.tap(find.text('Catch me up'));
+    await tester.tap(find.text('Try again'));
     await tester.pumpAndSettle();
-    expect(find.text('Mara reaches the harbor.'), findsOne);
-
-    // The reader turns back into chapter 2, then opens the tab again.
-    backend.start = const RecapCanStart(
-      RecapSource(
-        sectionTitle: 'Chapter 2: The Letter',
-        sectionLabel: 'Chapter 2',
-        partway: true,
-        place: (finished: 1, paragraphsRead: 3, revision: 2),
-        events: [],
-        characters: [],
-        openQuestions: [],
-        recentText: 'Mara opens the letter.',
-      ),
-    );
-    await pumpAsk(tester, controller, active: false);
-    await pumpAsk(tester, controller);
-
-    expect(find.text('Mara reaches the harbor.'), findsNothing);
-    expect(find.text('Your page in Chapter 2: The Letter'), findsOne);
-    expect(find.text('Catch me up'), findsOne);
+    expect(find.textContaining('Mara'), findsWidgets);
+    expect(find.text('Try again'), findsNothing);
   });
 
-  testWidgets('looks for the reader’s place again each time the tab opens', (
+  testWidgets('shows what it is doing, and can be stopped', (tester) async {
+    final body = StreamController<String>();
+    await pumpAsk(
+      tester,
+      post: (url, headers, sent) async =>
+          AskHttpReply(200, body.stream, () => body.close()),
+    );
+    await askQuestion(tester, 'Who?');
+    expect(find.text('Thinking…'), findsOne);
+    expect(find.byTooltip('Stop'), findsOne);
+
+    body.add(
+      sse([
+        {'type': 'response.output_text.delta', 'item_id': 'm', 'delta': 'Ma'},
+      ]),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Ma'), findsWidgets);
+
+    await tester.tap(find.byTooltip('Stop'));
+    await tester.pumpAndSettle();
+    expect(find.text('Stopped. Nothing was kept.'), findsOne);
+    expect(find.byTooltip('Ask'), findsOne);
+  });
+
+  testWidgets('a question being written survives going offline', (
     tester,
   ) async {
-    final backend = _FakeBackend();
-    final controller = controllerFor(backend);
+    final connection = ConnectionStatus();
+    await pumpAsk(tester, connection: connection);
+    await tester.enterText(find.byKey(const ValueKey('ask-input')), 'Half a');
 
-    await pumpAsk(tester, controller, active: false);
-    expect(backend.prepares, 0);
+    connection.isOnline = false;
+    await tester.pumpAndSettle();
+    expect(find.text('Ask needs a connection'), findsOne);
+    connection.isOnline = true;
+    await tester.pumpAndSettle();
 
-    await pumpAsk(tester, controller);
-    expect(backend.prepares, 1);
-    expect(find.text('Catch me up'), findsOne);
+    final input = tester.widget<TextField>(
+      find.byKey(const ValueKey('ask-input')),
+    );
+    expect(input.controller!.text, 'Half a');
+  });
 
-    await pumpAsk(tester, controller, active: false);
-    await pumpAsk(tester, controller);
-    expect(backend.prepares, 2);
+  group('recent pages', () {
+    const fourLines = AskPage(
+      'First line.\n\nSecond line.\n\nThird line.\n\nFourth line.',
+      TextPosition(2, 0.5),
+    );
+
+    setUp(() {
+      backend.reach = const AskReach(
+        progress: StoryReadingProgress(1),
+        limit: TextPosition(2, 0.5),
+        page: fourLines,
+      );
+    });
+
+    testWidgets('a line is numbered with the paragraphs, and opens', (
+      tester,
+    ) async {
+      await pumpAsk(
+        tester,
+        replies: [(200, answer('Mara waited [page/2] by it [s1/p0001].'))],
+      );
+      await askQuestion(tester, 'What did Mara do?');
+      expect(find.text('recent pages'), findsNothing);
+
+      await tester.tap(find.text('1'));
+      await tester.pumpAndSettle();
+      expect(find.text('RECENT PAGES'), findsOne);
+      expect(find.textContaining('What Ask saw'), findsOne);
+      expect(find.text('First line.'), findsOne);
+      expect(find.text('Second line.'), findsOne);
+      expect(find.text('Third line.'), findsOne);
+      expect(find.text('Fourth line.'), findsNothing);
+      expect(backend.pagesAsked.single, const TextPosition(2, 0.5));
+      expect(jumps, isEmpty);
+
+      await tester.tap(find.text('Open in book'));
+      await tester.pumpAndSettle();
+      expect(jumps.single.sectionIndex, 2);
+      expect(jumps.single.highlight, 'Second line.');
+      expect(find.text('RECENT PAGES'), findsNothing);
+
+      // The paragraph is the next number.
+      await tester.tap(find.text('2'));
+      await tester.pumpAndSettle();
+      expect(find.text('Chapter 1: Arrival'), findsOne);
+    });
+
+    testWidgets('lines next to each other are one citation', (tester) async {
+      await pumpAsk(
+        tester,
+        replies: [(200, answer('Mara waited by it [page/3, page/2].'))],
+      );
+      await askQuestion(tester, 'What did Mara do?');
+      expect(find.text('1'), findsOne);
+      expect(find.text('2'), findsNothing);
+
+      await tester.tap(find.text('1'));
+      await tester.pumpAndSettle();
+      for (final line in fourLines.lines) {
+        expect(find.text(line), findsOne);
+      }
+      expect(highlighted(tester), ['Second line.', 'Third line.']);
+      await tester.tap(find.text('Open in book'));
+      await tester.pumpAndSettle();
+      // It goes to the first, and highlights both.
+      expect(jumps.single.highlight, 'Second line.');
+      expect(
+        [for (final more in jumps.single.also) more.highlight],
+        ['Third line.'],
+      );
+    });
+
+    testWidgets('with no line, all of them show, ending at the page', (
+      tester,
+    ) async {
+      final controller = await pumpAsk(
+        tester,
+        history: _MemoryHistory({
+          'c1': [
+            AskExchange(
+              question: 'Where?',
+              answer: 'By the water [page].',
+              limit: const TextPosition(2, 0.5),
+              askedAt: DateTime.utc(2026),
+            ),
+          ],
+        }),
+      );
+      controller.open('c1');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('recent pages'));
+      await tester.pumpAndSettle();
+      for (final line in fourLines.lines) {
+        expect(find.text(line), findsOne);
+      }
+      await tester.tap(find.text('Open in book'));
+      await tester.pumpAndSettle();
+      expect(jumps.single.highlight, 'Fourth line.');
+    });
+
+    testWidgets('can\'t be opened when the page end wasn\'t measured', (
+      tester,
+    ) async {
+      final controller = await pumpAsk(
+        tester,
+        history: _MemoryHistory({
+          'c1': [
+            AskExchange(
+              question: 'Where?',
+              answer: 'By the water [page].',
+              limit: const TextPosition(2, 0),
+              askedAt: DateTime.utc(2026),
+            ),
+          ],
+        }),
+      );
+      controller.open('c1');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('recent pages'));
+      await tester.pumpAndSettle();
+      expect(find.text('RECENT PAGES'), findsNothing);
+      expect(backend.pagesAsked, isEmpty);
+    });
+  });
+
+  group('conversations', () {
+    testWidgets('a new one empties the thread; the old one is listed', (
+      tester,
+    ) async {
+      await pumpAsk(tester, replies: [(200, answer('Mara.'))]);
+      await askQuestion(tester, 'Who?');
+      expect(find.text('Mara.'), findsOne);
+
+      await tester.tap(find.byTooltip('New conversation'));
+      await tester.pumpAndSettle();
+      expect(find.text('Ask about what you’ve read.'), findsOne);
+      expect(newConversation(tester).onPressed, isNull);
+
+      await tester.tap(find.byTooltip('Conversations'));
+      await tester.pumpAndSettle();
+      expect(find.text('CONVERSATIONS'), findsOne);
+      expect(find.text('Who?'), findsOne);
+      expect(find.textContaining('· 1 question'), findsOne);
+    });
+
+    testWidgets('one opens from the list', (tester) async {
+      await pumpAsk(
+        tester,
+        history: _MemoryHistory({
+          'c1': [_exchange('Earlier?', 'Long ago.')],
+          'c2': [_exchange('Other?', 'Elsewhere.')],
+        }),
+      );
+      expect(find.text('Ask about what you’ve read.'), findsOne);
+      await tester.tap(find.byTooltip('Conversations'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Earlier?'));
+      await tester.pumpAndSettle();
+      expect(find.text('CONVERSATIONS'), findsNothing);
+      expect(find.text('Long ago.'), findsOne);
+      expect(find.text('Elsewhere.'), findsNothing);
+    });
+
+    testWidgets('deleting one asks first', (tester) async {
+      final history = _MemoryHistory({
+        'c1': [_exchange('Who?', 'Mara.')],
+      });
+      final controller = await pumpAsk(tester, history: history);
+      controller.open('c1');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Conversations'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Delete conversation'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(history.saved, contains('c1'));
+
+      await tester.tap(find.byTooltip('Delete conversation'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Delete'));
+      await tester.pumpAndSettle();
+      expect(history.saved, isEmpty);
+      expect(
+        find.text('Conversations you have about this book are kept here.'),
+        findsOne,
+      );
+      Navigator.of(tester.element(find.text('CONVERSATIONS'))).pop();
+      await tester.pumpAndSettle();
+      expect(find.text('Ask about what you’ve read.'), findsOne);
+    });
+
+    testWidgets('leaving the tab for five minutes means a new one', (
+      tester,
+    ) async {
+      var clock = DateTime.utc(2026, 11, 9, 12);
+      final active = ValueNotifier(true);
+      await pumpAsk(
+        tester,
+        replies: [(200, answer('Mara.'))],
+        active: active,
+        now: () => clock,
+      );
+      await askQuestion(tester, 'Who?');
+
+      active.value = false;
+      await tester.pump();
+      clock = clock.add(const Duration(minutes: 4));
+      active.value = true;
+      await tester.pumpAndSettle();
+      expect(find.text('Mara.'), findsOne);
+
+      active.value = false;
+      await tester.pump();
+      clock = clock.add(askIdleGap);
+      active.value = true;
+      await tester.pumpAndSettle();
+      expect(find.text('Mara.'), findsNothing);
+      expect(find.text('Ask about what you’ve read.'), findsOne);
+    });
+  });
+
+  group('when a conversation was last added to', () {
+    final now = DateTime(2026, 11, 9, 20, 30);
+
+    test('today, the time', () {
+      expect(conversationTime(DateTime(2026, 11, 9, 8, 5), now), 'Today 08:05');
+    });
+
+    test('this year, the date', () {
+      expect(conversationTime(DateTime(2026, 11, 8, 23, 59), now), 'Nov 8');
+      expect(conversationTime(DateTime(2026, 3, 2), now), 'Mar 2');
+    });
+
+    test('before, the year too', () {
+      expect(conversationTime(DateTime(2025, 11, 9), now), 'Nov 9, 2025');
+    });
   });
 }

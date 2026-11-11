@@ -149,6 +149,16 @@ class _FakeBackend implements StoryMapBackend {
 
   @override
   Future<void> discardImport(StagedStoryImport staged) async => discards++;
+
+  /// Whether the reader closed the intro before. True unless a test says
+  /// otherwise, so the other tests don't see it.
+  bool seenIntro = true;
+
+  @override
+  Future<bool> introSeen() async => seenIntro;
+
+  @override
+  Future<void> markIntroSeen() async => seenIntro = true;
 }
 
 /// A map whose store can't be read.
@@ -1263,6 +1273,48 @@ void main() {
     });
   });
 
+  group('the intro', () {
+    const title = 'Tap Update to build the Story Map';
+
+    testWidgets('shows on the first visit and goes once closed', (
+      tester,
+    ) async {
+      final backend = _FakeBackend(model: storyModelFixture())
+        ..seenIntro = false;
+      await pumpTab(tester, backend);
+      expect(find.text(title), findsOne);
+
+      await tester.tap(find.byTooltip('Dismiss'));
+      await tester.pumpAndSettle();
+      expect(find.text(title), findsNothing);
+      expect(backend.seenIntro, isTrue);
+    });
+
+    testWidgets('doesn\'t come back once closed', (tester) async {
+      final backend = _FakeBackend(model: storyModelFixture())
+        ..seenIntro = false;
+      await pumpTab(tester, backend);
+      await tester.tap(find.byTooltip('Dismiss'));
+      await tester.pumpAndSettle();
+
+      // A new tab, as when the book is opened again.
+      await tester.pumpWidget(const SizedBox());
+      await pumpTab(tester, backend);
+      expect(find.text(title), findsNothing);
+    });
+
+    testWidgets('shows above Update before any map is built', (tester) async {
+      await pumpTab(tester, _FakeBackend(status: _newStore)..seenIntro = false);
+      expect(find.text(title), findsOne);
+      expect(
+        tester.getTopLeft(find.text(title)).dy,
+        lessThan(
+          tester.getTopLeft(find.widgetWithText(FilledButton, 'Update')).dy,
+        ),
+      );
+    });
+  });
+
   group('how far the reader has got', () {
     final sections = [
       for (final (id, order, href) in const [
@@ -1323,6 +1375,70 @@ void main() {
         ),
         0,
       );
+    });
+  });
+
+  group('past the end of the map', () {
+    // two.xhtml was left out between the map's two sections, for good.
+    final sections = [
+      for (final (id, order, href) in const [
+        ('section-002', 2, 'OEBPS/one.xhtml'),
+        ('section-004', 4, 'OEBPS/three.xhtml'),
+      ])
+        StorySection(
+          id: id,
+          order: order,
+          chapterNumber: null,
+          title: id,
+          href: href,
+        ),
+    ];
+    const spine = [
+      SpineItem(path: 'OEBPS/cover.xhtml', linear: true),
+      SpineItem(path: 'OEBPS/one.xhtml', linear: true),
+      SpineItem(path: 'OEBPS/two.xhtml', linear: true),
+      SpineItem(path: 'OEBPS/three.xhtml', linear: true),
+      SpineItem(path: 'OEBPS/four.xhtml', linear: true),
+    ];
+    // As Ask counts: the page being read is read.
+    bool past(ReaderPosition position, {List<StorySection>? of}) {
+      final mapped = of ?? sections;
+      return pastStoryMapEnd(
+        mapped,
+        spine,
+        StoryReadingProgress(
+          finishedStorySections(mapped, spine, position, wholePage: true),
+        ),
+        position.sectionIndex,
+      );
+    }
+
+    test('not before the map starts', () {
+      expect(past(const ReaderPosition(0, 0.5)), isFalse);
+    });
+    test('not in a stretch the map left out, which can\'t be added', () {
+      expect(past(const ReaderPosition(2, 0.5)), isFalse);
+    });
+    test('not partway through the last section', () {
+      expect(past(const ReaderPosition(3, 0.5)), isFalse);
+      expect(
+        pastStoryMapEnd(
+          sections,
+          spine,
+          const StoryReadingProgress(1, hiddenInNext: {}),
+          3,
+        ),
+        isFalse,
+      );
+    });
+    test('not on the last page of the last section, which is still in it', () {
+      expect(past(const ReaderPosition(3, 1)), isFalse);
+    });
+    test('after the last section', () {
+      expect(past(const ReaderPosition(4, 0.3)), isTrue);
+    });
+    test('not without a map', () {
+      expect(past(const ReaderPosition(4, 0.3), of: const []), isFalse);
     });
   });
 }
