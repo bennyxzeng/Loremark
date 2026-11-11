@@ -7,6 +7,9 @@ import 'package:loremark/ask/ask_boundary.dart';
 import 'package:loremark/ask/ask_controller.dart';
 import 'package:loremark/ask/ask_history.dart';
 import 'package:loremark/ask/ask_stream.dart';
+import 'package:loremark/companion/companion_art.dart';
+import 'package:loremark/companion/companion_director.dart';
+import 'package:loremark/companion/companion_sprite.dart';
 import 'package:loremark/home/ask_screen.dart';
 import 'package:loremark/library/book.dart';
 import 'package:loremark/reader/epub_reader_service.dart';
@@ -181,6 +184,8 @@ void main() {
       findsOne,
     );
     expect(find.text('Ask about what you’ve read.'), findsOne);
+    // The companion stands under the heading, with no card explaining Ask.
+    expect(find.textContaining('Ask about a person'), findsNothing);
     expect(newConversation(tester).onPressed, isNull);
   });
 
@@ -305,7 +310,7 @@ void main() {
       ..model = null
       ..reach = AskReach.none;
     await pumpAsk(tester);
-    expect(find.textContaining('Read a page first.'), findsOne);
+    expect(find.text('Read a page to start asking'), findsOne);
     final input = tester.widget<TextField>(
       find.byKey(const ValueKey('ask-input')),
     );
@@ -356,6 +361,309 @@ void main() {
     expect(find.byTooltip('Ask'), findsOne);
   });
 
+  group('the companion', () {
+    CompanionSprite speaker(WidgetTester tester) => tester.widget(
+      find.descendant(
+        of: find.byKey(const ValueKey('companion')),
+        matching: find.byType(CompanionSprite),
+      ),
+    );
+
+    testWidgets('waits, all of her, in an empty thread', (tester) async {
+      final active = ValueNotifier(true);
+      await pumpAsk(tester, active: active);
+      final sprite = tester.widget<CompanionSprite>(
+        find.byType(CompanionSprite),
+      );
+      expect(sprite.frame, CompanionFrame.full);
+      expect(sprite.mood, CompanionMood.idle);
+      expect(sprite.active, isTrue);
+
+      // Keeping still while the tab is hidden.
+      active.value = false;
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<CompanionSprite>(find.byType(CompanionSprite)).active,
+        isFalse,
+      );
+    });
+
+    testWidgets('thinks, then says the answer as it arrives', (tester) async {
+      final body = StreamController<String>();
+      await pumpAsk(
+        tester,
+        post: (url, headers, sent) async =>
+            AskHttpReply(200, body.stream, () => body.close()),
+      );
+      await askQuestion(tester, 'Who?');
+      expect(speaker(tester).frame, CompanionFrame.full);
+      expect(speaker(tester).mood, CompanionMood.thinking);
+
+      body.add(
+        sse([
+          {
+            'type': 'response.output_text.delta',
+            'item_id': 'm',
+            'delta': 'Mara is a clerk ',
+          },
+        ]),
+      );
+      await tester.pumpAndSettle();
+      expect(speaker(tester).mood, CompanionMood.talking);
+      expect(speaker(tester).speech, 'Mara is a clerk ');
+      expect(speaker(tester).citations, 0);
+
+      // A citation isn't said, but counted, so she can point at it.
+      body.add(
+        sse([
+          {
+            'type': 'response.output_text.delta',
+            'item_id': 'm',
+            'delta': '[s1/p0001]. She',
+          },
+        ]),
+      );
+      await tester.pumpAndSettle();
+      expect(speaker(tester).speech, 'Mara is a clerk . She');
+      expect(speaker(tester).citations, 1);
+
+      await tester.tap(find.byTooltip('Stop'));
+      await tester.pumpAndSettle();
+      expect(speaker(tester).mood, CompanionMood.idle);
+    });
+
+    testWidgets('stands behind the newest answer; the log has the rest', (
+      tester,
+    ) async {
+      await pumpAsk(
+        tester,
+        replies: [
+          (200, answer('Mara is a dock clerk.')),
+          (200, answer('She works the night shift.')),
+        ],
+      );
+      await askQuestion(tester, 'Who is Mara?');
+      await askQuestion(tester, 'When does she work?');
+
+      // One of her, with the dialogue box over her legs.
+      final companion = find.byKey(const ValueKey('companion'));
+      final dialogue = find.byKey(const ValueKey('dialogue'));
+      expect(companion, findsOne);
+      expect(find.text('Loremark'), findsOne);
+      expect(
+        tester.getTopLeft(dialogue).dy,
+        lessThan(tester.getBottomLeft(companion).dy),
+      );
+      expect(
+        find.descendant(
+          of: dialogue,
+          matching: find.text('She works the night shift.'),
+        ),
+        findsOne,
+      );
+      expect(find.text('Mara is a dock clerk.'), findsNothing);
+
+      await tester.tap(find.text('LOG'));
+      await tester.pumpAndSettle();
+      expect(find.text('Who is Mara?'), findsOne);
+      expect(find.text('Mara is a dock clerk.'), findsOne);
+      // The newest answer is in the log too, as well as in the box.
+      expect(find.text('She works the night shift.'), findsNWidgets(2));
+    });
+
+    testWidgets('a conversation opens at its question, however long', (
+      tester,
+    ) async {
+      final controller = await pumpAsk(
+        tester,
+        history: _MemoryHistory({
+          'c1': [_exchange('Who?', 'Mara.')],
+          'c2': [_exchange('Long?', 'On and on. ' * 300)],
+        }),
+      );
+      controller.open('c1');
+      await tester.pumpAndSettle();
+      controller.open('c2');
+      await tester.pumpAndSettle();
+      expect(
+        tester.getTopLeft(find.text('Long?')).dy,
+        greaterThan(
+          tester.getTopLeft(find.byKey(const ValueKey('dialogue'))).dy,
+        ),
+      );
+    });
+
+    testWidgets('steps up while a first question is being written', (
+      tester,
+    ) async {
+      await pumpAsk(tester);
+      final companion = find.byKey(const ValueKey('companion'));
+      final standing = tester.getSize(companion).height;
+
+      // Up close, as in a conversation, with nothing yet to put in a
+      // dialogue box.
+      await tester.tap(find.byKey(const ValueKey('ask-input')));
+      await tester.pumpAndSettle();
+      expect(find.text('Ask about what you’ve read.'), findsNothing);
+      expect(find.byKey(const ValueKey('dialogue')), findsNothing);
+      expect(tester.getSize(companion).height, greaterThan(standing));
+
+      await tester.tap(
+        find.text('Sees your recent pages · Story Map to Chapter 1: Arrival'),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Ask about what you’ve read.'), findsOne);
+      expect(tester.getSize(companion).height, standing);
+    });
+
+    testWidgets('the keyboard coming or going never swells her', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(400, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await pumpAsk(tester);
+      final companion = find.byKey(const ValueKey('companion'));
+      double height() => tester.getSize(companion).height;
+
+      /// Her height each frame as the keyboard moves [from] one height [to]
+      /// another, while she steps.
+      Future<List<double>> keyboard(double from, double to) async {
+        // The question box gains or loses focus before the keyboard moves.
+        await tester.pump();
+        final heights = <double>[];
+        for (var frame = 1; frame <= 10; frame++) {
+          tester.view.viewInsets = FakeViewPadding(
+            bottom: from + (to - from) * frame / 10,
+          );
+          await tester.pump(const Duration(milliseconds: 16));
+          heights.add(height());
+        }
+        await tester.pumpAndSettle();
+        return heights;
+      }
+
+      final input = find.byKey(const ValueKey('ask-input'));
+      final outside = find.text(
+        'Sees your recent pages · Story Map to Chapter 1: Arrival',
+      );
+      final standing = height();
+      // The first time, how tall the stage is over the keyboard isn't known.
+      await tester.tap(input);
+      await keyboard(0, 300);
+      final close = height();
+      expect(close, isNot(standing));
+      final shortest = close < standing ? close : standing;
+      final tallest = close < standing ? standing : close;
+
+      await tester.tap(outside);
+      for (final step in await keyboard(300, 0)) {
+        expect(step, inInclusiveRange(shortest - 0.5, tallest + 0.5));
+      }
+      expect(height(), standing);
+
+      await tester.tap(input);
+      for (final step in await keyboard(0, 300)) {
+        expect(step, inInclusiveRange(shortest - 0.5, tallest + 0.5));
+      }
+      expect(height(), close);
+
+      // Another book's Ask knows it from the start.
+      await tester.tap(outside);
+      await keyboard(300, 0);
+      await tester.pumpWidget(const SizedBox());
+      await pumpAsk(tester);
+      expect(height(), standing);
+      await tester.tap(input);
+      for (final step in await keyboard(0, 300)) {
+        expect(step, inInclusiveRange(shortest - 0.5, tallest + 0.5));
+      }
+      expect(height(), close);
+    });
+
+    testWidgets('with no keyboard coming, she steps up all the same', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(400, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await pumpAsk(tester);
+      final companion = find.byKey(const ValueKey('companion'));
+      double height() => tester.getSize(companion).height;
+      final input = find.byKey(const ValueKey('ask-input'));
+      final outside = find.text(
+        'Sees your recent pages · Story Map to Chapter 1: Arrival',
+      );
+      // How tall the stage is over the keyboard, learnt.
+      await tester.tap(input);
+      await tester.pump();
+      tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+      await tester.pumpAndSettle();
+      await tester.tap(outside);
+      // The keyboard is still up when the question box loses focus.
+      await tester.pump();
+      tester.view.viewInsets = FakeViewPadding.zero;
+      await tester.pumpAndSettle();
+
+      // A hardware keyboard: the question box has focus, but no keyboard
+      // comes up.
+      final heights = [height()];
+      await tester.tap(input);
+      for (var frame = 0; frame < 30; frame++) {
+        await tester.pump(const Duration(milliseconds: 16));
+        heights.add(height());
+      }
+      await tester.pumpAndSettle();
+      final close = height();
+      expect(close, greaterThan(heights.first));
+      for (var frame = 1; frame < heights.length; frame++) {
+        expect(
+          heights[frame] - heights[frame - 1],
+          lessThan(40),
+          reason: 'frame $frame',
+        );
+        expect(
+          heights[frame],
+          inInclusiveRange(heights.first - 3, close + 0.5),
+          reason: 'frame $frame',
+        );
+      }
+    });
+
+    testWidgets('fits a short stage, as with the keyboard up', (tester) async {
+      tester.view.physicalSize = const Size(400, 420);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await pumpAsk(tester, replies: [(200, answer('Mara is a dock clerk.'))]);
+      await askQuestion(tester, 'Who is Mara?');
+      expect(tester.takeException(), isNull);
+      expect(find.text('Mara is a dock clerk.'), findsOne);
+    });
+  });
+
+  testWidgets('a passage opened from the log closes it', (tester) async {
+    await pumpAsk(
+      tester,
+      replies: [
+        (200, answer('Mara is a dock clerk [s1/p0001].')),
+        (200, answer('At night.')),
+      ],
+    );
+    await askQuestion(tester, 'Who is Mara?');
+    await askQuestion(tester, 'When?');
+    expect(find.text('1'), findsNothing);
+
+    await tester.tap(find.text('LOG'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('1'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Open in book'));
+    await tester.pumpAndSettle();
+    expect(jumps.single.highlight, 'Text of s1 1.');
+    expect(find.text('Text of s1 1.'), findsNothing);
+    expect(find.text('Who is Mara?'), findsNothing);
+  });
+
   testWidgets('a question being written survives going offline', (
     tester,
   ) async {
@@ -373,6 +681,37 @@ void main() {
       find.byKey(const ValueKey('ask-input')),
     );
     expect(input.controller!.text, 'Half a');
+  });
+
+  group('the keyboard', () {
+    testWidgets('goes away on a touch outside the question box', (
+      tester,
+    ) async {
+      await pumpAsk(tester);
+      await tester.tap(find.byKey(const ValueKey('ask-input')));
+      await tester.pump();
+      expect(tester.testTextInput.isVisible, isTrue);
+
+      await tester.tap(
+        find.text('Sees your recent pages · Story Map to Chapter 1: Arrival'),
+      );
+      await tester.pump();
+      expect(tester.testTextInput.isVisible, isFalse);
+    });
+
+    testWidgets('goes away when the reader goes to another tab', (
+      tester,
+    ) async {
+      final active = ValueNotifier(true);
+      await pumpAsk(tester, active: active);
+      await tester.tap(find.byKey(const ValueKey('ask-input')));
+      await tester.pump();
+      expect(tester.testTextInput.isVisible, isTrue);
+
+      active.value = false;
+      await tester.pump();
+      expect(tester.testTextInput.isVisible, isFalse);
+    });
   });
 
   group('recent pages', () {
