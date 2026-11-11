@@ -3,8 +3,13 @@ import 'dart:async';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:loremark/ask/ask_backend.dart';
+import 'package:loremark/ask/ask_boundary.dart';
+import 'package:loremark/ask/ask_controller.dart';
 import 'package:loremark/home/book_screen.dart';
 import 'package:loremark/library/book.dart';
+import 'package:loremark/recap/recap_backend.dart';
+import 'package:loremark/recap/recap_stop.dart';
 import 'package:loremark/settings/ai_settings.dart';
 import 'package:loremark/settings/connection_status.dart';
 import 'package:loremark/story_map/story_map_backend.dart';
@@ -12,6 +17,8 @@ import 'package:loremark/story_model/story_model.dart';
 import 'package:loremark/story_update/story_model_choice.dart';
 import 'package:loremark/story_update/story_updater.dart';
 import 'package:loremark/theme/loremark_theme.dart';
+
+import 'ask/fake_ask_backend.dart';
 
 /// A book with no Story Map yet, whose updates wait for [finish], section by
 /// section.
@@ -57,6 +64,18 @@ class _StoryMapBackend implements StoryMapBackend {
   Object? noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+const _stop = RecapStop(sectionTitle: 'Chapter 1: Arrival', partway: false);
+
+/// Finds the reader at [start].
+class _FakeRecapBackend implements RecapBackend {
+  _FakeRecapBackend({this.start = const RecapCanStart(_stop)});
+
+  final RecapStart start;
+
+  @override
+  Future<RecapStart> prepare(Book book) async => start;
+}
+
 // Smoke tests for an open book's tabs. They only check navigation, not the
 // placeholder screen content, so they keep passing as each screen is built.
 void main() {
@@ -75,6 +94,8 @@ void main() {
     bool hasKey = true,
     ConnectionStatus? connection,
     StoryMapBackend? storyMapBackend,
+    RecapBackend? recapBackend,
+    AskBackend? askBackend,
   }) async {
     final settings = AiSettings(
       MemorySecretStore({
@@ -90,7 +111,12 @@ void main() {
           status: connection ?? ConnectionStatus(),
           child: MaterialApp(
             theme: buildLoremarkTheme(),
-            home: BookScreen(book: book, storyMapBackend: storyMapBackend),
+            home: BookScreen(
+              book: book,
+              storyMapBackend: storyMapBackend,
+              recapBackend: recapBackend,
+              askBackend: askBackend,
+            ),
           ),
         ),
       ),
@@ -483,6 +509,137 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.getRect(banner(failed)).top, lessThan(under));
       expect(shown(tester, failed), isTrue);
+    });
+  });
+
+  group('welcome back', () {
+    testWidgets('pops up over the book with where the reader stopped', (
+      tester,
+    ) async {
+      final backend = _FakeRecapBackend();
+      await pumpBook(tester, recapBackend: backend);
+      await tester.pumpAndSettle();
+
+      expect(selectedTab(tester), 0);
+      expect(find.text('Welcome back.'), findsOne);
+      expect(find.textContaining('you finished Chapter 1: Arrival'), findsOne);
+    });
+
+    testWidgets('Catch me up asks for a recap in a new Ask conversation', (
+      tester,
+    ) async {
+      // Nothing for Ask to read, so nothing goes to the network: what matters
+      // here is that the recap is asked in Ask.
+      await pumpBook(
+        tester,
+        recapBackend: _FakeRecapBackend(),
+        askBackend: FakeAskBackend(reach: AskReach.none),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Catch me up'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Welcome back.'), findsNothing);
+      expect(selectedTab(tester), 1);
+      expect(find.text(askRecapQuestion), findsOne);
+    });
+
+    testWidgets('Keep reading puts it away and stays on the book', (
+      tester,
+    ) async {
+      await pumpBook(tester, recapBackend: _FakeRecapBackend());
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Keep reading'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Welcome back.'), findsNothing);
+      expect(selectedTab(tester), 0);
+    });
+
+    testWidgets('tapping beside it is the same as Keep reading', (
+      tester,
+    ) async {
+      await pumpBook(tester, recapBackend: _FakeRecapBackend());
+      await tester.pumpAndSettle();
+
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Welcome back.'), findsNothing);
+      expect(selectedTab(tester), 0);
+    });
+
+    testWidgets('comes once each time the book opens', (tester) async {
+      await pumpBook(tester, recapBackend: _FakeRecapBackend());
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Keep reading'));
+      await tester.pumpAndSettle();
+
+      // Opening Ask looks for the reader's place again.
+      await openTab(tester, 'Ask');
+      await openTab(tester, 'Read');
+
+      expect(find.text('Welcome back.'), findsNothing);
+    });
+
+    testWidgets('partway through a chapter, says so', (tester) async {
+      const partway = RecapStop(
+        sectionTitle: 'Chapter 2: The Letter',
+        partway: true,
+      );
+      await pumpBook(
+        tester,
+        recapBackend: _FakeRecapBackend(start: const RecapCanStart(partway)),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining('partway through Chapter 2: The Letter'),
+        findsOne,
+      );
+    });
+
+    testWidgets('waits until the reader has read some of the map', (
+      tester,
+    ) async {
+      await pumpBook(
+        tester,
+        recapBackend: _FakeRecapBackend(start: const RecapNeedsReading()),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Welcome back.'), findsNothing);
+    });
+
+    testWidgets('isn’t offered without a Story Map', (tester) async {
+      await pumpBook(
+        tester,
+        recapBackend: _FakeRecapBackend(start: const RecapNeedsStoryMap()),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Welcome back.'), findsNothing);
+    });
+
+    testWidgets('isn’t offered without an API key', (tester) async {
+      final backend = _FakeRecapBackend();
+      await pumpBook(tester, hasKey: false, recapBackend: backend);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Welcome back.'), findsNothing);
+    });
+
+    testWidgets('isn’t offered offline', (tester) async {
+      await pumpBook(
+        tester,
+        connection: ConnectionStatus(online: false),
+        recapBackend: _FakeRecapBackend(),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Welcome back.'), findsNothing);
     });
   });
 }

@@ -39,6 +39,7 @@ class ReadScreen extends StatefulWidget {
     this.searchController,
     this.notes,
     this.noteJumps,
+    this.passageJumps,
   });
 
   final Book book;
@@ -77,6 +78,10 @@ class ReadScreen extends StatefulWidget {
   /// note in the Notes tab.
   final NoteJumpController? noteJumps;
 
+  /// Lets other code send the reader to a passage and offer a way back, such
+  /// as **Read it in the book** in a recap.
+  final PassageJumpController? passageJumps;
+
   @override
   State<ReadScreen> createState() => _ReadScreenState();
 }
@@ -108,6 +113,23 @@ class NoteJumpController {
   /// Jumps to [target] and highlights it, if a book is showing.
   Future<void> showPassage(PassageTarget target) async =>
       _passageJumper?.call(target);
+}
+
+/// Lets other code send the Read tab to a passage, keeping the reader's place
+/// so **Back to your page** can return them to it.
+class PassageJumpController {
+  Future<void> Function(PassageTarget target)? _jumper;
+
+  /// Called by the screen that shows the book. [detach] undoes it.
+  void attach(Future<void> Function(PassageTarget target) jumper) =>
+      _jumper = jumper;
+
+  void detach(Future<void> Function(PassageTarget target) jumper) {
+    if (_jumper == jumper) _jumper = null;
+  }
+
+  /// Jumps to [target] and highlights it, if a book is showing.
+  Future<void> show(PassageTarget target) async => _jumper?.call(target);
 }
 
 class _ReadScreenState extends State<ReadScreen> {
@@ -165,6 +187,10 @@ class _ReadScreenState extends State<ReadScreen> {
   /// there is one.
   bool _highlightShown = false;
 
+  /// Where the reader was before a [ReadScreen.passageJumps] jump, while
+  /// **Back to your page** is offered. A second jump keeps the first place.
+  ReaderPosition? _returnTo;
+
   /// Identifies the latest open, so a slow earlier one can tell it was
   /// replaced or the screen was disposed.
   int _generation = 0;
@@ -193,6 +219,7 @@ class _ReadScreenState extends State<ReadScreen> {
     widget.searchController?.attach(_openSearchSheet);
     widget.noteJumps?.attach(_showNote);
     widget.noteJumps?.attachPassages(_showPassage);
+    widget.passageJumps?.attach(_visitPassage);
     unawaited(_open());
     unawaited(_openNotes());
   }
@@ -210,6 +237,10 @@ class _ReadScreenState extends State<ReadScreen> {
       widget.noteJumps?.attach(_showNote);
       widget.noteJumps?.attachPassages(_showPassage);
     }
+    if (oldWidget.passageJumps != widget.passageJumps) {
+      oldWidget.passageJumps?.detach(_visitPassage);
+      widget.passageJumps?.attach(_visitPassage);
+    }
     if (oldWidget.book.id != widget.book.id) {
       unawaited(_open());
     }
@@ -226,6 +257,7 @@ class _ReadScreenState extends State<ReadScreen> {
     widget.searchController?.detach(_openSearchSheet);
     widget.noteJumps?.detach(_showNote);
     widget.noteJumps?.detachPassages(_showPassage);
+    widget.passageJumps?.detach(_visitPassage);
     _notes?.removeListener(_drawNoteHighlights);
     _releaseSession();
     _cutoff.dispose();
@@ -241,6 +273,7 @@ class _ReadScreenState extends State<ReadScreen> {
     _releaseSession();
     _store = null;
     _position = null;
+    _returnTo = null;
     _furthestPageText = null;
     _chapter = null;
     _clearPick();
@@ -418,6 +451,32 @@ class _ReadScreenState extends State<ReadScreen> {
     _stopRestoring();
     _highlightShown = true;
     await _navigate(() => session.showPassage(target));
+  }
+
+  /// Shows [target], keeping the reader's place for **Back to your page**.
+  /// Before the saved position has shown, that is where the reader is.
+  Future<void> _visitPassage(PassageTarget target) async {
+    if (_session == null || !mounted) return;
+    setState(() => _returnTo ??= _restoring ?? _position);
+    await _showPassage(target);
+  }
+
+  /// Keeps the reader at the passage and puts **Back to your page** away. The
+  /// passage's highlight goes with it: they have found it.
+  Future<void> _stayHere() async {
+    final session = _session;
+    setState(() => _returnTo = null);
+    if (session != null && _highlightShown) await _clearHighlight(session);
+  }
+
+  /// Takes the reader back to where they were before [_visitPassage].
+  Future<void> _goBack() async {
+    final session = _session;
+    final returnTo = _returnTo;
+    if (session == null || returnTo == null) return;
+    setState(() => _returnTo = null);
+    if (_highlightShown) await _clearHighlight(session);
+    await _navigate(() => session.goToPosition(returnTo));
   }
 
   /// Wraps [EpubReaderService.open] so a synchronous throw is also a failed
@@ -809,13 +868,84 @@ class _ReadScreenState extends State<ReadScreen> {
               ? null
               : () => unawaited(_openSearchSheet('')),
         ),
-        Expanded(child: view),
+        Expanded(
+          // Always a stack, so offering the way back never rebuilds the view.
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              view,
+              if (_returnTo != null)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 14,
+                  child: Center(
+                    child: _BackToPage(
+                      onBack: () => unawaited(_goBack()),
+                      onStay: () => unawaited(_stayHere()),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
         _PageControls(
           progress: _position?.totalProgression,
           onPrevious: () => unawaited(_turnPage(session.goBackward)),
           onNext: () => unawaited(_turnPage(session.goForward)),
         ),
       ],
+    );
+  }
+}
+
+/// After a jump to a passage, takes the reader back to their page, or lets
+/// them stay where they are.
+class _BackToPage extends StatelessWidget {
+  const _BackToPage({required this.onBack, required this.onStay});
+
+  final VoidCallback onBack;
+  final VoidCallback onStay;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: LoremarkColors.olive,
+      shape: const StadiumBorder(),
+      elevation: 4,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          InkWell(
+            onTap: onBack,
+            customBorder: const StadiumBorder(),
+            child: const Padding(
+              padding: EdgeInsets.fromLTRB(16, 11, 6, 11),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.undo, size: 18, color: LoremarkColors.onOlive),
+                  SizedBox(width: 8),
+                  Text(
+                    'Back to your page',
+                    style: TextStyle(
+                      color: LoremarkColors.onOlive,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          IconButton(
+            onPressed: onStay,
+            tooltip: 'Stay here',
+            icon: const Icon(Icons.close, size: 18),
+            color: LoremarkColors.onOlive,
+            visualDensity: VisualDensity.compact,
+          ),
+        ],
+      ),
     );
   }
 }
