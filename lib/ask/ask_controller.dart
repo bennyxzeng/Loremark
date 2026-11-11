@@ -20,7 +20,7 @@ const askRecapPromptName = 'recap_v1.txt';
 /// What a recap is asked as. It shows in the conversation as the reader's
 /// question, and later questions see it as one, so a follow-up such as "who is
 /// she again?" reads naturally after the recap.
-const askRecapQuestion = 'Catch me up on the story so far.';
+const askRecapQuestion = 'Catch me up on where I left off.';
 
 /// Where a question is.
 enum AskStage {
@@ -181,8 +181,9 @@ class AskController extends ChangeNotifier {
     effort: effort,
   );
 
-  /// Starts a new conversation with a recap of the story so far, up to the end
-  /// of the reader's page (use case 1): the welcome back's **Catch me up**.
+  /// Starts a new conversation with a recap of where the reader left off, up
+  /// to the end of their page (use case 1): the welcome back's **Catch me
+  /// up**.
   ///
   /// It is a question like any other, asked as [askRecapQuestion] with the
   /// recap prompt, and kept with the book's conversations, so the reader can

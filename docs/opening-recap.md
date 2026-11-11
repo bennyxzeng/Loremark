@@ -24,10 +24,13 @@ the book's Ask conversations. See [ask.md](ask.md) for how Ask works.
      book is still dimmed.
 2. **Catch me up** opens the Ask tab on a new conversation. The conversation
    shown before stays in Ask's list of conversations.
-3. **The recap** shows as Ask's answer to "Catch me up on the story so far.":
-   four to eight numbered moments in story order, the last one where the
-   reader stopped, each with a short title, a sentence or two, and citation
-   numbers. Tapping a citation shows the passage, and **Open in book** goes
+3. **The recap** shows as Ask's answer to "Catch me up on where I left off.":
+   three to six numbered moments in story order, the last one where the reader
+   stopped, each with a short title, a sentence or two, and citation numbers.
+   It covers the last stretch they read: the chapter they are in and the end of
+   the one before. Anything earlier comes in only as context a recent moment
+   needs, so a reader halfway through the book doesn't get a summary from its
+   beginning. Tapping a citation shows the passage, and **Open in book** goes
    there.
 4. **Back to your page.** Opening any passage an Ask answer cites, in a recap
    or not, offers **Back to your page** over the book, to return to where the
