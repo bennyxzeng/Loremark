@@ -65,7 +65,8 @@ String describeStoryUpdateFailure(StoryUpdateOutcome outcome) {
   }
 }
 
-/// The Update button above the Story Map, and what it would do.
+/// The Update button above the Story Map, and what it would do. While an
+/// update runs, the button cancels it.
 class StoryUpdateBar extends StatelessWidget {
   const StoryUpdateBar({
     super.key,
@@ -73,12 +74,14 @@ class StoryUpdateBar extends StatelessWidget {
     required this.online,
     required this.hasKey,
     required this.onUpdate,
+    required this.onCancel,
     required this.onChoose,
     required this.onLoad,
     required this.onExport,
     this.filesBusy = false,
     this.updateStartedAt,
     this.updateSectionId,
+    this.cancelling = false,
     this.notice,
     this.failure,
     this.now = DateTime.now,
@@ -92,6 +95,7 @@ class StoryUpdateBar extends StatelessWidget {
   /// adding to it does.
   final bool hasKey;
   final VoidCallback onUpdate;
+  final VoidCallback onCancel;
   final VoidCallback onChoose;
   final VoidCallback onLoad;
   final VoidCallback onExport;
@@ -104,6 +108,10 @@ class StoryUpdateBar extends StatelessWidget {
 
   /// The section asked of the update under way; null for the next one.
   final String? updateSectionId;
+
+  /// Whether the reader has cancelled the update under way, which hasn't
+  /// stopped yet.
+  final bool cancelling;
 
   /// How the last update went, if it worked.
   final String? notice;
@@ -128,7 +136,9 @@ class StoryUpdateBar extends StatelessWidget {
     String? detail;
     var canUpdate = false;
     var showButton = true;
-    if (updating) {
+    if (updating && cancelling) {
+      title = 'Cancelling…';
+    } else if (updating) {
       final adding = status?.titleOf(updateSectionId);
       title = adding == null ? 'Building your Story Map…' : 'Adding $adding…';
     } else if (status == null) {
@@ -183,8 +193,10 @@ class StoryUpdateBar extends StatelessWidget {
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(horizontal: 14),
                   ),
-                  onPressed: canUpdate ? onUpdate : null,
-                  child: const Text('Update'),
+                  onPressed: updating
+                      ? (cancelling ? null : onCancel)
+                      : (canUpdate ? onUpdate : null),
+                  child: Text(updating ? 'Cancel' : 'Update'),
                 ),
               ],
               PopupMenuButton<VoidCallback>(
@@ -406,6 +418,35 @@ Future<String?> showStorySectionDialog(
       ),
     ),
   );
+}
+
+/// Asks before the update under way is cancelled, since Cancel is where Update
+/// was, and pressing Update twice mustn't throw away a paid request. Returns
+/// whether to cancel it.
+Future<bool> showStoryCancelDialog(BuildContext context) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Cancel this update?'),
+      content: const SingleChildScrollView(
+        child: Text(
+          'Nothing will be saved, but your provider may still charge for the '
+          'request.',
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Keep going'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('Cancel update'),
+        ),
+      ],
+    ),
+  );
+  return confirmed ?? false;
 }
 
 /// Asks before [staged] takes the place of the map here, which has

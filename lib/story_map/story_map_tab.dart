@@ -47,6 +47,10 @@ class _StoryMapTabState extends State<StoryMapTab> {
 
   /// The section asked of the update under way; null for the next one.
   String? _updateSectionId;
+
+  /// Whether the reader has cancelled the update under way, which hasn't
+  /// stopped yet.
+  bool _cancelling = false;
   String? _notice;
   String? _failure;
 
@@ -183,6 +187,7 @@ class _StoryMapTabState extends State<StoryMapTab> {
     setState(() {
       _updateStartedAt = DateTime.now();
       _updateSectionId = sectionId;
+      _cancelling = false;
       _notice = null;
       _failure = null;
     });
@@ -196,6 +201,14 @@ class _StoryMapTabState extends State<StoryMapTab> {
         sectionId: sectionId,
       ),
     );
+  }
+
+  Future<void> _pressCancel() async {
+    final confirmed = await showStoryCancelDialog(context);
+    // The update may have ended while the dialog was open.
+    if (!confirmed || !mounted || _updateStartedAt == null) return;
+    setState(() => _cancelling = true);
+    _backend.cancelUpdate(widget.book);
   }
 
   Future<void> _pressExport() async {
@@ -288,9 +301,21 @@ class _StoryMapTabState extends State<StoryMapTab> {
     final took = formatStoryElapsed(
       DateTime.now().difference(_updateStartedAt!),
     );
+    // The reader asked for it, so it isn't shown as a failure.
+    if (outcome.status == 'cancelled') {
+      setState(() {
+        _updateStartedAt = null;
+        _cancelling = false;
+        _notice =
+            'Cancelled after $took. Nothing was saved, but your provider may '
+            'still charge for it.';
+      });
+      return;
+    }
     if (!outcome.committed) {
       setState(() {
         _updateStartedAt = null;
+        _cancelling = false;
         _failure = '${describeStoryUpdateFailure(outcome)} Took $took.';
       });
       return;
@@ -301,6 +326,8 @@ class _StoryMapTabState extends State<StoryMapTab> {
     final sections = _model?.sections.length ?? 0;
     setState(() {
       _updateStartedAt = null;
+      // Cancelled too late: the answer had come, and has been kept.
+      _cancelling = false;
       _notice = [
         'Added ${outcome.sectionTitle} in $took.',
         // Never jump past the reader: the slider asks first.
@@ -357,12 +384,14 @@ class _StoryMapTabState extends State<StoryMapTab> {
           status: _status,
           updateStartedAt: _updateStartedAt,
           updateSectionId: _updateSectionId,
+          cancelling: _cancelling,
           online: ConnectionScope.of(context).isOnline,
           hasKey: hasKey,
           filesBusy: _filesBusy,
           notice: _notice,
           failure: _failure,
           onUpdate: _pressUpdate,
+          onCancel: _pressCancel,
           onChoose: _pressChoose,
           onLoad: _pressLoad,
           onExport: _pressExport,

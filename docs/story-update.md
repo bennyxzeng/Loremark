@@ -64,6 +64,11 @@ it, in `<book id>.runs/`. Both go when the book does.
   Chapter page says so. On, one bad quote rejects an update that has already been paid for.
 - **Requests run in the foreground.** Leaving the book doesn't stop one, but the OS can suspend
   the app, which ends the request. Nothing is saved then, though the provider may still charge.
+- **Update turns into Cancel while an update runs.** It asks first, since pressing Update twice
+  would otherwise throw a paid request away. Cancelling drops the request's connection and saves
+  nothing, though the provider may still charge. An answer that has already come has been paid
+  for, so it is checked and kept as usual (`StoryUpdater.cancel`). The run folder ends `cancelled`,
+  which the lab doesn't have, with exit code 130.
 
 ## Where it differs from the lab
 

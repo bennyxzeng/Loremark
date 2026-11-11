@@ -184,6 +184,7 @@ class StoryUpdateOutcome {
   /// `committed`, or the lab's name for what went wrong: `input_error`,
   /// `api_error`, `refusal`, `incomplete`, `failed`, `empty_output`,
   /// `schema_invalid`, `validation_failed`, `stale_base` or `commit_failed`.
+  /// Or `cancelled`, which the lab doesn't have, if the reader stopped it.
   final String status;
   final String? message;
   final String? sectionTitle;
@@ -709,19 +710,28 @@ Map<String, List<int>> _provenanceFiles(
 
 /// An update on its way, for finding it again after leaving the book.
 class RunningStoryUpdate {
-  const RunningStoryUpdate(this.outcome, this.startedAt, this.sectionId);
+  const RunningStoryUpdate(
+    this.outcome,
+    this.startedAt,
+    this.sectionId, {
+    this.cancel,
+  });
 
   final Future<StoryUpdateOutcome> outcome;
   final DateTime startedAt;
 
   /// The section asked for, or null for the next one.
   final String? sectionId;
+
+  /// Stops it while it can still be stopped: see [StoryUpdater.cancel].
+  final StoryCancel? cancel;
 }
 
 /// Runs updates, one at a time per book.
 ///
 /// The reader may leave the book while one runs. It is already paid for, so it
-/// carries on and commits, and coming back finds it through [running].
+/// carries on and commits, and coming back finds it through [running]. Only
+/// the reader can stop one: see [cancel].
 class StoryUpdater {
   StoryUpdater._();
 
@@ -730,25 +740,44 @@ class StoryUpdater {
   /// The update running for the book [bookId], if any.
   static RunningStoryUpdate? running(String bookId) => _running[bookId];
 
+  /// Stops the update running for the book [bookId], if it is still waiting
+  /// for the provider. It ends `cancelled`, and nothing is saved. Once the
+  /// provider has answered, the answer has been paid for, so it is checked and
+  /// committed as usual.
+  static void cancel(String bookId) => _running[bookId]?.cancel?.cancel();
+
   /// Adds the section asked for, or the next one. Never throws: every way of
   /// failing is an outcome, and none of them changes the store.
+  ///
+  /// [post] sends the request. Left out, it goes over the network, and
+  /// cancelling drops the connection.
   static Future<StoryUpdateOutcome> run(
     StoryUpdateRequest request, {
     required String bookId,
     required String apiKey,
-    StoryHttpPost post = postStoryRequest,
+    StoryHttpPost? post,
   }) {
     final existing = _running[bookId];
     if (existing != null) return existing.outcome;
-    final outcome = _run(request, apiKey, post).whenComplete(() {
-      // In a block, so as not to return the removed update: `whenComplete`
-      // would wait for a future it got back, and this is that future.
-      _running.remove(bookId);
-    });
+    final cancel = StoryCancel();
+    final outcome =
+        _run(
+          request,
+          apiKey,
+          post ??
+              (url, headers, body) =>
+                  postStoryRequest(url, headers, body, cancel: cancel),
+          cancel,
+        ).whenComplete(() {
+          // In a block, so as not to return the removed update: `whenComplete`
+          // would wait for a future it got back, and this is that future.
+          _running.remove(bookId);
+        });
     _running[bookId] = RunningStoryUpdate(
       outcome,
       DateTime.now(),
       request.sectionId,
+      cancel: cancel,
     );
     return outcome;
   }
@@ -757,6 +786,7 @@ class StoryUpdater {
     StoryUpdateRequest request,
     String apiKey,
     StoryHttpPost post,
+    StoryCancel cancel,
   ) async {
     PreparedStoryUpdate? prepared;
     try {
@@ -773,6 +803,7 @@ class StoryUpdater {
         apiKey: apiKey,
         body: ready.body,
         post: post,
+        cancel: cancel,
       );
       return await Isolate.run(() => finishStoryUpdate(ready, call));
     } on StoryEpubError catch (error) {

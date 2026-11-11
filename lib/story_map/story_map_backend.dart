@@ -128,6 +128,10 @@ abstract interface class StoryMapBackend {
   /// The update already running for [book], if any.
   RunningStoryUpdate? running(Book book);
 
+  /// Stops the update running for [book], if it is still waiting for the
+  /// provider. Its outcome is then `cancelled`: see [StoryUpdater.cancel].
+  void cancelUpdate(Book book);
+
   /// Adds the section called [sectionId], or the next one. Never throws for a
   /// failed update: see the outcome.
   Future<StoryUpdateOutcome> update(
@@ -165,13 +169,14 @@ abstract interface class StoryMapBackend {
 /// The real thing: the store on disk, the reader's saved position, the provider.
 class DeviceStoryMapBackend implements StoryMapBackend, AskBackend {
   DeviceStoryMapBackend({
-    this.post = postStoryRequest,
+    this.post,
     this.saveFile = _saveWithDialog,
     this.pickFile = _pickWithDialog,
   });
 
-  /// How requests reach the provider; tests replace the network call.
-  final StoryHttpPost post;
+  /// How requests reach the provider; tests replace the network call. Null for
+  /// the network, whose connection cancelling an update drops.
+  final StoryHttpPost? post;
 
   /// The system's dialogs for files; tests replace them.
   final StoryFileSaver saveFile;
@@ -372,6 +377,9 @@ class DeviceStoryMapBackend implements StoryMapBackend, AskBackend {
 
   @override
   RunningStoryUpdate? running(Book book) => StoryUpdater.running(book.id);
+
+  @override
+  void cancelUpdate(Book book) => StoryUpdater.cancel(book.id);
 
   @override
   Future<StoryUpdateOutcome> update(

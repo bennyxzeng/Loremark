@@ -309,6 +309,66 @@ void main() {
     });
   });
 
+  group('cancelling', () {
+    test('stops waiting for the provider, and saves nothing', () async {
+      await buildChapter1();
+      final before = treeOf(storePath);
+      final sent = Completer<void>();
+      final reply = Completer<StoryHttpResponse>();
+      final outcome = update(request(section: null), (url, headers, body) {
+        sent.complete();
+        return reply.future;
+      });
+      await sent.future;
+      StoryUpdater.cancel('book');
+
+      final ended = await outcome;
+      expect(ended.status, 'cancelled');
+      expect(ended.committed, isFalse);
+      expect(StoryUpdater.running('book'), isNull);
+      expect(treeOf(storePath), before);
+
+      // An answer that comes after all is thrown away.
+      reply.complete(StoryHttpResponse(200, _responseBody(chapter2Delta)));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(treeOf(storePath), before);
+    });
+
+    test('before sending, sends nothing', () async {
+      var requests = 0;
+      final outcome = update(request(), (url, headers, body) async {
+        requests++;
+        return StoryHttpResponse(200, _responseBody(chapter1Delta));
+      });
+      // At once, while the book is still being read.
+      StoryUpdater.cancel('book');
+      expect((await outcome).status, 'cancelled');
+      expect(requests, 0);
+      expect(StoryStore(Directory(storePath)).exists, isFalse);
+    });
+
+    test('over the network, drops the connection', () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      final arrived = Completer<void>();
+      // Takes the request and never answers it.
+      server.listen((request) => arrived.complete());
+      final cancel = StoryCancel();
+      final reply = postStoryRequest(
+        Uri.parse('http://127.0.0.1:${server.port}/'),
+        const {},
+        '{}',
+        cancel: cancel,
+      );
+      await arrived.future;
+      cancel.cancel();
+      await expectLater(
+        reply.timeout(const Duration(seconds: 5)),
+        throwsA(isA<IOException>()),
+      );
+    });
+  });
+
   group('the quote check', () {
     JsonMap withBadQuote() {
       final delta = jsonDecode(jsonEncode(chapter2Delta)) as JsonMap;

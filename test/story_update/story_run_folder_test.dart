@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -345,6 +346,32 @@ void main() {
       final response = readJson(run, 'run.json')['response'] as JsonMap;
       expect(response['api_elapsed_seconds'], isA<num>());
       expect(response['http_status'], isNull);
+    });
+
+    test('cancelled while waiting for the provider', () async {
+      final sent = Completer<void>();
+      final outcome = update(request(), (url, headers, body) {
+        sent.complete();
+        return Completer<StoryHttpResponse>().future;
+      });
+      await sent.future;
+      StoryUpdater.cancel('book');
+      expect((await outcome).status, 'cancelled');
+
+      final run = runs().single;
+      expect(
+        filesIn(run).where((name) => name.startsWith('response')),
+        isEmpty,
+      );
+      final record = readJson(run, 'run.json');
+      expect(record['status'], 'cancelled');
+      expect(record['exit_code'], 130);
+      expect(record['commit_status'], 'not_attempted');
+      expect(
+        (readJson(run, 'failure.json')['error'] as JsonMap)['category'],
+        'cancelled',
+      );
+      expect(Directory(storePath).existsSync(), isFalse);
     });
 
     test('something unexpected', () async {

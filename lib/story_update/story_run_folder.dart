@@ -28,6 +28,9 @@ const _exitCodes = {
   'empty_output': 3,
   'stale_base': 5,
   'commit_failed': 2,
+  // The lab has no such ending. 130 is what a shell reports for a run stopped
+  // with Ctrl-C.
+  'cancelled': 130,
 };
 
 /// Everything kept about one update, whether or not it worked, in the same files

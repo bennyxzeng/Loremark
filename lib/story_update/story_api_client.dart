@@ -24,13 +24,34 @@ typedef StoryHttpPost = Future<StoryHttpResponse> Function(
   String body,
 );
 
-/// Posts over the network. Throws a [TimeoutException] or an [IOException].
+/// Stops an update's request. One not yet sent isn't sent, and one under way
+/// is given up on.
+class StoryCancel {
+  final _cancelled = Completer<void>();
+
+  bool get cancelled => _cancelled.isCompleted;
+
+  /// Completes once [cancel] is called.
+  Future<void> get whenCancelled => _cancelled.future;
+
+  /// Safe to call more than once.
+  void cancel() {
+    if (!_cancelled.isCompleted) _cancelled.complete();
+  }
+}
+
+/// Posts over the network. Throws a [TimeoutException] or an [IOException],
+/// as it also does when [cancel] drops the connection.
 Future<StoryHttpResponse> postStoryRequest(
   Uri url,
   Map<String, String> headers,
-  String body,
-) async {
+  String body, {
+  StoryCancel? cancel,
+}) async {
   final client = HttpClient()..connectionTimeout = const Duration(seconds: 30);
+  // Closing the client drops the connection at once, however far the request
+  // has got.
+  unawaited(cancel?.whenCancelled.then((_) => client.close(force: true)));
   try {
     Future<StoryHttpResponse> send() async {
       final request = await client.postUrl(url);
@@ -56,7 +77,7 @@ class StoryCallResult {
   StoryCallResult(this.status, {this.error});
 
   /// `completed`, `refusal`, `incomplete`, `failed`, `empty_output`,
-  /// `api_error` or `parse_error`.
+  /// `api_error`, `parse_error` or `cancelled`.
   String status;
 
   /// The decoded output of a completed call. Its shape isn't checked yet.
@@ -188,28 +209,37 @@ Future<StoryCallResult> callResponsesApi({
   required String apiKey,
   required String body,
   StoryHttpPost post = postStoryRequest,
+  StoryCancel? cancel,
 }) async {
   final clock = Stopwatch()..start();
-  final result = await _send(model, apiKey, body, post);
+  final result = await _send(model, apiKey, body, post, cancel);
   return result..elapsedSeconds = clock.elapsedMilliseconds / 1000;
 }
+
+StoryCallResult _cancelledCall() => StoryCallResult(
+  'cancelled',
+  error: {'category': 'cancelled', 'message': 'Cancelled by the reader'},
+);
 
 Future<StoryCallResult> _send(
   StoryModelChoice model,
   String apiKey,
   String body,
   StoryHttpPost post,
+  StoryCancel? cancel,
 ) async {
-  final StoryHttpResponse response;
+  if (cancel?.cancelled ?? false) return _cancelledCall();
+  final StoryHttpResponse? response;
   try {
-    response = await post(
-      Uri.parse(StoryProvider.named(model.providerName).responsesUrl),
-      {
+    response = await Future.any<StoryHttpResponse?>([
+      post(Uri.parse(StoryProvider.named(model.providerName).responsesUrl), {
         HttpHeaders.authorizationHeader: 'Bearer $apiKey',
         HttpHeaders.contentTypeHeader: 'application/json',
-      },
-      body,
-    );
+      }, body),
+      // Gives up on the reply at once, whatever [post] does about it. A reply
+      // that still comes, or an error, is ignored.
+      if (cancel != null) cancel.whenCancelled.then((_) => null),
+    ]);
   } on TimeoutException {
     return StoryCallResult(
       'api_error',
@@ -231,6 +261,7 @@ Future<StoryCallResult> _send(
       },
     );
   }
+  if (response == null) return _cancelledCall();
   final text = redactStoryKey(response.body, apiKey);
   final result = response.statusCode >= 200 && response.statusCode < 300
       ? _interpret(text)

@@ -83,6 +83,17 @@ class _FakeBackend implements StoryMapBackend {
   @override
   RunningStoryUpdate? running(Book book) => runningUpdate;
 
+  var cancels = 0;
+
+  /// What cancelling does to the update under way.
+  void Function()? onCancel;
+
+  @override
+  void cancelUpdate(Book book) {
+    cancels++;
+    onCancel?.call();
+  }
+
   @override
   Future<StoryUpdateOutcome> update(
     Book book, {
@@ -208,6 +219,9 @@ void main() {
   FilledButton updateButton(WidgetTester tester) =>
       tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Update'));
 
+  FilledButton cancelButton(WidgetTester tester) =>
+      tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Cancel'));
+
   group('a book with no Story Map', () {
     testWidgets('says so and offers to start', (tester) async {
       await pumpTab(tester, _FakeBackend(status: _newStore));
@@ -328,20 +342,22 @@ void main() {
       expect(updateButton(tester).onPressed, isNull);
     });
 
-    testWidgets('waits while updating', (tester) async {
+    testWidgets('turns into Cancel while updating', (tester) async {
       final backend = _FakeBackend(model: storyModelFixture())
         ..hold = Completer<void>();
       await pumpTab(tester, backend);
       await pressUpdate(tester);
       expect(find.text('Adding Chapter 3…'), findsOne);
       expect(find.textContaining('Keep Loremark open'), findsOne);
-      expect(updateButton(tester).onPressed, isNull);
-      await tester.tap(find.widgetWithText(FilledButton, 'Update'));
+      expect(find.widgetWithText(FilledButton, 'Update'), findsNothing);
+      expect(cancelButton(tester).onPressed, isNotNull);
       expect(backend.updates, hasLength(1));
 
       backend.hold!.complete();
       await tester.pumpAndSettle();
       expect(find.text('Adding Chapter 3…'), findsNothing);
+      expect(find.widgetWithText(FilledButton, 'Cancel'), findsNothing);
+      expect(updateButton(tester).onPressed, isNotNull);
     });
 
     testWidgets('picks up an update already running', (tester) async {
@@ -372,6 +388,165 @@ void main() {
       backend.hold!.complete();
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('cancelling an update', () {
+    /// A backend with an update under way, which cancelling ends as cancelled.
+    _FakeBackend cancellable() {
+      final backend = _FakeBackend(model: storyModelFixture())
+        ..hold = Completer<void>();
+      return backend
+        ..onCancel = () {
+          backend.answer = () => const StoryUpdateOutcome(
+            'cancelled',
+            category: 'cancelled',
+            sectionTitle: 'Chapter 3',
+          );
+          backend.hold!.complete();
+        };
+    }
+
+    Future<void> pressCancel(WidgetTester tester) async {
+      await tester.tap(find.widgetWithText(FilledButton, 'Cancel'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('asks first, and keeping on changes nothing', (tester) async {
+      final backend = cancellable();
+      await pumpTab(tester, backend);
+      await pressUpdate(tester);
+      await pressCancel(tester);
+      expect(find.text('Cancel this update?'), findsOne);
+      expect(find.textContaining('may still charge'), findsOne);
+
+      await tester.tap(find.text('Keep going'));
+      await tester.pumpAndSettle();
+      expect(backend.cancels, 0);
+      expect(find.text('Adding Chapter 3…'), findsOne);
+      expect(cancelButton(tester).onPressed, isNotNull);
+
+      backend.hold!.complete();
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Added Chapter 3 in '), findsOne);
+    });
+
+    testWidgets('stops it, and says what that cost', (tester) async {
+      final backend = cancellable();
+      await pumpTab(tester, backend);
+      await pressUpdate(tester);
+      await pressCancel(tester);
+      await tester.tap(find.text('Cancel update'));
+      await tester.pumpAndSettle();
+
+      expect(backend.cancels, 1);
+      expect(
+        find.textContaining(
+          RegExp(
+            r'^Cancelled after 0:0\d\. Nothing was saved, but your provider '
+            r'may still charge for it\.$',
+          ),
+        ),
+        findsOne,
+      );
+      // Not shown as a failure, since the reader asked for it.
+      final notice = tester.widget<Text>(find.textContaining('Cancelled'));
+      expect(
+        notice.style?.color,
+        isNot(
+          Theme.of(tester.element(find.byType(StoryMapTab))).colorScheme.error,
+        ),
+      );
+      expect(find.text('Adding Chapter 3…'), findsNothing);
+      expect(updateButton(tester).onPressed, isNotNull);
+    });
+
+    testWidgets('waits, unpressable, until it has stopped', (tester) async {
+      final backend = cancellable();
+      // Cancelling takes a moment to land.
+      final stop = backend.onCancel!;
+      backend.onCancel = () {};
+      await pumpTab(tester, backend);
+      await pressUpdate(tester);
+      await pressCancel(tester);
+      await tester.tap(find.text('Cancel update'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Cancelling…'), findsOne);
+      expect(cancelButton(tester).onPressed, isNull);
+
+      stop();
+      await tester.pumpAndSettle();
+      expect(find.text('Cancelling…'), findsNothing);
+      expect(find.textContaining('Cancelled after'), findsOne);
+    });
+
+    testWidgets('that had already been answered keeps it', (tester) async {
+      final backend = cancellable()..onCancel = null;
+      await pumpTab(tester, backend);
+      await pressUpdate(tester);
+      await pressCancel(tester);
+      await tester.tap(find.text('Cancel update'));
+      await tester.pumpAndSettle();
+      expect(find.text('Cancelling…'), findsOne);
+
+      // The answer was in before the cancel landed.
+      backend.hold!.complete();
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Added Chapter 3 in '), findsOne);
+      expect(find.text('Cancelling…'), findsNothing);
+      expect(updateButton(tester).onPressed, isNotNull);
+    });
+
+    testWidgets('works on one found running on coming back', (tester) async {
+      final finish = Completer<StoryUpdateOutcome>();
+      final backend = _FakeBackend(model: storyModelFixture())
+        ..runningUpdate = RunningStoryUpdate(
+          finish.future,
+          DateTime.now(),
+          null,
+        )
+        ..onCancel = () => finish.complete(
+          const StoryUpdateOutcome('cancelled', category: 'cancelled'),
+        );
+      await pumpTab(tester, backend);
+      await pressCancel(tester);
+      await tester.tap(find.text('Cancel update'));
+      await tester.pumpAndSettle();
+      expect(backend.cancels, 1);
+      expect(find.textContaining('Cancelled after'), findsOne);
+    });
+
+    testWidgets('does nothing if the update ends while it asks', (
+      tester,
+    ) async {
+      final backend = cancellable();
+      await pumpTab(tester, backend);
+      await pressUpdate(tester);
+      await pressCancel(tester);
+      backend.hold!.complete();
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Cancel update'));
+      await tester.pumpAndSettle();
+      expect(backend.cancels, 0);
+      expect(find.textContaining('Added Chapter 3 in '), findsOne);
+      expect(find.text('Cancelling…'), findsNothing);
+    });
+
+    testWidgets('the dialog fits a small phone', (tester) async {
+      tester.view.physicalSize = const Size(320, 568);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final backend = cancellable();
+      await pumpTab(tester, backend);
+      await pressUpdate(tester);
+      await pressCancel(tester);
+      expect(find.text('Cancel this update?'), findsOne);
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.text('Keep going'));
+      backend.hold!.complete();
+      await tester.pumpAndSettle();
     });
   });
 
@@ -621,7 +796,7 @@ void main() {
 
       expect(find.text('Adding Chapter 4…'), findsOne);
       expect(choose(tester).onPressed, isNull);
-      expect(updateButton(tester).onPressed, isNull);
+      expect(cancelButton(tester).onPressed, isNotNull);
 
       backend.hold!.complete();
       await tester.pumpAndSettle();
@@ -733,6 +908,7 @@ void main() {
               online: true,
               hasKey: true,
               onUpdate: () {},
+              onCancel: () {},
               onChoose: () {},
               onLoad: () {},
               onExport: () {},
