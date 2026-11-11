@@ -1,0 +1,2 @@
+静态待机可直接显示 idle.png。动作画布为 2048 × 3072 像素。播放时先画 body.png，再按 motion.json 的左上角坐标依次叠加眼睛、嘴和手的当前 PNG。画布缩放时所有图层同比例缩放。
+开始输出时让嘴在 half、open 和 closed 之间切换，标点适当停顿，结束或中断时切到 closed。眨眼按 open → half → closed → half → open。食指偶尔按 rest → lift → point → lift → rest 强调。preview 字段给出预览中的各帧与持续毫秒数。

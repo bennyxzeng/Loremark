@@ -14,6 +14,7 @@ import '../story_map/story_map_backend.dart';
 import '../story_map/story_map_tab.dart';
 import '../theme/loremark_theme.dart';
 import 'ask_screen.dart';
+import 'eased_keyboard.dart';
 import 'notes_screen.dart';
 import 'offline_banner.dart';
 import 'read_screen.dart';
@@ -85,107 +86,140 @@ class _BookScreenState extends State<BookScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            ReaderHeader(
-              book: widget.book,
-              onOpenLibrary: () => Navigator.of(context).maybePop(),
-            ),
-            Expanded(
-              child: Stack(
-                children: [
-                  IndexedStack(
-                    index: _selectedTab,
-                    children: [
-                      SwipeHint(
-                        child: ReadScreen(
-                          book: widget.book,
-                          readerService: const ReadiumReaderService(),
-                          openSearch: () => openPassageSearch(
-                            bookId: widget.book.id,
-                            epubPath: widget.book.epubPath,
-                          ),
-                          notes: _notes,
-                          noteJumps: _noteJumps,
-                        ),
-                      ),
-                      AiLock(
-                        feature: 'Ask',
-                        needsConnection: true,
-                        child: AskScreen(
-                          controller: _ask,
-                          active: _selectedTab == _askTab,
-                          onOpenStoryMap: () => _selectTab(_storyMapTab),
-                          onOpenPassage: _openPassage,
-                        ),
-                      ),
-                      // Tapping a note goes back to the Read tab, at its passage.
-                      NotesScreen(
-                        notes: _notes,
-                        onOpenNote: (note) {
-                          _selectTab(0);
-                          unawaited(_noteJumps.show(note));
-                        },
-                      ),
-                      // A map is stored data, so looking at one needs neither
-                      // a key nor a connection. Only adding to it does.
-                      StoryMapTab(
-                        book: widget.book,
-                        backend: _storyMapBackend,
-                        active: _selectedTab == _storyMapTab,
-                      ),
-                    ],
-                  ),
-                  const Positioned(
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    child: OfflineBanner(),
-                  ),
-                ],
+    return EasedKeyboard(
+      // The tab bar, which keeps the home indicator's room under it.
+      bar:
+          (NavigationBarTheme.of(context).height ?? 80) +
+          MediaQuery.viewPaddingOf(context).bottom,
+      child: Scaffold(
+        body: SafeArea(
+          bottom: false,
+          child: Column(
+            children: [
+              ReaderHeader(
+                book: widget.book,
+                onOpenLibrary: () => Navigator.of(context).maybePop(),
               ),
+              Expanded(
+                child: Stack(
+                  children: [
+                    IndexedStack(
+                      index: _selectedTab,
+                      children: [
+                        SwipeHint(
+                          child: ReadScreen(
+                            book: widget.book,
+                            readerService: const ReadiumReaderService(),
+                            openSearch: () => openPassageSearch(
+                              bookId: widget.book.id,
+                              epubPath: widget.book.epubPath,
+                            ),
+                            notes: _notes,
+                            noteJumps: _noteJumps,
+                          ),
+                        ),
+                        AiLock(
+                          feature: 'Ask',
+                          needsConnection: true,
+                          child: AskScreen(
+                            controller: _ask,
+                            active: _selectedTab == _askTab,
+                            onOpenStoryMap: () => _selectTab(_storyMapTab),
+                            onOpenPassage: _openPassage,
+                          ),
+                        ),
+                        // Tapping a note goes back to the Read tab, at its passage.
+                        NotesScreen(
+                          notes: _notes,
+                          onOpenNote: (note) {
+                            _selectTab(0);
+                            unawaited(_noteJumps.show(note));
+                          },
+                        ),
+                        // A map is stored data, so looking at one needs neither
+                        // a key nor a connection. Only adding to it does.
+                        StoryMapTab(
+                          book: widget.book,
+                          backend: _storyMapBackend,
+                          active: _selectedTab == _storyMapTab,
+                        ),
+                      ],
+                    ),
+                    const Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      child: OfflineBanner(),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        bottomNavigationBar: _KeepsHomeIndicatorRoom(
+          child: DecoratedBox(
+            decoration: const BoxDecoration(
+              border: Border(top: BorderSide(color: LoremarkColors.navBorder)),
             ),
-          ],
+            child: NavigationBar(
+              selectedIndex: _selectedTab,
+              onDestinationSelected: _selectTab,
+              // The labels are always showing, so tooltips would only repeat them.
+              destinations: const [
+                NavigationDestination(
+                  icon: Icon(Icons.menu_book_outlined),
+                  selectedIcon: Icon(Icons.menu_book),
+                  label: 'Read',
+                  tooltip: '',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.chat_bubble_outline),
+                  selectedIcon: Icon(Icons.chat_bubble),
+                  label: 'Ask',
+                  tooltip: '',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.edit_note),
+                  label: 'Notes',
+                  tooltip: '',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.hub_outlined),
+                  selectedIcon: Icon(Icons.hub),
+                  label: 'Story Map',
+                  tooltip: '',
+                ),
+              ],
+            ),
+          ),
         ),
       ),
-      bottomNavigationBar: DecoratedBox(
-        decoration: const BoxDecoration(
-          border: Border(top: BorderSide(color: LoremarkColors.navBorder)),
-        ),
-        child: NavigationBar(
-          selectedIndex: _selectedTab,
-          onDestinationSelected: _selectTab,
-          // The labels are always showing, so tooltips would only repeat them.
-          destinations: const [
-            NavigationDestination(
-              icon: Icon(Icons.menu_book_outlined),
-              selectedIcon: Icon(Icons.menu_book),
-              label: 'Read',
-              tooltip: '',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.chat_bubble_outline),
-              selectedIcon: Icon(Icons.chat_bubble),
-              label: 'Ask',
-              tooltip: '',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.edit_note),
-              label: 'Notes',
-              tooltip: '',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.hub_outlined),
-              selectedIcon: Icon(Icons.hub),
-              label: 'Story Map',
-              tooltip: '',
-            ),
-          ],
-        ),
+    );
+  }
+}
+
+/// Keeps the room for an iPhone's home indicator under [child], the tab bar,
+/// while the keyboard covers it.
+///
+/// With the keyboard up the bottom padding is 0, the keyboard being over the
+/// home indicator. The bar would lose that room as the keyboard comes and get
+/// it back only once it's all the way down; in between, the page, which ends
+/// at the keyboard or the bar, whichever is higher, would drop below where it
+/// rests and spring back up. Under the keyboard, the room isn't seen.
+class _KeepsHomeIndicatorRoom extends StatelessWidget {
+  const _KeepsHomeIndicatorRoom({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    return MediaQuery(
+      data: media.copyWith(
+        padding: media.padding.copyWith(bottom: media.viewPadding.bottom),
       ),
+      child: child,
     );
   }
 }
