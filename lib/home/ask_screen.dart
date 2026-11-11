@@ -53,6 +53,9 @@ class _AskScreenState extends State<AskScreen> {
   /// The question box's focus, to put the keyboard away.
   final _input = FocusNode();
 
+  /// The whole tab, whose bottom the keyboard pushes up.
+  final _tab = GlobalKey();
+
   /// Leaving the app counts as leaving Ask, for how long the reader is away.
   /// Null only in a state kept by a hot reload from before it existed.
   AppLifecycleListener? _lifecycle;
@@ -500,12 +503,15 @@ class _AskScreenState extends State<AskScreen> {
       // The question box having focus is the keyboard being up: the Scaffold
       // keeps the keyboard's height out of this tab's MediaQuery.
       close: said != null || _input.hasFocus,
+      typing: _input.hasFocus,
+      tab: _tab,
       scroll: _scroll,
       said: said,
       onLog: exchanges.isEmpty ? null : _openLog,
     );
 
     return ColoredBox(
+      key: _tab,
       color: LoremarkColors.paper,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -572,6 +578,8 @@ class _Stage extends StatefulWidget {
     required this.active,
     required this.cue,
     required this.close,
+    required this.typing,
+    required this.tab,
     required this.scroll,
     required this.said,
     required this.onLog,
@@ -583,6 +591,12 @@ class _Stage extends StatefulWidget {
   /// Whether she has stepped up: in a conversation, or while a first question
   /// is being written.
   final bool close;
+
+  /// Whether the question box has focus, the keyboard up.
+  final bool typing;
+
+  /// The whole tab, whose bottom the keyboard pushes up.
+  final GlobalKey tab;
 
   /// Scrolls the dialogue box.
   final ScrollController scroll;
@@ -615,26 +629,37 @@ class _StageState extends State<_Stage> with SingleTickerProviderStateMixin {
     reverseCurve: Curves.easeOutCubic.flipped,
   );
 
-  /// The stage's height when it was last laid out.
+  /// The stage's height when it was last laid out, and what it would have
+  /// been without the keyboard.
   double? _height;
-
-  /// The stage's height when it was last laid out with the keyboard down.
   double? _rest;
+
+  /// Where the tab's bottom was on the screen the last time the keyboard
+  /// wasn't pushing it up: over the tab bar, or at the screen's bottom.
+  double? _bottom;
 
   /// The stage's height when she began her latest step.
   double? _from;
 
-  /// The stage's height the last time she stepped back from a first question
-  /// being written, which is how tall it is with the keyboard up.
-  double? _writing;
+  /// How tall the stage is with the keyboard up, when it's [rest] tall without
+  /// it: learnt the last time the question box lost focus with the keyboard
+  /// up, in any book's Ask, the keyboard being the same. The first time, until
+  /// the keyboard has come all the way, there's no telling.
+  static ({double rest, double up})? _keyboard;
 
   @override
   void didUpdateWidget(_Stage oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // The question box loses focus before the keyboard begins to go, so the
+    // stage was last laid out with the keyboard up, if one came.
+    if (oldWidget.typing && !widget.typing) {
+      if ((_rest, _height) case (final rest?, final up?) when up < rest) {
+        _keyboard = (rest: rest, up: up);
+      }
+    }
     final close = widget.close;
     if (close == oldWidget.close) return;
     _from = _height;
-    if (!close && oldWidget.said == null) _writing = _height;
     if (MediaQuery.disableAnimationsOf(context)) {
       _step.value = close ? 1 : 0;
     } else if (close) {
@@ -642,6 +667,31 @@ class _StageState extends State<_Stage> with SingleTickerProviderStateMixin {
     } else {
       _step.reverse();
     }
+  }
+
+  /// Where the keyboard's top is on the screen, or the screen's bottom with
+  /// none up. The Scaffold keeps the keyboard out of this tab's MediaQuery.
+  double _keyboardTop() {
+    final view = View.of(context);
+    return (view.physicalSize.height - view.viewInsets.bottom) /
+        view.devicePixelRatio;
+  }
+
+  /// How much shorter the keyboard makes the stage. The tab ends at the
+  /// keyboard's top or where it ends without it, whichever is higher.
+  double _covered() {
+    final bottom = _bottom;
+    return bottom == null ? 0 : max(0, bottom - _keyboardTop());
+  }
+
+  /// Notes where the tab ends without the keyboard, if it isn't pushing it up.
+  void _measure() {
+    if (!mounted) return;
+    final tab = widget.tab.currentContext?.findRenderObject();
+    if (tab is! RenderBox || !tab.attached || !tab.hasSize) return;
+    final bottom = tab.localToGlobal(Offset(0, tab.size.height)).dy;
+    final keyboard = View.of(context).viewInsets.bottom > 0;
+    if (!keyboard || bottom < _keyboardTop() - 0.5) _bottom = bottom;
   }
 
   @override
@@ -658,16 +708,11 @@ class _StageState extends State<_Stage> with SingleTickerProviderStateMixin {
         child: LayoutBuilder(
           builder: (context, constraints) {
             final height = _height = constraints.maxHeight;
-            // The Scaffold keeps the keyboard out of this tab's MediaQuery.
-            final keyboard = View.of(context).viewInsets.bottom > 0;
-            if (!keyboard) _rest = height;
-            // She stands only with the keyboard down, so she stands on the
-            // stage as it is without it, not as the keyboard coming or going
-            // shortens it while she steps.
-            final standingOn = keyboard ? _rest ?? height : height;
+            final rest = _rest = height + _covered();
+            WidgetsBinding.instance.addPostFrameCallback((_) => _measure());
             return AnimatedBuilder(
               animation: _eased,
-              builder: (context, _) => _scene(height, standingOn),
+              builder: (context, _) => _scene(height, rest),
             );
           },
         ),
@@ -675,9 +720,9 @@ class _StageState extends State<_Stage> with SingleTickerProviderStateMixin {
     );
   }
 
-  /// The stage, [height] tall, as far as she has stepped, standing on a stage
-  /// [standingOn] tall.
-  Widget _scene(double height, double standingOn) {
+  /// The stage, [height] tall and [rest] tall without the keyboard, as far as
+  /// she has stepped.
+  Widget _scene(double height, double rest) {
     final t = _eased.value;
     final said = widget.said;
     // Close up, she's sized for the stage as it will be when she gets there,
@@ -686,17 +731,23 @@ class _StageState extends State<_Stage> with SingleTickerProviderStateMixin {
     final closeOn = switch (_step.status) {
       // Stepping back, the keyboard going: the stage she began from.
       AnimationStatus.reverse => _from ?? height,
-      // Stepping up as a first question is begun, the keyboard coming: the
-      // stage she had over it last time, or the stage as it is if it's
-      // shorter already.
-      AnimationStatus.forward when widget.said == null => min(
+      // Stepping up as a first question is begun, the keyboard coming.
+      AnimationStatus.forward when widget.said == null => _writingOn(
         height,
-        _writing ?? height,
+        rest,
+        t,
       ),
       _ => height,
     };
     return CustomMultiChildLayout(
-      delegate: _StageLayout(t, standingOn: standingOn, closeOn: closeOn),
+      delegate: _StageLayout(
+        t,
+        // She stands only with the keyboard down, so she stands on the stage
+        // as it is without it, not as the keyboard coming or going shortens
+        // it.
+        standingOn: rest,
+        closeOn: closeOn,
+      ),
       children: [
         if (t < 1)
           LayoutId(
@@ -761,6 +812,22 @@ class _StageState extends State<_Stage> with SingleTickerProviderStateMixin {
           ),
       ],
     );
+  }
+
+  /// How tall a stage she's close up on, [t] of the way into stepping up as a
+  /// first question is begun, the stage [height] tall so far and [rest] tall
+  /// without the keyboard.
+  double _writingOn(double height, double rest, double t) {
+    final known = _keyboard;
+    // Without knowing how tall the stage will be, she can only follow it.
+    if (known == null || (known.rest - rest).abs() > 0.5) return height;
+    // The stage as it will be with the keyboard up, or as it is if it's
+    // shorter already, the keyboard taller than last time.
+    final up = min(height, known.up);
+    if (height < rest) return up;
+    // Before the keyboard has begun to come, or with none coming, as with a
+    // hardware keyboard: by the end she's on the stage as it is.
+    return up + (height - up) * t;
   }
 }
 

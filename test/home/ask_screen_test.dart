@@ -529,6 +529,8 @@ void main() {
       /// Her height each frame as the keyboard moves [from] one height [to]
       /// another, while she steps.
       Future<List<double>> keyboard(double from, double to) async {
+        // The question box gains or loses focus before the keyboard moves.
+        await tester.pump();
         final heights = <double>[];
         for (var frame = 1; frame <= 10; frame++) {
           tester.view.viewInsets = FakeViewPadding(
@@ -565,6 +567,67 @@ void main() {
         expect(step, inInclusiveRange(shortest - 0.5, tallest + 0.5));
       }
       expect(height(), close);
+
+      // Another book's Ask knows it from the start.
+      await tester.tap(outside);
+      await keyboard(300, 0);
+      await tester.pumpWidget(const SizedBox());
+      await pumpAsk(tester);
+      expect(height(), standing);
+      await tester.tap(input);
+      for (final step in await keyboard(0, 300)) {
+        expect(step, inInclusiveRange(shortest - 0.5, tallest + 0.5));
+      }
+      expect(height(), close);
+    });
+
+    testWidgets('with no keyboard coming, she steps up all the same', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(400, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await pumpAsk(tester);
+      final companion = find.byKey(const ValueKey('companion'));
+      double height() => tester.getSize(companion).height;
+      final input = find.byKey(const ValueKey('ask-input'));
+      final outside = find.text(
+        'Sees your recent pages · Story Map to Chapter 1: Arrival',
+      );
+      // How tall the stage is over the keyboard, learnt.
+      await tester.tap(input);
+      await tester.pump();
+      tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+      await tester.pumpAndSettle();
+      await tester.tap(outside);
+      // The keyboard is still up when the question box loses focus.
+      await tester.pump();
+      tester.view.viewInsets = FakeViewPadding.zero;
+      await tester.pumpAndSettle();
+
+      // A hardware keyboard: the question box has focus, but no keyboard
+      // comes up.
+      final heights = [height()];
+      await tester.tap(input);
+      for (var frame = 0; frame < 30; frame++) {
+        await tester.pump(const Duration(milliseconds: 16));
+        heights.add(height());
+      }
+      await tester.pumpAndSettle();
+      final close = height();
+      expect(close, greaterThan(heights.first));
+      for (var frame = 1; frame < heights.length; frame++) {
+        expect(
+          heights[frame] - heights[frame - 1],
+          lessThan(40),
+          reason: 'frame $frame',
+        );
+        expect(
+          heights[frame],
+          inInclusiveRange(heights.first - 3, close + 0.5),
+          reason: 'frame $frame',
+        );
+      }
     });
 
     testWidgets('fits a short stage, as with the keyboard up', (tester) async {
