@@ -16,7 +16,9 @@ import '../settings/ai_settings.dart';
 import '../settings/connection_status.dart';
 import '../search/search_index_store.dart';
 import '../story_map/story_map_backend.dart';
+import '../story_map/story_map_status.dart';
 import '../story_map/story_map_tab.dart';
+import '../story_update/story_updater.dart';
 import '../theme/loremark_theme.dart';
 import 'ask_screen.dart';
 import 'eased_keyboard.dart';
@@ -24,6 +26,7 @@ import 'notes_screen.dart';
 import 'offline_banner.dart';
 import 'read_screen.dart';
 import 'reader_header.dart';
+import 'story_update_banner.dart';
 import 'swipe_hint.dart';
 import 'welcome_back_card.dart';
 
@@ -69,13 +72,47 @@ class _BookScreenState extends State<BookScreen> {
     backend: widget.askBackend ?? DeviceStoryMapBackend(),
   );
 
+  /// The Story Map's update under way and where the reader is next to the map,
+  /// for the header to show from every tab.
+  late final StoryMapStatusController _storyMapStatus =
+      StoryMapStatusController(book: widget.book, backend: _storyMapBackend);
+
+  /// How long a finished update's banner stays.
+  static const _bannerTime = Duration(seconds: 6);
+
+  /// The last update that ended away from the Story Map tab, kept while its
+  /// banner slides away too.
+  StoryBatchOutcome? _finishedUpdate;
+  bool _showsFinishedUpdate = false;
+  Timer? _bannerTimer;
+
   @override
   void dispose() {
+    _bannerTimer?.cancel();
+    _storyMapStatus.dispose();
     _ask.dispose();
     _recap
       ..removeListener(_offerWelcomeBack)
       ..dispose();
     super.dispose();
+  }
+
+  /// Says how an update went, if the reader is somewhere they wouldn't see it.
+  /// One they cancelled, they asked for.
+  void _updateFinished(StoryBatchOutcome outcome) {
+    if (outcome.cancelled || _selectedTab == _storyMapTab) return;
+    _bannerTimer?.cancel();
+    _bannerTimer = Timer(_bannerTime, _hideFinishedUpdate);
+    setState(() {
+      _finishedUpdate = outcome;
+      _showsFinishedUpdate = true;
+    });
+  }
+
+  void _hideFinishedUpdate() {
+    _bannerTimer?.cancel();
+    if (!mounted || !_showsFinishedUpdate) return;
+    setState(() => _showsFinishedUpdate = false);
   }
 
   /// Opens a passage an answer cites in the Read tab, with **Back to your
@@ -132,6 +169,8 @@ class _BookScreenState extends State<BookScreen> {
   }
 
   void _selectTab(int index) {
+    // The Story Map tab shows how the update went itself.
+    if (index == _storyMapTab) _hideFinishedUpdate();
     setState(() {
       _selectedTab = index;
     });
@@ -196,6 +235,8 @@ class _BookScreenState extends State<BookScreen> {
               ReaderHeader(
                 book: widget.book,
                 onOpenLibrary: () => Navigator.of(context).maybePop(),
+                storyMap: _storyMapStatus,
+                onOpenStoryMap: () => _selectTab(_storyMapTab),
               ),
               Expanded(
                 child: Stack(
@@ -214,6 +255,7 @@ class _BookScreenState extends State<BookScreen> {
                             notes: _notes,
                             noteJumps: _noteJumps,
                             passageJumps: _passageJumps,
+                            onPositionChanged: _storyMapStatus.readerMoved,
                           ),
                         ),
                         AiLock(
@@ -240,14 +282,24 @@ class _BookScreenState extends State<BookScreen> {
                           book: widget.book,
                           backend: _storyMapBackend,
                           active: _selectedTab == _storyMapTab,
+                          status: _storyMapStatus,
+                          onKeepReading: () => _selectTab(_readTab),
+                          onUpdateFinished: _updateFinished,
                         ),
                       ],
                     ),
-                    const Positioned(
+                    Positioned(
                       top: 0,
                       left: 0,
                       right: 0,
-                      child: OfflineBanner(),
+                      child: _TopBanners(
+                        storyUpdate: StoryUpdateBanner(
+                          outcome: _finishedUpdate,
+                          visible: _showsFinishedUpdate,
+                          onView: () => _selectTab(_storyMapTab),
+                          onDismiss: _hideFinishedUpdate,
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -293,6 +345,37 @@ class _BookScreenState extends State<BookScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// The banners over the top of the tabs, the offline one first. A hidden one
+/// gives up its room, so the one under it moves up rather than leave a gap.
+class _TopBanners extends StatelessWidget {
+  const _TopBanners({required this.storyUpdate});
+
+  final Widget storyUpdate;
+
+  @override
+  Widget build(BuildContext context) {
+    final offline = ConnectionScope.of(context).showOfflineBanner;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // The banner slides away by itself; this only takes back its room.
+        TweenAnimationBuilder<double>(
+          tween: Tween(end: offline ? 1 : 0),
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutCubic,
+          builder: (context, room, child) => Align(
+            alignment: Alignment.topCenter,
+            heightFactor: room,
+            child: child,
+          ),
+          child: const OfflineBanner(),
+        ),
+        storyUpdate,
+      ],
     );
   }
 }

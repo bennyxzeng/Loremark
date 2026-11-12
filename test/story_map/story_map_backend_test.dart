@@ -76,7 +76,7 @@ void main() {
     final status = await backend.inspect(book);
     expect(status.isNewStore, isTrue);
 
-    final outcome = await backend.update(
+    final batch = await backend.update(
       book,
       credentials: const AiCredentials(
         provider: AiProvider.deepseek,
@@ -85,9 +85,14 @@ void main() {
       model: StoryModelChoice.deepseekFlash,
       effort: StoryEffort.low,
       checkQuotes: false,
-      sectionId: 'section-002',
+      sections: [
+        status.pickable.firstWhere((s) => s.sectionId == 'section-002'),
+      ],
     );
+    expect(backend.running(book), same(batch));
+    final outcome = (await batch.done).last;
     expect(outcome.status, 'committed', reason: '${outcome.issues}');
+    expect(backend.running(book), isNull);
     // The real prompt and schema came out of the app's bundle.
     final body = jsonDecode(sent) as JsonMap;
     expect(

@@ -79,6 +79,48 @@ bool pastStoryMapEnd(
   return last != null && sectionIndex > last;
 }
 
+/// Where the reader's page is, next to what the Story Map covers.
+enum StoryCoverage {
+  /// The book has no Story Map.
+  none,
+
+  /// Before the map's first section, which a map started further in leaves
+  /// out for good.
+  before,
+
+  /// From the map's first section to its last.
+  inMap,
+
+  /// After the map's last section, where updating would reach.
+  ahead,
+}
+
+/// Where the spine item at [sectionIndex] is next to [sections], the Story
+/// Map's, or [StoryCoverage.none] for no map.
+///
+/// It goes by whole spine items. A stretch between two sections counts as in
+/// the map, though one skipped there isn't, and so does all of an item that
+/// only some of the map's sections are in. Sections whose document isn't in
+/// [spine] are left out; if that is all of them, nothing can be placed, and
+/// the map counts as none.
+StoryCoverage storyCoverage(
+  List<StorySection>? sections,
+  List<SpineItem> spine,
+  int sectionIndex,
+) {
+  final placed = [
+    for (final section in sections ?? const <StorySection>[])
+      ?spineIndexOf(spine, section.href ?? ''),
+  ];
+  if (placed.isEmpty) return StoryCoverage.none;
+  // In reading order already, as sections are added, but a map from a file
+  // needn't be.
+  placed.sort();
+  if (sectionIndex < placed.first) return StoryCoverage.before;
+  if (sectionIndex > placed.last) return StoryCoverage.ahead;
+  return StoryCoverage.inMap;
+}
+
 /// How exporting a book's Story Map files ended.
 enum StoryExportOutcome { saved, cancelled, nothing }
 
@@ -117,6 +159,10 @@ abstract interface class StoryMapBackend {
     List<StorySection> sections,
   );
 
+  /// The items of [book]'s EPUB spine, in reading order, so a reader's
+  /// `sectionIndex` can be placed next to the map's sections.
+  Future<List<SpineItem>> spine(Book book);
+
   /// The paragraphs of [book]'s Story Map that a reader at [progress] has read.
   /// Nothing past them is kept. Throws a `StoryStoreError` or a
   /// `StoryEpubError` if a section's text can't be read.
@@ -125,18 +171,27 @@ abstract interface class StoryMapBackend {
   /// What pressing Update would do.
   Future<StoryUpdateStatus> inspect(Book book);
 
-  /// The update already running for [book], if any.
-  RunningStoryUpdate? running(Book book);
+  /// The sections already being added to [book], if any.
+  RunningStoryBatch? running(Book book);
 
-  /// Adds the section called [sectionId], or the next one. Never throws for a
-  /// failed update: see the outcome.
-  Future<StoryUpdateOutcome> update(
+  /// Stops the section being added to [book], if it is still waiting for the
+  /// provider, and starts no more. Its outcome is then `cancelled`: see
+  /// [StoryUpdater.cancel].
+  void cancelUpdate(Book book);
+
+  /// Lets the section being added to [book] finish, and starts no more.
+  void stopAfterCurrent(Book book);
+
+  /// Adds [sections] one after another, in reading order, stopping at the
+  /// first that doesn't go in: see [StoryUpdater.runSections]. Never throws for
+  /// a failed update: see the outcomes.
+  Future<RunningStoryBatch> update(
     Book book, {
     required AiCredentials credentials,
     required StoryModelChoice model,
     required StoryEffort effort,
     required bool checkQuotes,
-    String? sectionId,
+    required List<StorySectionChoice> sections,
   });
 
   /// Saves everything kept about [book]'s Story Map where the reader chooses.
@@ -165,13 +220,14 @@ abstract interface class StoryMapBackend {
 /// The real thing: the store on disk, the reader's saved position, the provider.
 class DeviceStoryMapBackend implements StoryMapBackend, AskBackend {
   DeviceStoryMapBackend({
-    this.post = postStoryRequest,
+    this.post,
     this.saveFile = _saveWithDialog,
     this.pickFile = _pickWithDialog,
   });
 
-  /// How requests reach the provider; tests replace the network call.
-  final StoryHttpPost post;
+  /// How requests reach the provider; tests replace the network call. Null for
+  /// the network, whose connection cancelling an update drops.
+  final StoryHttpPost? post;
 
   /// The system's dialogs for files; tests replace them.
   final StoryFileSaver saveFile;
@@ -195,9 +251,12 @@ class DeviceStoryMapBackend implements StoryMapBackend, AskBackend {
     final store = await ReadingPositionStore.open();
     await store.saved;
     final position = await store.load(book.id);
-    final spine = await (_spines[book.id] ??= readSpine(book.epubPath));
-    return (position, spine);
+    return (position, await spine(book));
   }
+
+  @override
+  Future<List<SpineItem>> spine(Book book) =>
+      _spines[book.id] ??= readSpine(book.epubPath);
 
   @override
   Future<StoryReadingProgress> readingProgress(
@@ -325,7 +384,7 @@ class DeviceStoryMapBackend implements StoryMapBackend, AskBackend {
     StorySection section,
     StoryParagraph paragraph,
   ) async {
-    final spine = await (_spines[book.id] ??= readSpine(book.epubPath));
+    final spine = await this.spine(book);
     final index = spineIndexOf(spine, section.href ?? '');
     if (index == null) return null;
     final xhtml = await readSectionMarkup(book.epubPath, spine[index].path);
@@ -340,7 +399,7 @@ class DeviceStoryMapBackend implements StoryMapBackend, AskBackend {
   Future<RecentPages?> recentPages(Book book, TextPosition end) async {
     // A page end that wasn't measured sent no page.
     if (end.progression <= 0) return null;
-    final spine = await (_spines[book.id] ??= readSpine(book.epubPath));
+    final spine = await this.spine(book);
     if (end.sectionIndex >= spine.length) return null;
     final xhtml = await readSectionMarkup(
       book.epubPath,
@@ -371,19 +430,26 @@ class DeviceStoryMapBackend implements StoryMapBackend, AskBackend {
   }
 
   @override
-  RunningStoryUpdate? running(Book book) => StoryUpdater.running(book.id);
+  RunningStoryBatch? running(Book book) => StoryUpdater.batch(book.id);
 
   @override
-  Future<StoryUpdateOutcome> update(
+  void cancelUpdate(Book book) => StoryUpdater.cancel(book.id);
+
+  @override
+  void stopAfterCurrent(Book book) =>
+      StoryUpdater.batch(book.id)?.stopAfterCurrent();
+
+  @override
+  Future<RunningStoryBatch> update(
     Book book, {
     required AiCredentials credentials,
     required StoryModelChoice model,
     required StoryEffort effort,
     required bool checkQuotes,
-    String? sectionId,
+    required List<StorySectionChoice> sections,
   }) async {
     final storePath = await _storePath(book);
-    return StoryUpdater.run(
+    return StoryUpdater.runSections(
       StoryUpdateRequest(
         epubPath: book.epubPath,
         storePath: storePath,
@@ -397,8 +463,8 @@ class DeviceStoryMapBackend implements StoryMapBackend, AskBackend {
         schemaText: await rootBundle.loadString(
           'assets/story_update/story_delta.schema.json',
         ),
-        sectionId: sectionId,
       ),
+      sections,
       bookId: book.id,
       apiKey: credentials.apiKey,
       post: post,
@@ -437,7 +503,7 @@ class DeviceStoryMapBackend implements StoryMapBackend, AskBackend {
 
   @override
   Future<void> commitImport(Book book, StagedStoryImport staged) async {
-    if (StoryUpdater.running(book.id) != null) {
+    if (StoryUpdater.busy(book.id)) {
       throw const StoryImportError('An update is running. Try again after it.');
     }
     final storePath = await _storePath(book);

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
@@ -8,7 +9,9 @@ import 'story_api_client.dart';
 import 'story_book.dart';
 import 'story_merge.dart';
 import 'story_model_choice.dart';
+import 'story_quotes.dart';
 import 'story_run_folder.dart';
+import 'story_section_kind.dart';
 import 'story_store.dart';
 import 'story_validation.dart';
 
@@ -18,11 +21,6 @@ const updatePromptName = 'update_story_v2.txt';
 /// Sections at least this long are taken for the story when suggesting where to
 /// start. Shorter ones are usually a title page or an epigraph.
 const _storySectionParagraphs = 20;
-final _frontMatterTitle = RegExp(
-  r'\b(front ?matter|cover|title ?page|copyright|contents|dedication|epigraph|'
-  r'acknowledg\w*)\b',
-  caseSensitive: false,
-);
 
 /// The folder of a book's story model, inside the library folder at [library].
 String storyStorePath(String library, String bookId) =>
@@ -33,23 +31,30 @@ const storyViewOnlyReason =
     'This map was loaded from a single file, so it can only be viewed. Load the '
     'full .zip to keep updating.';
 
-/// A section the reader can pick: where a new Story Map starts, or a later one
-/// to add to an existing map.
+/// A section of the book that could go in the Story Map: where a new map
+/// starts, or a later one to add to an existing map. Sections with no text
+/// aren't listed, having nothing to add.
 class StorySectionChoice {
   const StorySectionChoice(
     this.sectionId,
     this.title,
     this.paragraphCount, {
-    this.skips = const [],
+    this.kind = StorySectionKind.story,
+    this.problem,
   });
 
   final String sectionId;
   final String title;
   final int paragraphCount;
 
-  /// The sections left out for good by adding this one, by title. Only for a
-  /// map that already exists.
-  final List<String> skips;
+  /// What part of the book it looks like.
+  final StorySectionKind kind;
+
+  /// Why it can't be added, if it can't. It is still listed, since picking a
+  /// section after it leaves it out for good.
+  final String? problem;
+
+  bool get canPick => problem == null;
 }
 
 /// What pressing Update would do for a book right now.
@@ -85,7 +90,8 @@ class StoryUpdateStatus {
     List<StorySectionChoice> choices = const [],
   }) : this._(blocked: reason, choices: choices);
 
-  /// The sections that can be picked, in reading order.
+  /// The sections that could be picked, in reading order. Those with a
+  /// [StorySectionChoice.problem] can't be.
   final List<StorySectionChoice> choices;
   final String? suggestedStart;
   final String? nextSectionId;
@@ -96,10 +102,22 @@ class StoryUpdateStatus {
   bool get isReady => nextSectionId != null;
   bool get isFinished => !isNewStore && !isReady && blocked == null;
 
+  /// The next section, which Update adds; null unless [isReady].
+  StorySectionChoice? get next {
+    final id = nextSectionId;
+    if (id == null) return null;
+    return choices.where((choice) => choice.sectionId == id).firstOrNull ??
+        StorySectionChoice(id, nextTitle ?? id, 0);
+  }
+
+  /// The sections that can be picked.
+  Iterable<StorySectionChoice> get pickable =>
+      choices.where((choice) => choice.canPick);
+
   /// Whether there is anything to pick besides pressing Update.
   bool get canChoose {
     if (isNewStore) return false;
-    return isReady ? choices.length > 1 : choices.isNotEmpty;
+    return pickable.length > (isReady ? 1 : 0);
   }
 
   /// The title of the choice called [sectionId], or else the next section's.
@@ -142,6 +160,19 @@ class StoryUpdateRequest {
 
   /// The folder to keep a [StoryRunFolder] of this update in, if any.
   final String? runsPath;
+
+  /// This request, for the section called [sectionId].
+  StoryUpdateRequest forSection(String sectionId) => StoryUpdateRequest(
+    epubPath: epubPath,
+    storePath: storePath,
+    model: model,
+    effort: effort,
+    checkQuotes: checkQuotes,
+    prompt: prompt,
+    schemaText: schemaText,
+    sectionId: sectionId,
+    runsPath: runsPath,
+  );
 }
 
 /// An update ready to send: everything a finished call is checked against.
@@ -184,6 +215,7 @@ class StoryUpdateOutcome {
   /// `committed`, or the lab's name for what went wrong: `input_error`,
   /// `api_error`, `refusal`, `incomplete`, `failed`, `empty_output`,
   /// `schema_invalid`, `validation_failed`, `stale_base` or `commit_failed`.
+  /// Or `cancelled`, which the lab doesn't have, if the reader stopped it.
   final String status;
   final String? message;
   final String? sectionTitle;
@@ -242,36 +274,63 @@ StoryUpdateStatus inspectStoryUpdate(String epubPath, String storePath) {
 }
 
 StoryUpdateStatus _newStoreStatus(StoryBook book) {
-  final choices = <StorySectionChoice>[];
-  for (final section in book.sections) {
-    if (section.problem != null) continue;
-    try {
-      final paragraphs = book.extract(section)['paragraphs'] as List;
-      choices.add(
-        StorySectionChoice(section.sectionId, section.title, paragraphs.length),
-      );
-    } on StoryEpubError {
-      // Nothing to start from here: no text, or no reliable end.
-    }
-  }
-  if (choices.isEmpty) {
+  final choices = _choices(book, book.sections);
+  final pickable = choices.where((choice) => choice.canPick);
+  if (pickable.isEmpty) {
     return const StoryUpdateStatus.blocked(
       'No section of this book can be read reliably.',
     );
   }
+  final story = pickable.where(
+    (choice) => choice.kind == StorySectionKind.story,
+  );
   final suggested =
-      choices
-          .where(
-            (choice) =>
-                choice.paragraphCount >= _storySectionParagraphs &&
-                !_frontMatterTitle.hasMatch(choice.title),
-          )
+      story
+          .where((choice) => choice.paragraphCount >= _storySectionParagraphs)
           .firstOrNull ??
-      choices.first;
+      story.firstOrNull ??
+      pickable.first;
   return StoryUpdateStatus.newStore(
     choices: choices,
     suggested: suggested.sectionId,
   );
+}
+
+/// [sections] as choices, in reading order. Those with no text are left out,
+/// having nothing to add or to lose. Those that can't be read are listed with
+/// why, since picking one after them leaves them out.
+List<StorySectionChoice> _choices(
+  StoryBook book,
+  Iterable<StoryBookSection> sections,
+) {
+  final choices = <StorySectionChoice>[];
+  for (final section in sections) {
+    try {
+      if (section.problem != null) throw StoryEpubError(section.problem!);
+      final chapter = book.extract(section);
+      choices.add(
+        StorySectionChoice(
+          section.sectionId,
+          section.title,
+          (chapter['paragraphs'] as List).length,
+          kind: book.kindOf(section, chapter),
+        ),
+      );
+    } on StorySectionEmptyError {
+      continue;
+    } on StoryEpubError catch (error) {
+      choices.add(
+        StorySectionChoice(
+          section.sectionId,
+          section.title,
+          0,
+          kind: book.kindOf(section, null),
+          problem: error.message,
+        ),
+      );
+    }
+  }
+  return choices;
 }
 
 /// Checks that [model] was built from [book], so sections still mean the same.
@@ -327,33 +386,10 @@ int _lastProcessedOrder(JsonMap model) =>
   return null;
 }
 
-/// The sections that can be added after [model]'s last, in reading order, each
-/// with what adding it would leave out. A section with no text isn't left out,
-/// having nothing to lose. One that can't be read can't be picked, but is.
+/// The sections after [model]'s last, in reading order: see [_choices].
 List<StorySectionChoice> _laterChoices(JsonMap model, StoryBook book) {
   final last = _lastProcessedOrder(model);
-  final choices = <StorySectionChoice>[];
-  final skips = <String>[];
-  for (final section in book.sections.where((s) => s.order > last)) {
-    try {
-      if (section.problem != null) throw StoryEpubError(section.problem!);
-      final paragraphs = book.extract(section)['paragraphs'] as List;
-      choices.add(
-        StorySectionChoice(
-          section.sectionId,
-          section.title,
-          paragraphs.length,
-          skips: [...skips],
-        ),
-      );
-    } on StorySectionEmptyError {
-      continue;
-    } on StoryEpubError {
-      // Can't be picked, so falls through to being left out.
-    }
-    skips.add(section.title);
-  }
-  return choices;
+  return _choices(book, book.sections.where((s) => s.order > last));
 }
 
 /// The section called [sectionId], with its text, if it can be added to [model].
@@ -573,15 +609,18 @@ StoryUpdateOutcome finishStoryUpdate(
 
   StoryUpdateValidation? validation;
   if (call.status == 'completed') {
+    // Before the lab's checks, which are kept as they are: the answer's
+    // quotes that slipped are put back to the book's text.
+    final (candidate, repairs) = repairStoryQuotes(call.candidate, chapter);
     validation = validateUpdate(
       base,
-      call.candidate,
+      candidate,
       schema: StoryDeltaSchema.parse(request.schemaText),
       chapter: chapter,
       baseInputs: state.inputs,
       section: section,
       revision: revision,
-    );
+    ).withQuoteRepairs(repairs);
     run?.recordValidation(validation);
   }
 
@@ -697,6 +736,11 @@ Map<String, List<int>> _provenanceFiles(
       'prompt_source': _promptSource,
       'hashes': prepared.hashes,
       'manual_corrections': const <dynamic>[],
+      'quote_repair_version': storyQuoteRepairVersion,
+      'quote_repairs': [
+        for (final repair in validation.quoteRepairs)
+          ...repair.corrections(revision['created_at'] as String),
+      ],
     }),
   };
   final directory = 'provenance/${prepared.runId}';
@@ -709,46 +753,241 @@ Map<String, List<int>> _provenanceFiles(
 
 /// An update on its way, for finding it again after leaving the book.
 class RunningStoryUpdate {
-  const RunningStoryUpdate(this.outcome, this.startedAt, this.sectionId);
+  const RunningStoryUpdate(
+    this.outcome,
+    this.startedAt,
+    this.sectionId, {
+    this.cancel,
+  });
 
   final Future<StoryUpdateOutcome> outcome;
   final DateTime startedAt;
 
   /// The section asked for, or null for the next one.
   final String? sectionId;
+
+  /// Stops it while it can still be stopped: see [StoryUpdater.cancel].
+  final StoryCancel? cancel;
+}
+
+/// How a run of sections ended: an outcome for each section it got to, in
+/// order. It got to at least the first.
+class StoryBatchOutcome {
+  const StoryBatchOutcome(this.sections, this.outcomes);
+
+  /// The sections asked for, in reading order.
+  final List<StorySectionChoice> sections;
+  final List<StoryUpdateOutcome> outcomes;
+
+  int get total => sections.length;
+
+  /// How many sections went into the map.
+  int get added => outcomes.where((outcome) => outcome.committed).length;
+
+  /// How the last section it got to ended.
+  StoryUpdateOutcome get last => outcomes.last;
+
+  /// The last section it got to.
+  StorySectionChoice get lastSection => sections[outcomes.length - 1];
+
+  /// Every section went in.
+  bool get complete => last.committed && outcomes.length == total;
+
+  /// The reader cancelled the last section it got to.
+  bool get cancelled => last.status == 'cancelled';
+
+  /// The last section it got to failed, which stopped the rest.
+  bool get failed => !last.committed && !cancelled;
+
+  /// The reader stopped it after a section that went in.
+  bool get stopped => last.committed && outcomes.length < total;
+
+  /// How many quotes weren't found in their paragraph, in every section.
+  int get unmatchedQuotes =>
+      outcomes.fold(0, (total, outcome) => total + outcome.unmatchedQuotes);
+}
+
+/// Sections being added one after another, in reading order, for finding them
+/// again after leaving the book. It stops at the first that doesn't go in.
+class RunningStoryBatch {
+  /// Starts adding [sections], each with [update]. [onCancel] stops the one
+  /// under way: see [cancel]. [clock] tells the time; tests replace it.
+  RunningStoryBatch(
+    this.sections,
+    Future<StoryUpdateOutcome> Function(StorySectionChoice section) update, {
+    this._onCancel,
+    this._clock = DateTime.now,
+  }) : assert(sections.isNotEmpty),
+       startedAt = _clock(),
+       _currentStartedAt = _clock() {
+    done = _run(update);
+  }
+
+  /// The sections asked for, in reading order.
+  final List<StorySectionChoice> sections;
+
+  /// When the first section began.
+  final DateTime startedAt;
+  final void Function()? _onCancel;
+  final DateTime Function() _clock;
+  final _outcomes = <StoryUpdateOutcome>[];
+  int _index = 0;
+  DateTime _currentStartedAt;
+  bool _stopping = false;
+  bool _cancelling = false;
+  final _changes = StreamController<void>.broadcast(sync: true);
+
+  /// How it ended, once it has.
+  late final Future<StoryBatchOutcome> done;
+
+  int get total => sections.length;
+
+  /// How each section it has got through ended, so far.
+  List<StoryUpdateOutcome> get outcomes => List.unmodifiable(_outcomes);
+
+  /// The section under way, or the last one to be, counted from 0.
+  int get index => _index;
+  StorySectionChoice get current => sections[_index];
+
+  /// When the section under way began.
+  DateTime get currentStartedAt => _currentStartedAt;
+
+  /// Whether the reader asked to stop once the section under way is done.
+  bool get stopping => _stopping;
+
+  /// Whether the reader cancelled the section under way.
+  bool get cancelling => _cancelling;
+
+  /// Fires as a section begins and ends, and when the reader asks to stop.
+  Stream<void> get changes => _changes.stream;
+
+  /// Lets the section under way finish and go in, and starts no more.
+  void stopAfterCurrent() {
+    if (_stopping || _changes.isClosed) return;
+    _stopping = true;
+    _changes.add(null);
+  }
+
+  /// Stops the section under way if it still can be, and starts no more.
+  void cancel() {
+    _cancelling = true;
+    _onCancel?.call();
+  }
+
+  Future<StoryBatchOutcome> _run(
+    Future<StoryUpdateOutcome> Function(StorySectionChoice section) update,
+  ) async {
+    for (var i = 0; i < sections.length; i++) {
+      // A cancel that came as one section ended still stops the next.
+      if (i > 0 && (_stopping || _cancelling)) break;
+      _index = i;
+      _currentStartedAt = _clock();
+      _changes.add(null);
+      final outcome = await update(sections[i]);
+      _outcomes.add(outcome);
+      _changes.add(null);
+      if (!outcome.committed) break;
+    }
+    await _changes.close();
+    return StoryBatchOutcome(sections, List.unmodifiable(_outcomes));
+  }
 }
 
 /// Runs updates, one at a time per book.
 ///
 /// The reader may leave the book while one runs. It is already paid for, so it
-/// carries on and commits, and coming back finds it through [running].
+/// carries on and commits, and coming back finds it through [running]. Only
+/// the reader can stop one: see [cancel].
 class StoryUpdater {
   StoryUpdater._();
 
   static final _running = <String, RunningStoryUpdate>{};
+  static final _batches = <String, RunningStoryBatch>{};
 
   /// The update running for the book [bookId], if any.
   static RunningStoryUpdate? running(String bookId) => _running[bookId];
 
+  /// The sections being added to the book [bookId], if any.
+  static RunningStoryBatch? batch(String bookId) => _batches[bookId];
+
+  /// Whether anything is being added to the book [bookId].
+  static bool busy(String bookId) =>
+      _running.containsKey(bookId) || _batches.containsKey(bookId);
+
+  /// Stops the update running for the book [bookId], if it is still waiting
+  /// for the provider. It ends `cancelled`, and nothing is saved. Once the
+  /// provider has answered, the answer has been paid for, so it is checked and
+  /// committed as usual. Either way, no more of its sections are started.
+  static void cancel(String bookId) {
+    final batch = _batches[bookId];
+    if (batch != null) return batch.cancel();
+    _running[bookId]?.cancel?.cancel();
+  }
+
+  /// Adds [sections] one after another, in reading order, each with [request]
+  /// for it, and stops at the first that doesn't go in. Sections between them
+  /// are left out for good. Nothing is retried. If sections are already being
+  /// added to the book, returns those.
+  static RunningStoryBatch runSections(
+    StoryUpdateRequest request,
+    List<StorySectionChoice> sections, {
+    required String bookId,
+    required String apiKey,
+    StoryHttpPost? post,
+  }) {
+    assert(sections.isNotEmpty);
+    final existing = _batches[bookId];
+    if (existing != null) return existing;
+    final batch = RunningStoryBatch(
+      sections,
+      (section) => run(
+        request.forSection(section.sectionId),
+        bookId: bookId,
+        apiKey: apiKey,
+        post: post,
+      ),
+      onCancel: () => _running[bookId]?.cancel?.cancel(),
+    );
+    _batches[bookId] = batch;
+    batch.done.whenComplete(() {
+      // In a block, so as not to return the removed batch.
+      _batches.remove(bookId);
+    });
+    return batch;
+  }
+
   /// Adds the section asked for, or the next one. Never throws: every way of
   /// failing is an outcome, and none of them changes the store.
+  ///
+  /// [post] sends the request. Left out, it goes over the network, and
+  /// cancelling drops the connection.
   static Future<StoryUpdateOutcome> run(
     StoryUpdateRequest request, {
     required String bookId,
     required String apiKey,
-    StoryHttpPost post = postStoryRequest,
+    StoryHttpPost? post,
   }) {
     final existing = _running[bookId];
     if (existing != null) return existing.outcome;
-    final outcome = _run(request, apiKey, post).whenComplete(() {
-      // In a block, so as not to return the removed update: `whenComplete`
-      // would wait for a future it got back, and this is that future.
-      _running.remove(bookId);
-    });
+    final cancel = StoryCancel();
+    final outcome =
+        _run(
+          request,
+          apiKey,
+          post ??
+              (url, headers, body) =>
+                  postStoryRequest(url, headers, body, cancel: cancel),
+          cancel,
+        ).whenComplete(() {
+          // In a block, so as not to return the removed update: `whenComplete`
+          // would wait for a future it got back, and this is that future.
+          _running.remove(bookId);
+        });
     _running[bookId] = RunningStoryUpdate(
       outcome,
       DateTime.now(),
       request.sectionId,
+      cancel: cancel,
     );
     return outcome;
   }
@@ -757,6 +996,7 @@ class StoryUpdater {
     StoryUpdateRequest request,
     String apiKey,
     StoryHttpPost post,
+    StoryCancel cancel,
   ) async {
     PreparedStoryUpdate? prepared;
     try {
@@ -773,6 +1013,7 @@ class StoryUpdater {
         apiKey: apiKey,
         body: ready.body,
         post: post,
+        cancel: cancel,
       );
       return await Isolate.run(() => finishStoryUpdate(ready, call));
     } on StoryEpubError catch (error) {

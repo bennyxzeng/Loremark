@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -10,9 +12,57 @@ import 'package:loremark/recap/recap_backend.dart';
 import 'package:loremark/recap/recap_stop.dart';
 import 'package:loremark/settings/ai_settings.dart';
 import 'package:loremark/settings/connection_status.dart';
+import 'package:loremark/story_map/story_map_backend.dart';
+import 'package:loremark/story_model/story_model.dart';
+import 'package:loremark/story_update/story_model_choice.dart';
+import 'package:loremark/story_update/story_updater.dart';
 import 'package:loremark/theme/loremark_theme.dart';
 
 import 'ask/fake_ask_backend.dart';
+
+/// A book with no Story Map yet, whose updates wait for [finish], section by
+/// section.
+class _StoryMapBackend implements StoryMapBackend {
+  Completer<StoryUpdateOutcome>? finish;
+
+  @override
+  Future<StoryModel?> loadModel(Book book) async => null;
+
+  @override
+  Future<StoryUpdateStatus> inspect(Book book) async =>
+      const StoryUpdateStatus.ready(
+        's3',
+        'Chapter 3',
+        choices: [
+          StorySectionChoice('s3', 'Chapter 3', 40),
+          StorySectionChoice('s4', 'Chapter 4', 40),
+          StorySectionChoice('s5', 'Chapter 5', 40),
+        ],
+      );
+
+  @override
+  RunningStoryBatch? running(Book book) => null;
+
+  @override
+  Future<RunningStoryBatch> update(
+    Book book, {
+    required AiCredentials credentials,
+    required StoryModelChoice model,
+    required StoryEffort effort,
+    required bool checkQuotes,
+    required List<StorySectionChoice> sections,
+  }) async =>
+      RunningStoryBatch(sections, (section) => (finish = Completer()).future);
+
+  @override
+  void cancelUpdate(Book book) {}
+
+  @override
+  Future<bool> introSeen() async => true;
+
+  @override
+  Object? noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
 
 const _stop = RecapStop(sectionTitle: 'Chapter 1: Arrival', partway: false);
 
@@ -43,6 +93,7 @@ void main() {
     WidgetTester tester, {
     bool hasKey = true,
     ConnectionStatus? connection,
+    StoryMapBackend? storyMapBackend,
     RecapBackend? recapBackend,
     AskBackend? askBackend,
   }) async {
@@ -62,6 +113,7 @@ void main() {
             theme: buildLoremarkTheme(),
             home: BookScreen(
               book: book,
+              storyMapBackend: storyMapBackend,
               recapBackend: recapBackend,
               askBackend: askBackend,
             ),
@@ -278,6 +330,185 @@ void main() {
 
       expect(connection.showOfflineBanner, isFalse);
       expect(find.text('OFFLINE'), findsNothing);
+    });
+  });
+
+  group('a Story Map update', () {
+    late _StoryMapBackend backend;
+
+    setUp(() => backend = _StoryMapBackend());
+
+    /// Starts an update from the Story Map tab, then goes to [tab].
+    Future<void> startUpdate(WidgetTester tester, {String tab = 'Read'}) async {
+      await openTab(tester, 'Story Map');
+      await tester.tap(find.widgetWithText(FilledButton, 'Update'));
+      await tester.pumpAndSettle();
+      await openTab(tester, tab);
+    }
+
+    Future<void> finish(WidgetTester tester, StoryUpdateOutcome outcome) async {
+      backend.finish!.complete(outcome);
+      await tester.pumpAndSettle();
+    }
+
+    const added = StoryUpdateOutcome('committed', sectionTitle: 'Chapter 3');
+
+    /// The update banner's card, by its title.
+    Finder banner(String title) => find
+        .ancestor(of: find.text(title), matching: find.byType(Material))
+        .first;
+
+    bool shown(WidgetTester tester, String title) =>
+        find.text(title).evaluate().isNotEmpty &&
+        tester
+                .widget<AnimatedOpacity>(
+                  find
+                      .ancestor(
+                        of: find.text(title),
+                        matching: find.byType(AnimatedOpacity),
+                      )
+                      .first,
+                )
+                .opacity ==
+            1;
+
+    testWidgets('shows in the header from every tab', (tester) async {
+      await pumpBook(tester, storyMapBackend: backend);
+      await startUpdate(tester, tab: 'Notes');
+      expect(find.text('UPDATING'), findsOne);
+
+      await finish(tester, added);
+      expect(find.text('UPDATING'), findsNothing);
+    });
+
+    testWidgets('that ends on another tab says so at the top', (tester) async {
+      await pumpBook(tester, storyMapBackend: backend);
+      await startUpdate(tester);
+      await finish(tester, added);
+      expect(shown(tester, 'Story Map updated'), isTrue);
+      expect(find.text('Added Chapter 3.'), findsOne);
+
+      await tester.tap(find.text('View'));
+      await tester.pumpAndSettle();
+      expect(selectedTab(tester), 3);
+      expect(shown(tester, 'Story Map updated'), isFalse);
+    });
+
+    testWidgets('says so for a while, or until closed', (tester) async {
+      await pumpBook(tester, storyMapBackend: backend);
+      await startUpdate(tester);
+      await finish(tester, added);
+      await tester.pump(const Duration(seconds: 5));
+      expect(shown(tester, 'Story Map updated'), isTrue);
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect(shown(tester, 'Story Map updated'), isFalse);
+
+      await startUpdate(tester);
+      await finish(tester, added);
+      expect(shown(tester, 'Story Map updated'), isTrue);
+      await tester.tap(
+        find.descendant(
+          of: banner('Story Map updated'),
+          matching: find.byTooltip('Dismiss'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(shown(tester, 'Story Map updated'), isFalse);
+      expect(selectedTab(tester), 0);
+    });
+
+    testWidgets('that fails says so too', (tester) async {
+      await pumpBook(tester, storyMapBackend: backend);
+      await startUpdate(tester);
+      await finish(
+        tester,
+        const StoryUpdateOutcome('api_error', category: 'timeout'),
+      );
+      expect(shown(tester, 'The Story Map update didn’t go through'), isTrue);
+      expect(find.text('See the Story Map for why.'), findsOne);
+    });
+
+    testWidgets('of several sections says so once, at the end', (tester) async {
+      await pumpBook(tester, storyMapBackend: backend);
+      await openTab(tester, 'Story Map');
+      await tester.tap(find.widgetWithText(TextButton, 'Choose'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Select all main text'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Add 3 sections'));
+      await tester.pumpAndSettle();
+      await openTab(tester, 'Read');
+      expect(find.text('1/3'), findsOne);
+
+      await finish(tester, added);
+      expect(find.text('2/3'), findsOne);
+      expect(find.text('Story Map updated'), findsNothing);
+
+      await finish(tester, const StoryUpdateOutcome('schema_invalid'));
+      expect(find.text('UPDATING'), findsNothing);
+      expect(shown(tester, 'Story Map update stopped'), isTrue);
+      expect(
+        find.text(
+          'Added 1 of 3 sections. Chapter 4 didn’t go through. See the Story '
+          'Map for why.',
+        ),
+        findsOne,
+      );
+    });
+
+    testWidgets('that ends on the Story Map tab needs no banner', (
+      tester,
+    ) async {
+      await pumpBook(tester, storyMapBackend: backend);
+      await startUpdate(tester, tab: 'Story Map');
+      await finish(tester, added);
+      expect(find.text('Story Map updated'), findsNothing);
+      expect(find.textContaining('Added Chapter 3 in '), findsOne);
+    });
+
+    testWidgets('that was cancelled needs no banner', (tester) async {
+      await pumpBook(tester, storyMapBackend: backend);
+      await startUpdate(tester, tab: 'Story Map');
+      await tester.tap(find.widgetWithText(FilledButton, 'Cancel'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cancel update'));
+      await tester.pumpAndSettle();
+      await openTab(tester, 'Read');
+      await finish(
+        tester,
+        const StoryUpdateOutcome('cancelled', category: 'cancelled'),
+      );
+      expect(find.text('Story Map updated'), findsNothing);
+      expect(find.text('The Story Map update didn’t go through'), findsNothing);
+    });
+
+    testWidgets('goes under the offline banner, and up when it goes', (
+      tester,
+    ) async {
+      final connection = ConnectionStatus();
+      await pumpBook(tester, storyMapBackend: backend, connection: connection);
+      await startUpdate(tester);
+      connection.isOnline = false;
+      await tester.pumpAndSettle();
+      await finish(
+        tester,
+        const StoryUpdateOutcome('api_error', category: 'network'),
+      );
+      const failed = 'The Story Map update didn’t go through';
+      final offline = banner('You’re offline');
+      expect(
+        tester.getRect(banner(failed)).top,
+        greaterThanOrEqualTo(tester.getRect(offline).bottom),
+      );
+      final under = tester.getRect(banner(failed)).top;
+
+      await tester.tap(
+        find.descendant(of: offline, matching: find.byTooltip('Dismiss')),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.getRect(banner(failed)).top, lessThan(under));
+      expect(shown(tester, failed), isTrue);
     });
   });
 

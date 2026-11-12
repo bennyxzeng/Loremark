@@ -14,13 +14,16 @@ void main() {
   final root = Platform.environment['LOREMARK_STORY_LIBRARY'];
 
   /// How many records of each section show at a quarter, half and three quarters
-  /// of its paragraphs, worked out by hand from the book's model.
+  /// of its paragraphs, worked out apart from the app's code from the book's
+  /// model. A section the map gains later is checked by the other rules only,
+  /// until its counts are worked out and added here.
   const expected = {
     '0834655c': {
       'section-003': [35, 50, 62],
       'section-004': [30, 75, 98],
       'section-008': [18, 38, 54],
       'section-009': [27, 43, 77],
+      'section-010': [8, 20, 25],
     },
   };
 
@@ -108,7 +111,8 @@ void main() {
             }
           }
 
-          if (wanted != null) {
+          final counts = wanted?[section.id];
+          if (counts != null) {
             expect(
               [
                 for (final share in const [0.25, 0.5, 0.75])
@@ -117,7 +121,7 @@ void main() {
                     return records.where((r) => !hidden.contains(r.id)).length;
                   }(),
               ],
-              wanted[section.id],
+              counts,
               reason: section.id,
             );
           }
