@@ -89,8 +89,12 @@ void main() {
     importedAt: DateTime(2026),
   );
 
+  // Each test starts as if the app had just started.
+  setUp(BookScreen.forgetWelcomes);
+
   Future<void> pumpBook(
     WidgetTester tester, {
+    Book? open,
     bool hasKey = true,
     ConnectionStatus? connection,
     StoryMapBackend? storyMapBackend,
@@ -112,7 +116,7 @@ void main() {
           child: MaterialApp(
             theme: buildLoremarkTheme(),
             home: BookScreen(
-              book: book,
+              book: open ?? book,
               storyMapBackend: storyMapBackend,
               recapBackend: recapBackend,
               askBackend: askBackend,
@@ -582,6 +586,61 @@ void main() {
       await openTab(tester, 'Read');
 
       expect(find.text('Welcome back.'), findsNothing);
+    });
+
+    // Back to the library and into a book again, within one session.
+    Future<void> reopen(
+      WidgetTester tester, {
+      Book? open,
+      ConnectionStatus? connection,
+    }) async {
+      await tester.pumpWidget(const SizedBox());
+      await pumpBook(
+        tester,
+        open: open,
+        connection: connection,
+        recapBackend: _FakeRecapBackend(),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('comes once a session for each book', (tester) async {
+      await pumpBook(tester, recapBackend: _FakeRecapBackend());
+      await tester.pumpAndSettle();
+      expect(find.text('Welcome back.'), findsOne);
+      await tester.tap(find.text('Keep reading'));
+      await tester.pumpAndSettle();
+
+      // The same book again: it has already welcomed the reader back.
+      await reopen(tester);
+      expect(find.text('Welcome back.'), findsNothing);
+
+      // Another book hasn't yet.
+      final other = Book(
+        id: 'def',
+        title: 'The Storm Road',
+        author: null,
+        epubPath: 'unused.epub',
+        coverPath: null,
+        importedAt: DateTime(2026),
+      );
+      await reopen(tester, open: other);
+      expect(find.text('Welcome back.'), findsOne);
+    });
+
+    testWidgets('an opening that passed it over leaves it for the next', (
+      tester,
+    ) async {
+      await pumpBook(
+        tester,
+        connection: ConnectionStatus(online: false),
+        recapBackend: _FakeRecapBackend(),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Welcome back.'), findsNothing);
+
+      await reopen(tester);
+      expect(find.text('Welcome back.'), findsOne);
     });
 
     testWidgets('partway through a chapter, says so', (tester) async {
