@@ -7,8 +7,10 @@ import 'text_position.dart';
 /// [bookId]'s tracker as [store] last saved it.
 ///
 /// A book read before the tracker existed has only its position saved, so
-/// everything up to it counts as read. Otherwise the next open would ask about
-/// a jump to where the reader already was.
+/// everything up to it counts as read, and that is saved at once. Otherwise
+/// the next open would ask about a jump to where the reader already was, or,
+/// after they went back, forget how far they had read. Throws if that save
+/// fails.
 Future<ReadingProgressTracker> loadTracker(
   ReadingPositionStore store,
   String bookId,
@@ -18,6 +20,9 @@ Future<ReadingProgressTracker> loadTracker(
       ? const TextPosition(0, 0)
       : TextPosition(saved.sectionIndex, saved.progression);
   final progress = await store.loadProgress(bookId);
+  if (progress == null) {
+    await store.saveProgress(bookId, furthest: current, boundary: current);
+  }
   return ReadingProgressTracker.resume(
     current: current,
     furthest: progress?.furthest ?? current,

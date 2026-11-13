@@ -43,6 +43,16 @@ void main() {
       },
     );
 
+    test('saves that, so going back before reading on loses nothing', () async {
+      await store.save(book, const ReaderPosition(12, 0.4));
+      await loadTracker(store, book);
+      await store.save(book, const ReaderPosition(2, 0));
+      final tracker = await loadTracker(store, book);
+      expect(tracker.current, const TextPosition(2, 0));
+      expect(tracker.furthest, const TextPosition(12, 0.4));
+      expect(tracker.boundary, const TextPosition(12, 0.4));
+    });
+
     test('keeps the saved boundary behind the position', () async {
       await store.save(book, const ReaderPosition(12, 0.4));
       await store.saveProgress(
