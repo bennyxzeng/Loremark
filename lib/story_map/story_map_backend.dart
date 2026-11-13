@@ -15,6 +15,7 @@ import '../reader/reader_position.dart';
 import '../reader/reading_position_store.dart';
 import '../reading/text_position.dart';
 import '../search/search_cutoff.dart';
+import '../settings/ai_activity.dart';
 import '../settings/ai_settings.dart';
 import '../story_model/story_model.dart';
 import '../story_model/story_snapshot.dart';
@@ -223,7 +224,12 @@ class DeviceStoryMapBackend implements StoryMapBackend, AskBackend {
     this.post,
     this.saveFile = _saveWithDialog,
     this.pickFile = _pickWithDialog,
-  });
+    AiActivity? activity,
+  }) : activity = activity ?? AiActivity.instance;
+
+  /// Where running updates are counted, so the key in use can't change under
+  /// them.
+  final AiActivity activity;
 
   /// How requests reach the provider; tests replace the network call. Null for
   /// the network, whose connection cancelling an update drops.
@@ -441,6 +447,33 @@ class DeviceStoryMapBackend implements StoryMapBackend, AskBackend {
 
   @override
   Future<RunningStoryBatch> update(
+    Book book, {
+    required AiCredentials credentials,
+    required StoryModelChoice model,
+    required StoryEffort effort,
+    required bool checkQuotes,
+    required List<StorySectionChoice> sections,
+  }) async {
+    // Before the first await: the key is held from here.
+    final end = activity.begin();
+    try {
+      final batch = await _runSections(
+        book,
+        credentials: credentials,
+        model: model,
+        effort: effort,
+        checkQuotes: checkQuotes,
+        sections: sections,
+      );
+      batch.done.whenComplete(end).ignore();
+      return batch;
+    } on Object {
+      end();
+      rethrow;
+    }
+  }
+
+  Future<RunningStoryBatch> _runSections(
     Book book, {
     required AiCredentials credentials,
     required StoryModelChoice model,

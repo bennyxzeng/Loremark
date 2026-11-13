@@ -12,6 +12,7 @@ import 'package:loremark/reader/page_start.dart';
 import 'package:loremark/reader/reader_position.dart';
 import 'package:loremark/reader/reading_position_store.dart';
 import 'package:loremark/reading/text_position.dart';
+import 'package:loremark/settings/ai_activity.dart';
 import 'package:loremark/settings/ai_settings.dart';
 import 'package:loremark/story_map/story_map_backend.dart';
 import 'package:loremark/story_model/story_snapshot.dart';
@@ -52,7 +53,9 @@ void main() {
       importedAt: DateTime.utc(2026),
     );
     late String sent;
+    final activity = AiActivity();
     final backend = DeviceStoryMapBackend(
+      activity: activity,
       post: (url, headers, body) async {
         sent = body;
         return StoryHttpResponse(
@@ -76,7 +79,7 @@ void main() {
     final status = await backend.inspect(book);
     expect(status.isNewStore, isTrue);
 
-    final batch = await backend.update(
+    final updating = backend.update(
       book,
       credentials: const AiCredentials(
         provider: AiProvider.deepseek,
@@ -89,8 +92,13 @@ void main() {
         status.pickable.firstWhere((s) => s.sectionId == 'section-002'),
       ],
     );
+    // Counted before anything is awaited, so the key can't change under it.
+    expect(activity.busy, isTrue);
+    final batch = await updating;
     expect(backend.running(book), same(batch));
     final outcome = (await batch.done).last;
+    await pumpEventQueue();
+    expect(activity.busy, isFalse);
     expect(outcome.status, 'committed', reason: '${outcome.issues}');
     expect(backend.running(book), isNull);
     // The real prompt and schema came out of the app's bundle.

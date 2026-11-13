@@ -10,6 +10,7 @@ import 'package:loremark/ask/ask_history.dart';
 import 'package:loremark/ask/ask_stream.dart';
 import 'package:loremark/library/book.dart';
 import 'package:loremark/reading/text_position.dart';
+import 'package:loremark/settings/ai_activity.dart';
 import 'package:loremark/settings/ai_settings.dart';
 import 'package:loremark/story_model/story_snapshot.dart';
 import 'package:loremark/story_update/story_model_choice.dart';
@@ -367,5 +368,69 @@ void main() {
     expect(said('api_error', 'timeout'), contains('may still charge'));
     expect(said('refusal'), contains('declined'));
     expect(said('no_answer'), contains('no usable answer'));
+  });
+
+  group('counts as AI work', () {
+    late AiActivity activity;
+    late StreamController<String> body;
+
+    setUp(() {
+      activity = AiActivity();
+      body = StreamController<String>();
+    });
+
+    AskController counted() => AskController(
+      book: book,
+      backend: backend,
+      openHistory: () async => AskHistoryStore(temp),
+      loadPrompt: () async => 'PROMPT',
+      now: () => clock,
+      activity: activity,
+      post: (url, headers, sent) async =>
+          AskHttpReply(200, body.stream, () => body.close()),
+    );
+
+    test('from the moment it is asked until it is answered', () async {
+      final controller = counted();
+      final asking = ask(controller, 'Who?');
+      // Before anything has been awaited: the key is already held.
+      expect(activity.busy, isTrue);
+      await pumpEventQueue();
+      expect(activity.busy, isTrue);
+
+      body.add(answerWith('Mara.'));
+      await body.close();
+      await asking;
+      expect(activity.busy, isFalse);
+    });
+
+    test('until it is stopped', () async {
+      final controller = counted();
+      final asking = ask(controller, 'Who?');
+      await pumpEventQueue();
+      controller.stop();
+      await asking;
+      expect(activity.busy, isFalse);
+    });
+
+    test('until it fails', () async {
+      final controller = AskController(
+        book: book,
+        backend: backend,
+        openHistory: () async => AskHistoryStore(temp),
+        loadPrompt: () async => 'PROMPT',
+        now: () => clock,
+        activity: activity,
+        post: FakeAskProvider([(500, 'Server error')]).post,
+      );
+      await ask(controller, 'Who?');
+      expect(controller.pending?.failure, isNotNull);
+      expect(activity.busy, isFalse);
+    });
+
+    test('not at all when there is nothing to ask', () async {
+      await ask(counted(), '   ');
+      expect(activity.busy, isFalse);
+    });
   });
 }
