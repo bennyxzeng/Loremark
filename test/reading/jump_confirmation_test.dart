@@ -72,7 +72,7 @@ void main() {
   });
 
   group('confirmSkippedChapters', () {
-    late bool? answer;
+    late JumpAnswer? answer;
 
     Future<void> ask(WidgetTester tester) async {
       answer = null;
@@ -96,33 +96,32 @@ void main() {
       expect(find.text('You skipped ahead'), findsOne);
       expect(
         find.text(
-          'Count the chapters you skipped as read? Story Map and Ask only use '
-          'what you’ve read.',
+          'Count what you skipped as read? Story Map and Ask only use what '
+          'you’ve read.',
         ),
         findsOne,
       );
     });
 
-    testWidgets('is true for Count as read', (tester) async {
-      await ask(tester);
-      await tester.tap(find.text('Count as read'));
-      await tester.pumpAndSettle();
-      expect(answer, isTrue);
-    });
+    for (final (button, expected) in const [
+      ('Count as read', JumpAnswer.countAsRead),
+      ('Go back', JumpAnswer.goBack),
+      ('Not yet', JumpAnswer.notYet),
+    ]) {
+      testWidgets('is ${expected.name} for $button', (tester) async {
+        await ask(tester);
+        await tester.tap(find.text(button));
+        await tester.pumpAndSettle();
+        expect(answer, expected);
+      });
+    }
 
-    testWidgets('is false for Not yet', (tester) async {
-      await ask(tester);
-      await tester.tap(find.text('Not yet'));
-      await tester.pumpAndSettle();
-      expect(answer, isFalse);
-    });
-
-    testWidgets('is false when closed without an answer', (tester) async {
+    testWidgets('is notYet when closed without an answer', (tester) async {
       await ask(tester);
       await tester.tapAt(const Offset(5, 5));
       await tester.pumpAndSettle();
       expect(find.text('You skipped ahead'), findsNothing);
-      expect(answer, isFalse);
+      expect(answer, JumpAnswer.notYet);
     });
   });
 }

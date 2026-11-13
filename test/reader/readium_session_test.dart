@@ -519,6 +519,25 @@ void main() {
       expect(positions, [const ReaderPosition(1, 0.3, totalProgression: 0.2)]);
     });
 
+    test('carry the page count of their section once a full locator gave '
+        'it', () async {
+      final session = await open(bookA);
+      final positions = collect(session);
+
+      await send([
+        _bare(1, 0),
+        _full(1, 0, page: 0, pages: 4),
+        _bare(1, 0.25),
+        _full(1, 0.25, page: 1, pages: 4),
+        _bare(2, 0),
+      ]);
+
+      expect(
+        [for (final p in positions) (p.sectionIndex, p.sectionPages)],
+        [(1, null), (1, 4), (2, null)],
+      );
+    });
+
     test('reports the last page of a section as exactly 1.0', () async {
       final session = await open(bookA);
       final positions = collect(session);

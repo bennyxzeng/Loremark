@@ -40,6 +40,7 @@ class ReadScreen extends StatefulWidget {
     this.notes,
     this.noteJumps,
     this.passageJumps,
+    this.positionJumps,
   });
 
   final Book book;
@@ -81,6 +82,10 @@ class ReadScreen extends StatefulWidget {
   /// Lets other code send the reader to a passage and offer a way back, such
   /// as **Read it in the book** in a recap.
   final PassageJumpController? passageJumps;
+
+  /// Lets other code send the reader to a position, such as back to where
+  /// they were before a jump.
+  final PositionJumpController? positionJumps;
 
   @override
   State<ReadScreen> createState() => _ReadScreenState();
@@ -130,6 +135,22 @@ class PassageJumpController {
 
   /// Jumps to [target] and highlights it, if a book is showing.
   Future<void> show(PassageTarget target) async => _jumper?.call(target);
+}
+
+/// Lets other code send the Read tab to a position, with nothing highlighted.
+class PositionJumpController {
+  Future<void> Function(ReaderPosition position)? _jumper;
+
+  /// Called by the screen that shows the book. [detach] undoes it.
+  void attach(Future<void> Function(ReaderPosition position) jumper) =>
+      _jumper = jumper;
+
+  void detach(Future<void> Function(ReaderPosition position) jumper) {
+    if (_jumper == jumper) _jumper = null;
+  }
+
+  /// Jumps to [position], if a book is showing.
+  Future<void> goTo(ReaderPosition position) async => _jumper?.call(position);
 }
 
 class _ReadScreenState extends State<ReadScreen> {
@@ -220,6 +241,7 @@ class _ReadScreenState extends State<ReadScreen> {
     widget.noteJumps?.attach(_showNote);
     widget.noteJumps?.attachPassages(_showPassage);
     widget.passageJumps?.attach(_visitPassage);
+    widget.positionJumps?.attach(_goToPosition);
     unawaited(_open());
     unawaited(_openNotes());
   }
@@ -241,6 +263,10 @@ class _ReadScreenState extends State<ReadScreen> {
       oldWidget.passageJumps?.detach(_visitPassage);
       widget.passageJumps?.attach(_visitPassage);
     }
+    if (oldWidget.positionJumps != widget.positionJumps) {
+      oldWidget.positionJumps?.detach(_goToPosition);
+      widget.positionJumps?.attach(_goToPosition);
+    }
     if (oldWidget.book.id != widget.book.id) {
       unawaited(_open());
     }
@@ -258,6 +284,7 @@ class _ReadScreenState extends State<ReadScreen> {
     widget.noteJumps?.detach(_showNote);
     widget.noteJumps?.detachPassages(_showPassage);
     widget.passageJumps?.detach(_visitPassage);
+    widget.positionJumps?.detach(_goToPosition);
     _notes?.removeListener(_drawNoteHighlights);
     _releaseSession();
     _cutoff.dispose();
@@ -451,6 +478,18 @@ class _ReadScreenState extends State<ReadScreen> {
     _stopRestoring();
     _highlightShown = true;
     await _navigate(() => session.showPassage(target));
+  }
+
+  /// Sends the reader to [position]. Best effort: if it fails, the reader
+  /// just stays where they are.
+  Future<void> _goToPosition(ReaderPosition position) async {
+    final session = _session;
+    if (session == null) return;
+    try {
+      await session.goToPosition(position);
+    } on Object catch (error) {
+      debugPrint('Could not go to $position: $error');
+    }
   }
 
   /// Shows [target], keeping the reader's place for **Back to your page**.

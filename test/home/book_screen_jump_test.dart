@@ -133,6 +133,22 @@ void main() {
       ));
     });
 
+    testWidgets('goes back to where the reader was on Go back', (tester) async {
+      await pumpBook(tester);
+      await moveTo(tester, const ReaderPosition(1, 0.5));
+      await moveTo(tester, const ReaderPosition(5, 0.2));
+      await tester.tap(find.text('Go back'));
+      await tester.pumpAndSettle();
+      expect(reader.sessions.single.goToPositionCalls, [
+        const ReaderPosition(1, 0.5),
+      ]);
+
+      // Arriving there drops the jump; the boundary never moved.
+      await moveTo(tester, const ReaderPosition(1, 0.5));
+      expect(find.text('You skipped ahead'), findsNothing);
+      expect(store.progressSaves.last.$3, read);
+    });
+
     testWidgets('keeps the boundary on Not yet', (tester) async {
       await pumpBook(tester);
       await moveTo(tester, const ReaderPosition(5, 0.2));
@@ -144,6 +160,30 @@ void main() {
         const TextPosition(5, 0.2),
         read,
       ));
+    });
+
+    testWidgets('of many pages in one chapter asks first', (tester) async {
+      const page54 = TextPosition(1, 54 / 120);
+      store.progress[book.id] = (furthest: page54, boundary: page54);
+      await pumpBook(tester);
+      await moveTo(
+        tester,
+        const ReaderPosition(1, 87 / 120, sectionPages: 120),
+      );
+      expect(find.text('You skipped ahead'), findsOne);
+    });
+
+    testWidgets('after Not yet, asks once more on reading into the next '
+        'section', (tester) async {
+      await pumpBook(tester);
+      await moveTo(tester, const ReaderPosition(5, 0.2));
+      await tester.tap(find.text('Not yet'));
+      await tester.pumpAndSettle();
+
+      await moveTo(tester, const ReaderPosition(5, 0.6));
+      expect(find.text('You skipped ahead'), findsNothing);
+      await moveTo(tester, const ReaderPosition(6, 0));
+      expect(find.text('You skipped ahead'), findsOne);
     });
 
     testWidgets('made before the progress loads still asks', (tester) async {

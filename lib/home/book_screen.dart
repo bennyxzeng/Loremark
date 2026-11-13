@@ -149,6 +149,9 @@ class _BookScreenState extends State<BookScreen> {
   /// the reader's page.
   final _passageJumps = PassageJumpController();
 
+  /// Sends the Read tab back to where the reader was before a jump.
+  final _positionJumps = PositionJumpController();
+
   /// Where the reader stopped, for the welcome-back pop-up.
   late final RecapController _recap = RecapController(
     book: widget.book,
@@ -222,6 +225,7 @@ class _BookScreenState extends State<BookScreen> {
     final boundary = progress.boundary;
     final result = progress.updatePosition(
       TextPosition(position.sectionIndex, position.progression),
+      sectionPages: position.sectionPages,
     );
     if (progress.furthest != furthest || progress.boundary != boundary) {
       unawaited(_saveProgress(progress));
@@ -232,9 +236,20 @@ class _BookScreenState extends State<BookScreen> {
   }
 
   Future<void> _confirmJump(ReadingProgressTracker progress) async {
-    if (!await confirmSkippedChapters(context)) return;
-    progress.confirmJump();
-    await _saveProgress(progress);
+    final from = progress.jumpedFrom;
+    final answer = await confirmSkippedChapters(context);
+    switch (answer) {
+      case JumpAnswer.countAsRead:
+        progress.confirmJump();
+        await _saveProgress(progress);
+      case JumpAnswer.goBack:
+        // Once there, the reader is behind the boundary, which drops the jump.
+        await _positionJumps.goTo(
+          ReaderPosition(from.sectionIndex, from.progression),
+        );
+      case JumpAnswer.notYet:
+        break;
+    }
   }
 
   Future<void> _saveProgress(ReadingProgressTracker progress) async {
@@ -348,6 +363,7 @@ class _BookScreenState extends State<BookScreen> {
                             notes: _notes,
                             noteJumps: _noteJumps,
                             passageJumps: _passageJumps,
+                            positionJumps: _positionJumps,
                             onPositionChanged: _readerMoved,
                           ),
                         ),

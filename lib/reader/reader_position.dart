@@ -5,6 +5,10 @@
 /// [progression] is how far into that section the reader is, from 0.0 to 1.0;
 /// a finished section is exactly 1.0. [totalProgression] is how far into the
 /// whole book, when the renderer knows it.
+///
+/// [sectionPages] is how many pages the reading view splits the section into
+/// right now, when it knows. It changes with the font and the screen, not with
+/// where the reader is, so it is neither saved nor compared.
 // TODO(kevin): switch to TextPosition once #2 merges. This is the only place
 // the reader's position type is defined, and the JSON keys already match.
 class ReaderPosition {
@@ -12,6 +16,7 @@ class ReaderPosition {
     this.sectionIndex,
     this.progression, {
     this.totalProgression,
+    this.sectionPages,
   });
 
   /// Reads a position saved by [toJson].
@@ -37,6 +42,7 @@ class ReaderPosition {
   final int sectionIndex;
   final double progression;
   final double? totalProgression;
+  final int? sectionPages;
 
   static bool _isFraction(Object? value) =>
       value is num && value >= 0 && value <= 1;

@@ -30,28 +30,44 @@ Future<ReadingProgressTracker> loadTracker(
   );
 }
 
-/// Asks whether the chapters the reader skipped count as read. False if they
-/// don't, or if the dialog is closed without an answer.
-Future<bool> confirmSkippedChapters(BuildContext context) async {
-  final confirmed = await showDialog<bool>(
+/// What the reader chose when asked about a jump ahead.
+enum JumpAnswer {
+  /// Count what was skipped as read.
+  countAsRead,
+
+  /// Return to where they were before the jump.
+  goBack,
+
+  /// Stay without counting it, such as to look something up.
+  notYet,
+}
+
+/// Asks whether what the reader skipped counts as read. [JumpAnswer.notYet]
+/// if the dialog is closed without an answer.
+Future<JumpAnswer> confirmSkippedChapters(BuildContext context) async {
+  final answer = await showDialog<JumpAnswer>(
     context: context,
     builder: (context) => AlertDialog(
       title: const Text('You skipped ahead'),
       content: const Text(
-        'Count the chapters you skipped as read? Story Map and Ask only use '
-        'what you’ve read.',
+        'Count what you skipped as read? Story Map and Ask only use what '
+        'you’ve read.',
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(context, false),
+          onPressed: () => Navigator.pop(context, JumpAnswer.notYet),
           child: const Text('Not yet'),
         ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, JumpAnswer.goBack),
+          child: const Text('Go back'),
+        ),
         FilledButton(
-          onPressed: () => Navigator.pop(context, true),
+          onPressed: () => Navigator.pop(context, JumpAnswer.countAsRead),
           child: const Text('Count as read'),
         ),
       ],
     ),
   );
-  return confirmed ?? false;
+  return answer ?? JumpAnswer.notYet;
 }
