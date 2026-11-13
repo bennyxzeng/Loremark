@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:loremark/library/book_repository.dart';
 import 'package:loremark/main.dart';
 import 'package:loremark/settings/ai_settings.dart';
+import 'package:loremark/settings/api_key_screen.dart';
 import 'package:loremark/settings/connection_status.dart';
 import 'package:loremark/settings/settings_screen.dart';
 import 'package:loremark/story_update/story_model_choice.dart';
@@ -49,7 +50,7 @@ void main() {
     return settings;
   }
 
-  Finder keyField() => find.byType(TextField);
+  Finder keyField() => find.byKey(ApiKeyScreen.keyFieldKey);
 
   testWidgets('first launch asks for an API key before the library', (
     tester,
@@ -87,7 +88,7 @@ void main() {
     expect(checked, [(AiProvider.deepseek, 'sk-deep123')]);
     expect(find.text('Books'), findsOne);
     expect(settings.credentials?.provider, AiProvider.deepseek);
-    expect(store.values['ai_api_key'], 'sk-deep123');
+    expect(store.values['ai_key_${settings.credentials!.id}'], 'sk-deep123');
   });
 
   testWidgets('a rejected key is not saved', (tester) async {
@@ -170,21 +171,22 @@ void main() {
     expect(find.byType(SettingsScreen), findsOne);
     expect(find.text('••••••••WXYZ'), findsOne);
 
+    final id = settings.credentials!.id;
+    await tester.tap(find.byTooltip('More for OpenAI'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Remove'));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, 'Remove'));
     await tester.pumpAndSettle();
 
     expect(settings.hasKey, isFalse);
-    expect(store.values.containsKey('ai_api_key'), isFalse);
+    expect(store.values.containsKey('ai_key_$id'), isFalse);
     expect(find.text('Not connected'), findsOne);
   });
 
   test('settings load what was saved', () async {
     final first = AiSettings(store);
-    await first.save(
-      const AiCredentials(provider: AiProvider.openai, apiKey: 'sk-kept'),
-    );
+    await first.add(AiProvider.openai, 'sk-kept');
 
     final reopened = AiSettings(store);
     await reopened.load();
@@ -313,9 +315,7 @@ void main() {
     testWidgets('Ask falls back the way updates do', (tester) async {
       final settings = await pumpSettings(tester);
       await settings.setChatModel(StoryModelChoice.gpt61Sol);
-      await settings.save(
-        const AiCredentials(provider: AiProvider.deepseek, apiKey: 'sk-new'),
-      );
+      await settings.add(AiProvider.deepseek, 'sk-new');
       expect(settings.chatModel, StoryModelChoice.deepseekFlash);
       await settings.setChatEffort(StoryEffort.xhigh);
       // DeepSeek treats Extra high as High, so it isn't offered.
@@ -327,9 +327,7 @@ void main() {
     ) async {
       final settings = await pumpSettings(tester);
       await settings.setStoryModel(StoryModelChoice.gpt61Sol);
-      await settings.save(
-        const AiCredentials(provider: AiProvider.deepseek, apiKey: 'sk-new'),
-      );
+      await settings.add(AiProvider.deepseek, 'sk-new');
       expect(settings.storyModel, StoryModelChoice.deepseekFlash);
     });
 
@@ -380,10 +378,8 @@ void main() {
     testWidgets('removing the key keeps the choices', (tester) async {
       final settings = await pumpSettings(tester);
       await settings.setStoryEffort(StoryEffort.low);
-      await settings.remove();
-      await settings.save(
-        const AiCredentials(provider: AiProvider.openai, apiKey: 'sk-new'),
-      );
+      await settings.remove(settings.credentials!.id);
+      await settings.add(AiProvider.openai, 'sk-new');
       expect(settings.storyEffort, StoryEffort.low);
     });
   });

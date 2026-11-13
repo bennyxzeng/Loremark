@@ -54,7 +54,7 @@ These features support the use cases above, and all of them work in the beta:
 
 - **Library and reader.** Import DRM-free EPUBs, read them with [Readium](https://readium.org/), jump to a chapter from the contents, and reopen each book on the page where you left off.
 - **Spoiler-safe search.** Search a book, limited to the part you have already read, and jump to a match with the passage highlighted.
-- **Your own AI key.** On first launch, connect an OpenAI or DeepSeek API key. Loremark checks the key with the provider and keeps it in the phone's secure storage. You can skip this step and still read, take notes, and look at a Story Map loaded from a file.
+- **Your own AI key.** On first launch, connect an OpenAI or DeepSeek API key. Loremark checks the key with the provider and keeps it in the phone's secure storage. In Settings you can save up to five keys, name them, and switch between them; the key in use can't be switched or removed while a Story Map update or an Ask answer is running on it. You can skip this step and still read, take notes, and look at a Story Map loaded from a file.
 - **Offline mode.** Reading, notes and search work without a connection. An offline banner appears, and features that need the network stay locked until you are back online.
 
 ### Walkthrough: one use case through every part of Loremark
