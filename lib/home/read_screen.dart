@@ -41,6 +41,7 @@ class ReadScreen extends StatefulWidget {
     this.noteJumps,
     this.passageJumps,
     this.positionJumps,
+    this.progressBar,
   });
 
   final Book book;
@@ -86,6 +87,10 @@ class ReadScreen extends StatefulWidget {
   /// Lets other code send the reader to a position, such as back to where
   /// they were before a jump.
   final PositionJumpController? positionJumps;
+
+  /// Shown at the bottom, left of how far through the book the reader is,
+  /// such as a bar of how much of the book counts as read.
+  final Widget? progressBar;
 
   @override
   State<ReadScreen> createState() => _ReadScreenState();
@@ -930,6 +935,7 @@ class _ReadScreenState extends State<ReadScreen> {
         ),
         _PageControls(
           progress: _position?.totalProgression,
+          progressBar: widget.progressBar,
           onPrevious: () => unawaited(_turnPage(session.goBackward)),
           onNext: () => unawaited(_turnPage(session.goForward)),
         ),
@@ -1043,12 +1049,16 @@ class _ChapterBar extends StatelessWidget {
 class _PageControls extends StatelessWidget {
   const _PageControls({
     required this.progress,
+    required this.progressBar,
     required this.onPrevious,
     required this.onNext,
   });
 
   /// How far into the whole book, if the renderer knows.
   final double? progress;
+
+  /// Goes left of [progress], if set.
+  final Widget? progressBar;
   final VoidCallback onPrevious;
   final VoidCallback onNext;
 
@@ -1061,6 +1071,13 @@ class _PageControls extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final progress = this.progress;
+    final bar = progressBar;
+    final label = Text(
+      progress == null ? '' : _label(progress),
+      key: const ValueKey('progress-label'),
+      textAlign: TextAlign.center,
+      style: kicker(color: LoremarkColors.muted),
+    );
     return DecoratedBox(
       decoration: const BoxDecoration(
         border: Border(top: BorderSide(color: LoremarkColors.line)),
@@ -1074,12 +1091,15 @@ class _PageControls extends StatelessWidget {
             onPressed: onPrevious,
           ),
           Expanded(
-            child: Text(
-              progress == null ? '' : _label(progress),
-              key: const ValueKey('progress-label'),
-              textAlign: TextAlign.center,
-              style: kicker(color: LoremarkColors.muted),
-            ),
+            child: bar == null
+                ? label
+                : Row(
+                    children: [
+                      Expanded(child: bar),
+                      const SizedBox(width: 10),
+                      label,
+                    ],
+                  ),
           ),
           IconButton(
             icon: const Icon(Icons.chevron_right),

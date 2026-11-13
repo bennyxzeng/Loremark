@@ -132,12 +132,18 @@ void main() {
       const position = ReaderPosition(9, 0.25);
       await Future.wait([
         store.save(bookA, position),
-        store.saveProgress(bookA, furthest: furthest, boundary: boundary),
+        store.saveProgress(
+          bookA,
+          furthest: furthest,
+          boundary: boundary,
+          boundaryTotal: 0.3,
+        ),
       ]);
       final restarted = ReadingPositionStore(store.root);
       expect(await restarted.loadProgress(bookA), (
         furthest: furthest,
         boundary: boundary,
+        boundaryTotal: 0.3,
       ));
       expect(await restarted.load(bookA), position);
     });
@@ -145,7 +151,12 @@ void main() {
     test('doesn\'t change the position', () async {
       const position = ReaderPosition(2, 0.3);
       await store.save(bookA, position);
-      await store.saveProgress(bookA, furthest: furthest, boundary: boundary);
+      await store.saveProgress(
+        bookA,
+        furthest: furthest,
+        boundary: boundary,
+        boundaryTotal: 0.3,
+      );
       expect(await store.load(bookA), position);
     });
 
@@ -167,6 +178,39 @@ void main() {
         }),
       );
       expect(await store.loadProgress(bookA), isNull);
+    });
+
+    test('forgets the old boundary\'s total along with it', () async {
+      await store.saveProgress(
+        bookA,
+        furthest: furthest,
+        boundary: boundary,
+        boundaryTotal: 0.3,
+      );
+      await store.saveProgress(
+        bookA,
+        furthest: furthest,
+        boundary: furthest,
+        boundaryTotal: null,
+      );
+      expect((await store.loadProgress(bookA))?.boundaryTotal, isNull);
+    });
+
+    test('reads a total that isn\'t a fraction as unknown', () async {
+      await writeRaw(
+        bookA,
+        jsonEncode({
+          'version': 1,
+          'furthest': furthest.toJson(),
+          'boundary': boundary.toJson(),
+          'boundaryTotal': 1.5,
+        }),
+      );
+      expect(await store.loadProgress(bookA), (
+        furthest: furthest,
+        boundary: boundary,
+        boundaryTotal: null,
+      ));
     });
   });
 

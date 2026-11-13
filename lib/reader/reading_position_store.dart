@@ -15,7 +15,8 @@ import 'reader_position.dart';
 /// `{"version": 1, "current": <ReaderPosition JSON>}`, and `pageStart` and
 /// `pageEnd` beside it once a page has reported where it starts and ends.
 /// `ReadingProgressTracker` keeps its `furthest` and `boundary` beside
-/// `current` in the same file, as `TextPosition` JSON.
+/// `current` in the same file, as `TextPosition` JSON, and `boundaryTotal`,
+/// how far into the whole book the boundary is, once that is known.
 ///
 /// The reader saves on every page turn, so a write is one small file, and a
 /// crash at any point leaves either the old position or the new one.
@@ -111,10 +112,9 @@ class ReadingPositionStore {
   }
 
   /// The furthest position and the knowledge boundary saved for [bookId], or
-  /// null if either is missing or the file can't be read.
-  Future<({TextPosition furthest, TextPosition boundary})?> loadProgress(
-    String bookId,
-  ) async {
+  /// null if either is missing or the file can't be read. `boundaryTotal` is
+  /// null if it wasn't saved or isn't a fraction.
+  Future<SavedProgress?> loadProgress(String bookId) async {
     final state = await _readState(_file(bookId));
     final furthest = state['furthest'];
     final boundary = state['boundary'];
@@ -122,25 +122,31 @@ class ReadingPositionStore {
         boundary is! Map<String, dynamic>) {
       return null;
     }
+    final total = state['boundaryTotal'];
     try {
       return (
         furthest: TextPosition.fromJson(furthest),
         boundary: TextPosition.fromJson(boundary),
+        boundaryTotal: total is num && total >= 0 && total <= 1
+            ? total.toDouble()
+            : null,
       );
     } on FormatException {
       return null;
     }
   }
 
-  /// Writes [furthest] and [boundary] for [bookId], leaving `current` to
-  /// [save], and completes and fails the way [save] does.
+  /// Writes [furthest], [boundary] and [boundaryTotal] for [bookId], leaving
+  /// `current` to [save], and completes and fails the way [save] does.
   Future<void> saveProgress(
     String bookId, {
     required TextPosition furthest,
     required TextPosition boundary,
+    required double? boundaryTotal,
   }) async => _enqueue(bookId, (save) {
     save.furthest = furthest;
     save.boundary = boundary;
+    save.boundaryTotal = boundaryTotal;
   });
 
   /// Writes [position] as the saved position for [bookId].
@@ -202,6 +208,9 @@ class ReadingPositionStore {
     }
     if (save.boundary case final boundary?) {
       state['boundary'] = boundary.toJson();
+      // An old total would put the new boundary in the wrong place.
+      state.remove('boundaryTotal');
+      if (save.boundaryTotal case final total?) state['boundaryTotal'] = total;
     }
     final temp = File('${file.path}.tmp');
     await temp.writeAsString(jsonEncode(state), flush: true);
@@ -229,5 +238,13 @@ class _QueuedSave {
   PageEnd? pageEnd;
   TextPosition? furthest;
   TextPosition? boundary;
+  double? boundaryTotal;
   final done = Completer<void>();
 }
+
+/// What [ReadingPositionStore.loadProgress] returns.
+typedef SavedProgress = ({
+  TextPosition furthest,
+  TextPosition boundary,
+  double? boundaryTotal,
+});

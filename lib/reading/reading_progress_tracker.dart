@@ -2,16 +2,15 @@ import 'dart:math';
 
 import 'text_position.dart';
 
-/// Result of [ReadingProgressTracker.updatePosition].
-enum PositionUpdateResult { updated, needsConfirmation }
-
 /// Tracks how far the reader has read and the knowledge boundary for AI features.
 ///
 /// The boundary is the furthest position the reader has confirmed reading.
-/// Small steps forward move it automatically, but a jump waits for
-/// [confirmJump]: more than [maxJumpSections] sections past it, or, in its own
-/// section, more than [maxJumpPages] pages past it. When the section's page
-/// count is unknown, more than [maxJumpProgression] of the section is a jump.
+/// Small steps forward move it automatically, but a jump leaves it where it is
+/// until [confirmJump]: more than [maxJumpSections] sections past it, or, in
+/// its own section, more than [maxJumpPages] pages past it. When the section's
+/// page count is unknown, more than [maxJumpProgression] of the section is a
+/// jump. While the reader is past the boundary after a jump, [pendingJump] is
+/// where they are.
 class ReadingProgressTracker {
   final int maxJumpSections;
   final int maxJumpPages;
@@ -21,10 +20,9 @@ class ReadingProgressTracker {
   TextPosition _furthest;
   TextPosition _boundary;
   TextPosition? _pendingJump;
-
-  /// The furthest section asked about while [_pendingJump] waits.
-  int _askedSection = 0;
   TextPosition _jumpedFrom = const TextPosition(0, 0);
+  double? _currentTotal;
+  double? _boundaryTotal;
 
   /// Creates a tracker for a book that has not been opened yet.
   ReadingProgressTracker({
@@ -35,88 +33,84 @@ class ReadingProgressTracker {
        _furthest = const TextPosition(0, 0),
        _boundary = const TextPosition(0, 0);
 
-  /// Picks up a book where it was left, with no jump waiting.
+  /// Picks up a book where it was left. A book left past the boundary was
+  /// left on a jump that still waits, to go back from to the boundary.
   ReadingProgressTracker.resume({
     required this._current,
     required this._furthest,
     required this._boundary,
+    this._currentTotal,
+    this._boundaryTotal,
     this.maxJumpSections = 2,
     this.maxJumpPages = 10,
     this.maxJumpProgression = 0.3,
-  });
+  }) {
+    if (_current > _boundary) {
+      _pendingJump = _current;
+      _jumpedFrom = _boundary;
+    }
+  }
 
-  /// Reads a tracker saved by [toJson].
+  /// Reads a tracker saved by [toJson], the way [ReadingProgressTracker.resume]
+  /// picks one up.
   ///
   /// Throws a [FormatException] if any position is missing or invalid.
-  ReadingProgressTracker.fromJson(
-    Map<String, dynamic> json, {
-    this.maxJumpSections = 2,
-    this.maxJumpPages = 10,
-    this.maxJumpProgression = 0.3,
-  }) : _current = _positionFromJson(json['current']),
-       _furthest = _positionFromJson(json['furthest']),
-       _boundary = _positionFromJson(json['boundary']);
+  ReadingProgressTracker.fromJson(Map<String, dynamic> json)
+    : this.resume(
+        current: _positionFromJson(json['current']),
+        furthest: _positionFromJson(json['furthest']),
+        boundary: _positionFromJson(json['boundary']),
+      );
 
   TextPosition get current => _current;
   TextPosition get furthest => _furthest;
   TextPosition get boundary => _boundary;
 
-  /// The position of an unconfirmed jump, or null if there is none.
+  /// Where the reader is past the boundary after a jump, or null if they
+  /// aren't.
   TextPosition? get pendingJump => _pendingJump;
 
-  /// Where the reader was just before the pending jump, to go back to. If
-  /// that was past the boundary, as after reopening a book left there, it is
-  /// the boundary. Only meaningful while [pendingJump] is set.
+  /// Where the reader was just before the pending jump, to go back to. Only
+  /// meaningful while [pendingJump] is set.
   TextPosition get jumpedFrom => _jumpedFrom;
+
+  /// How far into the whole book [current] is, or null if unknown.
+  double? get currentTotal => _currentTotal;
+
+  /// How far into the whole book [boundary] is, or null if unknown.
+  double? get boundaryTotal => _boundaryTotal;
 
   /// Records a new reader position and moves the boundary if it is safe.
   ///
-  /// [sectionPages] is how many pages [position]'s section has, if known.
-  PositionUpdateResult updatePosition(
+  /// [sectionPages] is how many pages [position]'s section has, and
+  /// [totalProgression] how far into the whole book it is, if known.
+  void updatePosition(
     TextPosition position, {
     int? sectionPages,
+    double? totalProgression,
   }) {
     final previous = _current;
     _current = position;
+    _currentTotal = totalProgression;
     if (position > _furthest) {
       _furthest = position;
     }
     if (position <= _boundary) {
       _pendingJump = null;
-      return PositionUpdateResult.updated;
+      return;
     }
     final pending = _pendingJump;
-    // Reading on from an unconfirmed jump doesn't count as read either, but
-    // each new section is asked about once, so a reader who said "not yet"
-    // can still move the boundary by reading on.
-    if (pending != null && position >= pending) {
+    // Reading on from an unconfirmed jump doesn't count as read either.
+    if ((pending != null && position >= pending) ||
+        _isJump(position, sectionPages)) {
+      // With no jump waiting, the reader was at or behind the boundary.
+      if (pending == null) _jumpedFrom = previous;
       _pendingJump = position;
-      if (position.sectionIndex <= _askedSection) {
-        return PositionUpdateResult.updated;
-      }
-      _askedSection = position.sectionIndex;
-      return PositionUpdateResult.needsConfirmation;
+      return;
     }
-    if (!_isJump(position, sectionPages)) {
-      _boundary = position;
-      _pendingJump = null;
-      return PositionUpdateResult.updated;
-    }
-    _pendingJump = position;
-    // Ask only once per jump: going back a little from an unconfirmed jump
-    // just moves it.
-    if (pending != null &&
-        (position.sectionIndex - pending.sectionIndex).abs() <=
-            maxJumpSections) {
-      return PositionUpdateResult.updated;
-    }
-    // Asked again while a jump still waits, going back still goes to before
-    // the first one.
-    if (pending == null) {
-      _jumpedFrom = previous <= _boundary ? previous : _boundary;
-    }
-    _askedSection = position.sectionIndex;
-    return PositionUpdateResult.needsConfirmation;
+    _boundary = position;
+    _boundaryTotal = totalProgression;
+    _pendingJump = null;
   }
 
   /// Whether [position], past the boundary, is too far to count as read
@@ -142,6 +136,8 @@ class ReadingProgressTracker {
       return;
     }
     _boundary = pending;
+    // A pending jump is always where the reader is.
+    _boundaryTotal = _currentTotal;
     _pendingJump = null;
   }
 

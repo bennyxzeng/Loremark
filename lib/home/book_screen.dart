@@ -25,7 +25,9 @@ import '../story_map/story_map_status.dart';
 import '../story_map/story_map_tab.dart';
 import '../story_update/story_updater.dart';
 import '../theme/loremark_theme.dart';
+import 'ahead_banner.dart';
 import 'ask_screen.dart';
+import 'boundary_bar.dart';
 import 'eased_keyboard.dart';
 import 'notes_screen.dart';
 import 'offline_banner.dart';
@@ -103,6 +105,7 @@ class _BookScreenState extends State<BookScreen> {
   @override
   void dispose() {
     _bannerTimer?.cancel();
+    _place.dispose();
     _storyMapStatus.dispose();
     _ask.dispose();
     _recap
@@ -170,14 +173,21 @@ class _BookScreenState extends State<BookScreen> {
   /// It is offered once each time the book opens.
   bool _welcomeOffered = false;
 
-  /// How far the reader has read, so a jump ahead is asked about before it
-  /// counts as read. Null until it loads, and for good if the store can't be
+  /// How far the reader has read, so a jump ahead doesn't count as read until
+  /// they say so. Null until it loads, and for good if the store can't be
   /// read.
   ReadingProgressTracker? _progress;
   late ReadingPositionStore _progressStore;
 
   /// Where the reader moved before [_progress] loaded, checked once it has.
   ReaderPosition? _movedBeforeLoad;
+
+  /// What the bar by the page count and the banner show: how far into the
+  /// book the boundary and the reader are, and whether the reader jumped past
+  /// the boundary and is still there. Only they listen, so the reader isn't
+  /// rebuilt on every page. Null until [_progress] loads.
+  final _place =
+      ValueNotifier<({double? boundary, double? current, bool ahead})?>(null);
 
   @override
   void initState() {
@@ -198,10 +208,13 @@ class _BookScreenState extends State<BookScreen> {
       );
       return;
     }
+    if (!mounted) return;
     _progress = progress;
+    // A book left past the boundary shows the banner at once.
+    _showPlace(progress);
     final moved = _movedBeforeLoad;
     _movedBeforeLoad = null;
-    if (moved != null && mounted) _trackProgress(progress, moved);
+    if (moved != null) _trackProgress(progress, moved);
   }
 
   void _readerMoved(ReaderPosition position) {
@@ -215,41 +228,47 @@ class _BookScreenState extends State<BookScreen> {
   }
 
   /// Moves the boundary with the reader and saves it when it or the furthest
-  /// position changes. A jump too far ahead waits for the reader to say the
-  /// skipped chapters count as read.
+  /// position changes. After a jump too far ahead the banner shows until the
+  /// reader goes back or counts it as read.
   void _trackProgress(
     ReadingProgressTracker progress,
     ReaderPosition position,
   ) {
     final furthest = progress.furthest;
     final boundary = progress.boundary;
-    final result = progress.updatePosition(
+    progress.updatePosition(
       TextPosition(position.sectionIndex, position.progression),
       sectionPages: position.sectionPages,
+      totalProgression: position.totalProgression,
     );
     if (progress.furthest != furthest || progress.boundary != boundary) {
       unawaited(_saveProgress(progress));
     }
-    if (result == PositionUpdateResult.needsConfirmation) {
-      unawaited(_confirmJump(progress));
-    }
+    _showPlace(progress);
   }
 
-  Future<void> _confirmJump(ReadingProgressTracker progress) async {
-    final from = progress.jumpedFrom;
-    final answer = await confirmSkippedChapters(context);
-    switch (answer) {
-      case JumpAnswer.countAsRead:
-        progress.confirmJump();
-        await _saveProgress(progress);
-      case JumpAnswer.goBack:
-        // Once there, the reader is behind the boundary, which drops the jump.
-        await _positionJumps.goTo(
-          ReaderPosition(from.sectionIndex, from.progression),
-        );
-      case JumpAnswer.notYet:
-        break;
-    }
+  void _showPlace(ReadingProgressTracker progress) {
+    _place.value = (
+      boundary: progress.boundaryTotal,
+      current: progress.currentTotal,
+      ahead: progress.pendingJump != null,
+    );
+  }
+
+  void _countAsRead() {
+    final progress = _progress!;
+    progress.confirmJump();
+    _showPlace(progress);
+    unawaited(_saveProgress(progress));
+  }
+
+  /// The banner goes once the reader is there, behind the boundary. If going
+  /// back fails, it stays.
+  void _goBack() {
+    final from = _progress!.jumpedFrom;
+    unawaited(
+      _positionJumps.goTo(ReaderPosition(from.sectionIndex, from.progression)),
+    );
   }
 
   Future<void> _saveProgress(ReadingProgressTracker progress) async {
@@ -258,6 +277,7 @@ class _BookScreenState extends State<BookScreen> {
         widget.book.id,
         furthest: progress.furthest,
         boundary: progress.boundary,
+        boundaryTotal: progress.boundaryTotal,
       );
     } on Object catch (error) {
       debugPrint(
@@ -351,21 +371,55 @@ class _BookScreenState extends State<BookScreen> {
                     IndexedStack(
                       index: _selectedTab,
                       children: [
-                        SwipeHint(
-                          child: ReadScreen(
-                            book: widget.book,
-                            readerService: widget.readerService,
-                            openPositionStore: widget.openPositionStore,
-                            openSearch: () => openPassageSearch(
-                              bookId: widget.book.id,
-                              epubPath: widget.book.epubPath,
+                        Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            SwipeHint(
+                              child: ReadScreen(
+                                book: widget.book,
+                                readerService: widget.readerService,
+                                openPositionStore: widget.openPositionStore,
+                                openSearch: () => openPassageSearch(
+                                  bookId: widget.book.id,
+                                  epubPath: widget.book.epubPath,
+                                ),
+                                notes: _notes,
+                                noteJumps: _noteJumps,
+                                passageJumps: _passageJumps,
+                                positionJumps: _positionJumps,
+                                onPositionChanged: _readerMoved,
+                                progressBar: ValueListenableBuilder(
+                                  valueListenable: _place,
+                                  builder: (context, place, _) => place == null
+                                      ? const SizedBox.shrink()
+                                      : BoundaryBar(
+                                          boundary: place.boundary,
+                                          current: place.current,
+                                          ahead: place.ahead,
+                                        ),
+                                ),
+                              ),
                             ),
-                            notes: _notes,
-                            noteJumps: _noteJumps,
-                            passageJumps: _passageJumps,
-                            positionJumps: _positionJumps,
-                            onPositionChanged: _readerMoved,
-                          ),
+                            // Where the swipe hint goes, above the page
+                            // buttons.
+                            Positioned(
+                              left: 12,
+                              right: 12,
+                              bottom: 60,
+                              child: ValueListenableBuilder(
+                                valueListenable: _place,
+                                builder: (context, place, _) =>
+                                    place?.ahead ?? false
+                                    ? Center(
+                                        child: AheadBanner(
+                                          onGoBack: _goBack,
+                                          onCountAsRead: _countAsRead,
+                                        ),
+                                      )
+                                    : const SizedBox.shrink(),
+                              ),
+                            ),
+                          ],
                         ),
                         AiLock(
                           feature: 'Ask',
