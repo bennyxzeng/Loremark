@@ -113,7 +113,6 @@ flowchart LR
 
 **For the final release:**
 
-- A recap when you come back to a book (use case 1).
 - A theory tracker that checks your guesses as the story reveals more (use case 2).
 - Character cards opened by tapping a name in the reader.
 
@@ -163,15 +162,11 @@ Have feedback? [Open an issue](https://github.com/bennyxzeng/Loremark/issues) wi
 
 ## The story model
 
-[![The story model at a glance: entities, seven kinds of claims, evidence, two labels, and supersede/retract/resolve as the book goes on, all with Chapters 1–2 of 86 as the example](docs/assets/story-model-at-a-glance.svg)](docs/story-model-format.md)
-
-Every field and label is explained in [Story Model: file structure and labels](docs/story-model-format.md), in English and Chinese.
+A diagram of the story model at a glance, and every field and label explained, are in [Story Model: file structure and labels](docs/story-model-format.md), in English and Chinese.
 
 ## Ask: the AI chat
 
-[![Ask at a glance: what the AI is given and never sees, one question step by step, the same question asked at Chapter 1 and Chapter 2 of 86, and how conversations work](docs/assets/ask-at-a-glance.svg)](docs/ask.md)
-
-How Ask works, from this picture down to each request it sends, is in [Ask: how the AI chat works](docs/ask.md), in English and Chinese.
+How Ask works, from a diagram at a glance down to each request it sends, is in [Ask: how the AI chat works](docs/ask.md), in English and Chinese.
 
 ## Meet your reading companion
 
