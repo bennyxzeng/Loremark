@@ -194,35 +194,14 @@ class _ChapterDigestViewState extends State<ChapterDigestView> {
   _DigestPage _currentPage(List<_DigestPage> pages) =>
       pages.contains(_pickedPage) ? _pickedPage! : pages.first;
 
-  Widget _pageBar(List<_DigestPage> pages, Map<_DigestPage, int> counts) {
-    final current = _currentPage(pages);
-    final theme = Theme.of(context);
-    final colors = theme.colorScheme;
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        spacing: 8,
-        children: [
-          for (final page in pages)
-            ChoiceChip(
-              label: Text('${page.label} ${counts[page]}'),
-              selected: page == current,
-              showCheckmark: false,
-              // The app's chip theme looks the same selected or not.
-              selectedColor: colors.primary,
-              labelStyle: page == current
-                  ? theme.chipTheme.labelStyle?.copyWith(
-                      color: colors.onPrimary,
-                    )
-                  : null,
-              visualDensity: VisualDensity.compact,
-              onSelected: (_) => setState(() => _pickedPage = page),
-            ),
-        ],
-      ),
-    );
-  }
+  Widget _pageBar(List<_DigestPage> pages, Map<_DigestPage, int> counts) =>
+      FactPageBar(
+        pages: pages,
+        current: _currentPage(pages),
+        label: (page) => '${page.label} ${counts[page]}',
+        onSelected: (page) => setState(() => _pickedPage = page),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+      );
 
   Widget _chips(List<String> entityIds) => Wrap(
     spacing: 8,
