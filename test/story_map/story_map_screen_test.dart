@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loremark/story_map/chapter_digest_view.dart';
+import 'package:loremark/story_map/character_card_view.dart';
 import 'package:loremark/story_map/character_graph_view.dart';
 import 'package:loremark/story_map/graph_guide_sheet.dart';
 import 'package:loremark/story_map/label_guide_sheet.dart';
@@ -122,6 +123,123 @@ void main() {
     expect(find.text('Changes: Retracted'), findsOne);
     expect(find.text('Changes: Answered'), findsNothing);
     expect(find.text('Changes'), findsNothing);
+  });
+
+  group('relationship names on a card', () {
+    // The top card only, as the character list behind it has the names too.
+    final topCard = find.byType(CharacterCardView).last;
+
+    Finder linkOnTopCard(String name) => find.descendant(
+      of: topCard,
+      matching: find.widgetWithText(FactLink, name),
+    );
+
+    Future<void> openMarasCard(WidgetTester tester) async {
+      tester.view.physicalSize = const Size(800, 2000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await pumpStoryMap(tester);
+      await showTab(tester, 'Characters');
+      await tester.tap(find.text('Mara Quinn'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('link to the other end, not the card\'s own entity', (
+      tester,
+    ) async {
+      await openMarasCard(tester);
+      final snapshot = tester.widget<CharacterCardView>(topCard).snapshot;
+
+      expect(
+        [
+          for (final link in tester.widgetList<FactLink>(
+            find.descendant(of: topCard, matching: find.byType(FactLink)),
+          ))
+            link.name,
+        ],
+        unorderedEquals([
+          'Harbor Guild',
+          snapshot.displayName('c002'),
+          'Elian',
+        ]),
+      );
+    });
+
+    testWidgets('each open its own card', (tester) async {
+      await openMarasCard(tester);
+
+      // "Elian sibling of Mara Quinn": Elian comes first in the row.
+      await tester.tap(linkOnTopCard('Elian'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CharacterCardView), findsNWidgets(2));
+      expect(
+        find.descendant(of: topCard, matching: find.text('Elian')),
+        findsOne,
+      );
+      expect(
+        find.descendant(
+          of: topCard,
+          matching: find.text('character · First seen in Chapter 2'),
+        ),
+        findsOne,
+      );
+
+      // The same row on Elian's card: Mara Quinn comes second.
+      await tester.tap(linkOnTopCard('Mara Quinn'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CharacterCardView), findsNWidgets(3));
+      expect(
+        find.descendant(
+          of: topCard,
+          matching: find.text('Also known as the harbor girl'),
+        ),
+        findsOne,
+      );
+    });
+
+    testWidgets('open places and groups too', (tester) async {
+      await openMarasCard(tester);
+
+      await tester.tap(linkOnTopCard('Harbor Guild'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.descendant(
+          of: topCard,
+          matching: find.text('organization · First seen in Chapter 1'),
+        ),
+        findsOne,
+      );
+    });
+
+    testWidgets('look like links, and the rest of the row doesn\'t', (
+      tester,
+    ) async {
+      await openMarasCard(tester);
+      final primary = Theme.of(tester.element(topCard)).colorScheme.primary;
+      final link = linkOnTopCard('Elian');
+      final linkStyle = tester
+          .widget<Text>(find.descendant(of: link, matching: find.byType(Text)))
+          .style!;
+      final row = find.ancestor(of: link, matching: find.byType(FactTile));
+      final rowStyle = tester
+          .widget<Text>(
+            find.descendant(of: row, matching: find.byType(Text)).first,
+          )
+          .style!;
+
+      expect(linkStyle.color, primary);
+      expect(linkStyle.decoration, TextDecoration.underline);
+      expect(rowStyle.color, isNot(primary));
+      expect(rowStyle.decoration, isNot(TextDecoration.underline));
+      // Only the names are tappable, not the whole row.
+      expect(
+        find.ancestor(of: row, matching: find.byType(InkWell)),
+        findsNothing,
+      );
+    });
   });
 
   testWidgets('chapter view lists what changed', (tester) async {
