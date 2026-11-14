@@ -786,6 +786,22 @@ void main() {
       );
     });
 
+    testWidgets('lines next to each other in brackets back to back are one '
+        'citation', (tester) async {
+      // Not one bracket, as the prompt asks, but how DeepSeek writes it.
+      await pumpAsk(
+        tester,
+        replies: [(200, answer('Mara waited by it [page/2][page/3].'))],
+      );
+      await askQuestion(tester, 'What did Mara do?');
+      expect(find.text('1'), findsOne);
+      expect(find.text('2'), findsNothing);
+
+      await tester.tap(find.text('1'));
+      await tester.pumpAndSettle();
+      expect(highlighted(tester), ['Second line.', 'Third line.']);
+    });
+
     testWidgets('with no line, all of them show, ending at the page', (
       tester,
     ) async {
