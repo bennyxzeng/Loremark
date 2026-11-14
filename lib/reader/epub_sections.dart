@@ -97,6 +97,11 @@ const leafBlockTags = {
 /// fraction sits a quarter of a character past the point, so rounding can
 /// never push the passage just before it across the line.
 ///
+/// [blockNumber] one past the last block, with no [characters], means no block
+/// reaches past the page: it ends with the last block, as on the last page of
+/// a section that has text, even if pages of pictures come after it. Text
+/// after the last block, outside any block, isn't counted as seen.
+///
 /// [tail], if given, is the last characters, up to [tailLength], not counting
 /// whitespace, that the page script saw before the end of the page. It must
 /// be the same characters as those just before the point in the plain text,
@@ -119,29 +124,39 @@ double? textProgressionOfBlock(
   }
   final body = document.findAllElements('body').firstOrNull;
   if (body == null || blockNumber < 0 || characters < 0) return null;
-  final target = textBlocks(body).skip(blockNumber).firstOrNull;
-  if (target == null) return null;
+  final blocks = textBlocks(body).toList();
+  final pastLast = blockNumber == blocks.length;
+  if (blocks.isEmpty || blockNumber > blocks.length) return null;
+  if (pastLast && characters > 0) return null;
   final (:text, :targetOffset, :targetEnd) = _walkBody(
     document,
-    target: target,
+    target: pastLast ? blocks.last : blocks[blockNumber],
   );
   if (targetOffset == null || targetEnd == null || text.isEmpty) return null;
-  // The first character past the page: the one after [characters] others.
-  // Never past the block, whatever the page script reported.
-  var seen = 0;
-  var at = targetOffset;
-  for (; at < targetEnd; at++) {
-    if (_isWhitespace(text.codeUnitAt(at))) continue;
-    if (seen == characters) break;
-    seen++;
+  final int at;
+  if (pastLast) {
+    // Just after the last block's last character.
+    at = targetEnd;
+  } else {
+    // The first character past the page: the one after [characters] others.
+    // Never past the block, whatever the page script reported.
+    var seen = 0;
+    var next = targetOffset;
+    for (; next < targetEnd; next++) {
+      if (_isWhitespace(text.codeUnitAt(next))) continue;
+      if (seen == characters) break;
+      seen++;
+    }
+    if (next >= targetEnd) return null;
+    at = next;
   }
-  if (at >= targetEnd) return null;
   if (tail != null &&
       tail.isNotEmpty &&
       tail != _tailBefore(text, at, tail.length)) {
     return null;
   }
-  return (at + 0.25) / text.length;
+  // Past the end of the text only after the last block, which ends it.
+  return min(1.0, (at + 0.25) / text.length);
 }
 
 /// How many characters of text before the end of the reader's page Ask sees:

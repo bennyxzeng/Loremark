@@ -44,8 +44,8 @@ void main() {
         for (var n = 0; n < 6; n++)
           if (textProgressionOfBlock(xhtml, n) != null) n,
       ];
-      // one, two, three, four.
-      expect(numbers, [0, 1, 2, 3]);
+      // one, two, three, four, and one past the last: the end of four.
+      expect(numbers, [0, 1, 2, 3, 4]);
     });
 
     test('are not shifted by elements that hold no text', () {
@@ -55,7 +55,7 @@ void main() {
         '<div id="decoration"></div><p>one</p><span></span><p>two</p>'
         '<p>three</p><div class="flutter-readium-spotlight"></div>',
       );
-      for (var n = 0; n < 3; n++) {
+      for (var n = 0; n <= 3; n++) {
         final inPlain = textProgressionOfBlock(plain, n)!;
         final inDecorated = textProgressionOfBlock(decorated, n)!;
         expect(inDecorated, inPlain);
@@ -64,10 +64,68 @@ void main() {
 
     test('are null for a block that does not exist or markup that is bad', () {
       final xhtml = _page('<p>one</p><p>two</p>');
-      expect(textProgressionOfBlock(xhtml, 2), isNull);
+      // Block 2 is one past the last, which ends the page with it.
+      expect(textProgressionOfBlock(xhtml, 3), isNull);
       expect(textProgressionOfBlock(xhtml, -1), isNull);
       expect(textProgressionOfBlock('<p>broken', 0), isNull);
       expect(textProgressionOfBlock(_page(''), 0), isNull);
+      expect(textProgressionOfBlock(_page('<img src="x.png"/>'), 0), isNull);
+    });
+  });
+
+  group('one past the last block', () {
+    const paragraphs = ['One two three.', 'Four five six.'];
+    final body = [for (final p in paragraphs) '<p>$p</p>'].join();
+
+    test('ends the page with the last block', () {
+      final xhtml = _page(body);
+      final end = textProgressionOfBlock(xhtml, 2)!;
+      expect(end, 1);
+      expect(textBeforePageEnd(xhtml, end), paragraphs.join('\n\n'));
+    });
+
+    test('shows all of the text when only a picture comes after it', () {
+      // The last page with text, before a full-page illustration.
+      final xhtml = _page(
+        '$body<figure><img src="images/010.jpg" alt=""/></figure>',
+      );
+      final end = textProgressionOfBlock(xhtml, 2, tail: 'Fourfivesix.')!;
+      expect(textBeforePageEnd(xhtml, end), paragraphs.join('\n\n'));
+    });
+
+    test('lets search find every paragraph', () {
+      final index = _indexOf(body);
+      final end = textProgressionOfBlock(_page(body), 2)!;
+      final hits = index
+          .search('three six', cutoff: ReaderPosition(0, end))
+          .hits;
+      expect(
+        [for (final hit in hits) hit.passage.text]..sort(),
+        [...paragraphs]..sort(),
+      );
+    });
+
+    test('leaves out text after the last block that is in no block', () {
+      // The script only sees blocks, so it can't tell where this text is.
+      final xhtml = _page('${body}Loose words after.');
+      final end = textProgressionOfBlock(xhtml, 2)!;
+      expect(end, lessThan(1));
+      expect(textBeforePageEnd(xhtml, end), paragraphs.join('\n\n'));
+    });
+
+    test('checks the tail against the end of the last block', () {
+      final xhtml = _page('${body}Loose words after.');
+      expect(textProgressionOfBlock(xhtml, 2, tail: 'Fourfivesix.'), isNotNull);
+      expect(textProgressionOfBlock(xhtml, 2, tail: 'wordsafter.'), isNull);
+      // A count one block short of the page's.
+      expect(
+        textProgressionOfBlock(_page(body), 2, tail: 'Onetwothree.'),
+        isNull,
+      );
+    });
+
+    test('takes no characters', () {
+      expect(textProgressionOfBlock(_page(body), 2, characters: 1), isNull);
     });
   });
 
