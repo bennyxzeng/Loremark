@@ -36,7 +36,7 @@ class AiLock extends StatelessWidget {
         badge: Icons.lock_outline,
         title: '$feature needs an API key',
         message:
-            '$feature uses an AI model through your own OpenAI or DeepSeek '
+            '$feature uses an AI model through your own OpenAI, DeepSeek or OpenRouter '
             'API key. Reading works without one.',
         action: FilledButton.icon(
           onPressed: () => ApiKeyScreen.push(context),

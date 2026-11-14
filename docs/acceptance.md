@@ -100,6 +100,13 @@ With PR #58 the app can contact api.openai.com or api.deepseek.com, but only
 after the user saves a key. The harness never saves one, so the app must still
 make no requests during a run.
 
+Once a key is saved, theory checking (see [docs/theories.md](theories.md), part 2)
+adds two expected request types to the same two hosts: a split request (the
+theory text and its passage) and a check request (one finished section and the
+open sub-theories). A debug recorder added later should expect both, and a
+check request should never contain markers from the section in progress or any
+later chapter. The harness still saves no key, so a run must still make none.
+
 Proves: during the scripted session the app moved no bytes over the network,
 and the capture shows no destination outside the baseline and allow-list.
 

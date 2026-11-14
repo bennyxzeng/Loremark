@@ -40,7 +40,7 @@ build settings, not app code) and one cosmetic text fix; each row says which.
 
 ## All bugs
 
-Each ID links to its GitHub issue (#17 to #86). Commit hashes link to
+Each ID links to its GitHub issue (#17 to #88). Commit hashes link to
 `https://github.com/bennyxzeng/Loremark/commit/<hash>`. CI runs link to
 `https://github.com/bennyxzeng/Loremark/actions/runs/<id>`.
 
@@ -95,6 +95,8 @@ Each ID links to its GitHub issue (#17 to #86). Commit hashes link to
 | [OPEN-07](https://github.com/bennyxzeng/Loremark/issues/54) | 2026-11-03 | P2 | usability | Fixed-layout EPUBs (such as PDF conversions) keep the publisher's white pages; Readium ignores theme colours | Open | |
 | [OPEN-08](https://github.com/bennyxzeng/Loremark/issues/77) | 2026-11-04 | P2 | usability | On the iPhone simulator, the reader's progress percentage stays empty | Open, not confirmed on a real iPhone | |
 | [THY-01](https://github.com/bennyxzeng/Loremark/issues/86) | 2026-11-09 | P2 | usability | The Add note sheet jumps after choosing Theory, so taps on the text box miss | Fixed, with a regression test | [d4062ff](https://github.com/bennyxzeng/Loremark/commit/d4062ff) |
+| [THY-02](https://github.com/bennyxzeng/Loremark/issues/87) | 2026-11-09 | P2 | usability | The theory banner covered the page-turn arrows, so tapping next opened the Notes tab | Fixed, with a regression test | [e9fece3](https://github.com/bennyxzeng/Loremark/commit/e9fece3) |
+| [THY-03](https://github.com/bennyxzeng/Loremark/issues/88) | 2026-11-09 | P0 | spoiler | The theory check counted a chapter as finished once the reader reached its last page, so it could send that unread page to the AI and show a banner about it | Fixed, with regression tests | [e06812f](https://github.com/bennyxzeng/Loremark/commit/e06812f) |
 
 ## Details
 

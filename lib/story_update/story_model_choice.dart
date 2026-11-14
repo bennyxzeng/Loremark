@@ -38,6 +38,23 @@ enum StoryModelChoice {
     providerName: 'openai',
     efforts: StoryEffort.values,
   ),
+  openrouterDeepseekFlash(
+    id: 'deepseek/deepseek-v4-flash',
+    label: 'DeepSeek Flash (OpenRouter)',
+    providerName: 'openrouter',
+    efforts: [
+      StoryEffort.none,
+      StoryEffort.low,
+      StoryEffort.high,
+      StoryEffort.max,
+    ],
+  ),
+  openrouterGpt61Terra(
+    id: 'openai/gpt-6.1-terra',
+    label: 'GPT-6.1 Terra (OpenRouter)',
+    providerName: 'openrouter',
+    efforts: StoryEffort.values,
+  ),
   gpt61Sol(
     id: 'gpt-6.1-sol',
     label: 'GPT-6.1 Sol',
@@ -100,6 +117,11 @@ class StoryProvider {
     // rejects over-long input with an HTTP 400.
     'deepseek' => const StoryProvider._(
       'https://api.deepseek.com/responses',
+      sendsStoreAndTruncation: false,
+    ),
+    // OpenRouter is stateless and ignores `store` and `truncation` too.
+    'openrouter' => const StoryProvider._(
+      'https://openrouter.ai/api/v1/responses',
       sendsStoreAndTruncation: false,
     ),
     _ => throw ArgumentError.value(name, 'name', 'Unknown provider'),

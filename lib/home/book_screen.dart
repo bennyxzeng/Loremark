@@ -8,10 +8,13 @@ import '../library/book.dart';
 import '../notes/annotation_service.dart';
 import '../notes/note_list.dart';
 import '../reader/epub_reader_service.dart';
+import '../reader/epub_sections.dart';
+import '../reader/reader_position.dart';
 import '../reader/readium_reader_service.dart';
 import '../recap/recap_backend.dart';
 import '../recap/recap_controller.dart';
 import '../recap/recap_stop.dart';
+import '../search/search_cutoff.dart';
 import '../settings/ai_lock.dart';
 import '../settings/ai_settings.dart';
 import '../settings/connection_status.dart';
@@ -21,6 +24,7 @@ import '../story_map/story_map_status.dart';
 import '../story_map/story_map_tab.dart';
 import '../story_update/story_updater.dart';
 import '../theme/loremark_theme.dart';
+import '../theories/theory_checker.dart';
 import 'ask_screen.dart';
 import 'eased_keyboard.dart';
 import 'notes_screen.dart';
@@ -39,9 +43,18 @@ class BookScreen extends StatefulWidget {
     this.storyMapBackend,
     this.askBackend,
     this.recapBackend,
+    this.checkerFactory,
+    this.openNotes,
   });
 
   final Book book;
+
+  /// Makes the theory checker for the book's notes; tests replace the one
+  /// that reads the book file and calls the reader's AI provider.
+  final TheoryChecker Function(AnnotationService notes)? checkerFactory;
+
+  /// Opens the book's notes; tests replace the device's files.
+  final Future<AnnotationService> Function(String bookId)? openNotes;
 
   /// Where the Story Map tab gets its data; tests replace the device's.
   final StoryMapBackend? storyMapBackend;
@@ -90,6 +103,10 @@ class _BookScreenState extends State<BookScreen> {
 
   @override
   void dispose() {
+    _theoryBannerTimer?.cancel();
+    unawaited(_changes?.cancel());
+    _notesService?.removeListener(_onNotesChanged);
+    _checker?.dispose();
     _bannerTimer?.cancel();
     _storyMapStatus.dispose();
     _ask.dispose();
@@ -127,9 +144,8 @@ class _BookScreenState extends State<BookScreen> {
 
   /// The book's notes, shared by the Read tab, which adds and draws them, and
   /// the Notes tab, which lists them.
-  late final Future<AnnotationService> _notes = AnnotationService.openForBook(
-    widget.book.id,
-  );
+  late final Future<AnnotationService> _notes =
+      (widget.openNotes ?? AnnotationService.openForBook)(widget.book.id);
 
   /// Sends the Read tab to a note tapped in the Notes tab.
   final _noteJumps = NoteJumpController();
@@ -170,15 +186,134 @@ class _BookScreenState extends State<BookScreen> {
   void initState() {
     super.initState();
     _recap.addListener(_offerWelcomeBack);
+    unawaited(_startTheoryChecks());
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _ai = AiSettingsScope.of(context);
+    _connection = ConnectionScope.of(context);
     if (!_recapLooked && AiSettingsScope.of(context).hasKey) {
       _recapLooked = true;
       unawaited(_recap.prepare());
     }
+  }
+
+  late AiSettings _ai;
+  late ConnectionStatus _connection;
+  Timer? _theoryBannerTimer;
+  TheoryStatusChange? _theoryBanner;
+  AnnotationService? _notesService;
+  TheoryChecker? _checker;
+  StreamSubscription<TheoryStatusChange>? _changes;
+
+  /// Where the reader is and the furthest they got this session, for the
+  /// theory checker's spoiler boundary.
+  ReaderPosition? _current;
+  ReaderPosition? _furthest;
+  int _finishedSections = 0;
+
+  /// The index of the book's last linear section, or null until the spine is
+  /// read (or if it can't be). The last section has nothing to turn to, so
+  /// reaching its last page counts as finishing it; without this that
+  /// exception stays off, which is the safe direction.
+  int? _lastSection;
+
+  /// Creates the theory checker once the notes open, and runs it. If the
+  /// notes fail to open, reading is unaffected and nothing is checked.
+  Future<void> _startTheoryChecks() async {
+    final AnnotationService notes;
+    try {
+      notes = await _notes;
+    } on Object {
+      return;
+    }
+    if (!mounted) return;
+    final checker =
+        widget.checkerFactory?.call(notes) ??
+        TheoryChecker(
+          annotations: notes,
+          loadSectionTexts: () => readSectionTexts(widget.book.epubPath),
+          credentials: () => _ai.credentials,
+          isOnline: () => _connection.isOnline,
+        );
+    _notesService = notes;
+    _checker = checker;
+    _changes = checker.changes.listen(_showTheoryBanner);
+    notes.addListener(_onNotesChanged);
+    _runChecker();
+    unawaited(_readLastSection());
+  }
+
+  Future<void> _readLastSection() async {
+    try {
+      final spine = await readSpine(widget.book.epubPath);
+      if (!mounted) return;
+      _lastSection = spine.lastIndexWhere((item) => item.linear);
+      // The reader may already be on the book's last page.
+      _runIfSectionFinished();
+    } on Object {
+      // No spine: the book-end exception stays off.
+    }
+  }
+
+  void _runChecker() {
+    unawaited(
+      _checker?.run(
+        current: _current,
+        furthest: _furthest,
+        lastSection: _lastSection,
+      ),
+    );
+  }
+
+  /// A theory that was just saved or edited has no sub-theories yet, so it is
+  /// split. The checker's own saves never leave one unsplit, so they don't
+  /// start another run.
+  void _onNotesChanged() {
+    final notes = _notesService;
+    if (notes != null &&
+        notes.theories.any((note) => note.theory!.subTheories.isEmpty)) {
+      _runChecker();
+    }
+  }
+
+  /// Tells the Story Map status and the theory checker where the reader is,
+  /// and runs a check when a section was finished since the last one.
+  void _onPosition(ReaderPosition position) {
+    _storyMapStatus.readerMoved(position);
+    _current = position;
+    _furthest = searchCutoff(current: position, furthest: _furthest);
+    _runIfSectionFinished();
+  }
+
+  void _runIfSectionFinished() {
+    final finished = finishedSectionCount(
+      current: _current,
+      furthest: _furthest,
+      lastSection: _lastSection,
+    );
+    if (finished > _finishedSections) {
+      _finishedSections = finished;
+      _runChecker();
+    }
+  }
+
+  /// A new banner replaces the one on screen, and a timer hides it after 8
+  /// seconds. It sits with the other banners over the top of the tabs, so the
+  /// book is not repaginated and the reader keeps its place.
+  void _showTheoryBanner(TheoryStatusChange change) {
+    if (!mounted) return;
+    _theoryBannerTimer?.cancel();
+    _theoryBannerTimer = Timer(const Duration(seconds: 8), _hideTheoryBanner);
+    setState(() => _theoryBanner = change);
+  }
+
+  void _hideTheoryBanner() {
+    _theoryBannerTimer?.cancel();
+    _theoryBannerTimer = null;
+    if (mounted && _theoryBanner != null) setState(() => _theoryBanner = null);
   }
 
   void _selectTab(int index) {
@@ -268,7 +403,7 @@ class _BookScreenState extends State<BookScreen> {
                             notes: _notes,
                             noteJumps: _noteJumps,
                             passageJumps: _passageJumps,
-                            onPositionChanged: _storyMapStatus.readerMoved,
+                            onPositionChanged: _onPosition,
                           ),
                         ),
                         AiLock(
@@ -313,6 +448,18 @@ class _BookScreenState extends State<BookScreen> {
                           onView: () => _selectTab(_storyMapTab),
                           onDismiss: _hideFinishedUpdate,
                         ),
+                        theory: switch (_theoryBanner) {
+                          final change? => _TheoryBanner(
+                            key: const Key('theoryBanner'),
+                            text: change.bannerText,
+                            onView: () {
+                              _hideTheoryBanner();
+                              showNoteInNotesTab(change.noteId);
+                            },
+                            onDismiss: _hideTheoryBanner,
+                          ),
+                          null => null,
+                        },
                       ),
                     ),
                   ],
@@ -366,9 +513,12 @@ class _BookScreenState extends State<BookScreen> {
 /// The banners over the top of the tabs, the offline one first. A hidden one
 /// gives up its room, so the one under it moves up rather than leave a gap.
 class _TopBanners extends StatelessWidget {
-  const _TopBanners({required this.storyUpdate});
+  const _TopBanners({required this.storyUpdate, this.theory});
 
   final Widget storyUpdate;
+
+  /// The theory check's news, or null when there is none.
+  final Widget? theory;
 
   @override
   Widget build(BuildContext context) {
@@ -389,6 +539,7 @@ class _TopBanners extends StatelessWidget {
           child: const OfflineBanner(),
         ),
         storyUpdate,
+        ?theory,
       ],
     );
   }
@@ -415,6 +566,54 @@ class _KeepsHomeIndicatorRoom extends StatelessWidget {
         padding: media.padding.copyWith(bottom: media.viewPadding.bottom),
       ),
       child: child,
+    );
+  }
+}
+
+/// The card that announces a theory's new verdict over the top of the body.
+class _TheoryBanner extends StatelessWidget {
+  const _TheoryBanner({
+    super.key,
+    required this.text,
+    required this.onView,
+    required this.onDismiss,
+  });
+
+  final String text;
+  final VoidCallback onView;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: LoremarkColors.card,
+      elevation: 3,
+      shadowColor: LoremarkColors.ink.withValues(alpha: 0.25),
+      child: Container(
+        decoration: const BoxDecoration(
+          border: Border(bottom: BorderSide(color: LoremarkColors.line)),
+        ),
+        padding: const EdgeInsets.fromLTRB(16, 8, 8, 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(text, style: const TextStyle(color: LoremarkColors.ink)),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextButton(onPressed: onView, child: const Text('View')),
+                  TextButton(
+                    onPressed: onDismiss,
+                    child: const Text('Dismiss'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
