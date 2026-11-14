@@ -262,6 +262,22 @@ void main() {
       );
     });
 
+    test('knows the line before the first, which the window left out', () {
+      final page = pageTextBefore(long, 1, window: 300)!;
+      final before = page.lineBefore!;
+      final first = page.lines.first;
+      final number = int.parse(RegExp(r'\d+').firstMatch(first.text)![0]!);
+      expect(before.text, 'Paragraph ${number - 1} of it.');
+      expect(page.sectionText.substring(before.start, before.end), before.text);
+      expect(before.end, lessThan(first.start));
+    });
+
+    test('has no line before when the lines start the section', () {
+      final short = _page('<p>One.</p><p>Two.</p>');
+      expect(pageTextBefore(short, 1)!.lineBefore, isNull);
+      expect(pageTextBefore(short, 0)!.lineBefore, isNull);
+    });
+
     test('is null for bad markup', () {
       expect(pageTextBefore('<p>', 1), isNull);
     });

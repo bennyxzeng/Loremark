@@ -241,6 +241,15 @@ class PageText {
 
   /// Where the page ends in [sectionText].
   final int end;
+
+  /// The line of [sectionText] just before the first of [lines], which the
+  /// window left out, or null if they start the section. It comes before the
+  /// page, so it gives nothing away.
+  PageLine? get lineBefore {
+    final first = lines.firstOrNull;
+    if (first == null) return null;
+    return pageLines(sectionText.substring(0, first.start)).lastOrNull;
+  }
 }
 
 /// What [textBeforePageEnd] gives for the same arguments, line by line. Null
