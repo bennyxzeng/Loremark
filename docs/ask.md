@@ -85,7 +85,7 @@ Ask counts the whole page on the screen as read: the reader is asking about what
 
 - A paragraph that runs onto the next page isn't counted as read, since a fact cited there may rest on its rest. Its part on the page is in `RECENT_PAGES`.
 - `RECENT_PAGES` doesn't need the Story Map, so a chapter not yet updated can still be asked about. It starts a couple of pages back so a pronoun's name is in it, at the start of a line. It stays in the same spine item, so a reader who jumped into the middle of a chapter may get a page or two they skipped.
-- On a spine item's last page the page script reports nothing, and the position's progression is 1.0: the whole item counts as read.
+- On a page no text block reaches past, the script reports one past the last block: the page ends with the last block. That is a spine item's last page, and also its last page with text when only full-page pictures follow, as at the end of many light novel chapters. Before, that page reported nothing and Ask fell back to an older page end, or said **Can't see your recent pages**. On the item's very last page the position's progression is 1.0 as well: the whole item counts as read.
 - If the page's end can't be measured (vertical or right-to-left text, or the script failed), Ask falls back to the Story Map's boundary and sends no pages. The strip above the thread then says **Can't see your recent pages**.
 - Everything a tool can reach is in `AskBoundary`, built from that progress. Nothing past it is loaded, so there is no check on each call that could be forgotten. An id not reached yet and an id that doesn't exist get the same answer.
 - When the reader is past the end of the Story Map, the overview says so, and the model says the map doesn't cover it yet rather than that the story hasn't said. The strip suggests updating the map.
@@ -95,7 +95,7 @@ Ask counts the whole page on the screen as read: the reader is asking about what
 
 Readium reports where each page starts, not where it ends. A small script, [`assets/reader/page_end.js`](../assets/reader/page_end.js), is added to every chapter and reports the end:
 
-1. It walks the chapter's text blocks (`p`, headings, `li`, `div` and so on that contain no other block) and finds the first one whose last line is past the right edge of the screen.
+1. It walks the chapter's text blocks (`p`, headings, `li`, `div` and so on that contain no other block) and finds the first one whose last line is past the right edge of the screen. If there is none, it reports the number of blocks, one past the last, with no characters, as long as the last block ends on this screen or an earlier page (not below it).
 2. It counts how many of that block's characters, not counting whitespace, are on the page, and takes the last 12 of them before the page ends.
 3. It writes `loremark-end:<block>:<characters>:<last 12>` into the `physicalPage` field of Readium's page report, which the plugin passes to Dart untouched.
 4. `textProgressionOfBlock` finds the same point in the app's own copy of the chapter and checks the 12 characters match. If they don't, the report is dropped, so a miscount can only make Ask more cautious.
@@ -171,10 +171,10 @@ How a question can end:
 
 The model cites a Story Map paragraph as `[section-004/p0012]` and a line of the recent pages as `[page/12]`, several in one bracket as `[section-004/p0012, page/12]`. `cleanCitations` removes any paragraph the reader hasn't read and any line that wasn't sent (all of them when no pages were), so a made-up number disappears. Answers from before the lines were numbered cite `[page]`: the recent pages as a whole.
 
-In the answer, paragraphs and lines are numbered chips in one sequence; `[page]` shows as **recent pages**. Lines that follow each other in one citation, or paragraphs of one section that do, make one chip, whose sheet marks them all (`citedPassages`): a model citing a line often cites the one next to it too, for context.
+In the answer, paragraphs and lines are numbered chips in one sequence; `[page]` shows as **recent pages**. Lines that follow each other in one citation, or paragraphs of one section that do, make one chip, whose sheet marks them all (`citedPassages`): a model citing a line often cites the one next to it too, for context. Brackets back to back, with only whitespace between them, count as one citation (`splitAnswer`), since some models, DeepSeek among them, write `[page/1][page/2]` instead.
 
 - **A paragraph** opens a sheet with the chapter's name, the paragraph highlighted and one on either side, all taken from the book by number. In an earlier answer, a paragraph the reader has since turned back from is shown but can't be opened ("Past where you are now").
-- **A line** opens **RECENT PAGES**, with a note that Ask saw the page the reader was on and a few before it, and the line highlighted with one on either side. The lines are rebuilt from the answer's `limit`, the page end it was asked at, by `pageTextBefore`, so the page text isn't saved with the answer. `[page]` shows all the lines. A line can't be opened when that page end wasn't measured.
+- **A line** opens **RECENT PAGES**, with a note that Ask saw the page the reader was on and a few before it, and the line highlighted with one on either side. Nothing comes after the last line, which ends at the page, often partway through a sentence: when the sheet reaches it, a rule marked **Your page ended here** follows. The first line has none before it among those Ask saw, so the book's line before it (`PageText.lineBefore`) is shown faded above a rule marked **Ask saw from here**: it comes before the page, so it gives nothing away. The lines are rebuilt from the answer's `limit`, the page end it was asked at, by `pageTextBefore`, so the page text isn't saved with the answer. `[page]` shows all the lines. A line can't be opened when that page end wasn't measured.
 
 **Open in book** finds the passage and shows it in the Read tab: for a line, that line, and for `[page]` the last one, where the page ended. A chip that stands for several lines or paragraphs goes to the first and highlights them all (`PassageTarget.also`).
 

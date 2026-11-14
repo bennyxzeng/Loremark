@@ -29,6 +29,10 @@ class FakeAskBackend implements AskBackend {
   /// The page ends [recentPages] was asked about.
   final pagesAsked = <TextPosition>[];
 
+  /// The section's text before the recent pages in [reach], which Ask wasn't
+  /// sent.
+  String textBefore = '';
+
   @override
   Future<StoryModel?> loadModel(Book book) async => model;
 
@@ -75,9 +79,10 @@ class FakeAskBackend implements AskBackend {
     pagesAsked.add(end);
     final text = reach.page?.text;
     if (text == null) return null;
+    final section = '$textBefore$text';
     return RecentPages(
       end.sectionIndex,
-      PageText(text, pageLines(text), text.length),
+      PageText(section, pageLines(text, textBefore.length), section.length),
     );
   }
 }

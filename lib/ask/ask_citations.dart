@@ -100,6 +100,11 @@ String cleanCitations(
 /// [text] in pieces, citations apart from the words around them. A bracket
 /// that isn't a citation, such as `[sic]`, stays text.
 ///
+/// Brackets with nothing but whitespace between them are one citation, as if
+/// in one bracket the way the prompt asks: some models write
+/// `[page/1][page/2]`, and lines next to each other are then one passage too
+/// (see [citedPassages]).
+///
 /// While an answer is [streaming], a citation still arriving at its end is
 /// left out, so it doesn't flash up as text.
 List<AnswerPart> splitAnswer(String text, {bool streaming = false}) {
@@ -111,10 +116,15 @@ List<AnswerPart> splitAnswer(String text, {bool streaming = false}) {
   final parts = <AnswerPart>[];
   var at = 0;
   for (final match in _citation.allMatches(body)) {
-    if (match.start > at) {
-      parts.add(AnswerText(body.substring(at, match.start)));
+    final between = body.substring(at, match.start);
+    final refs = _refsIn(match[1]!);
+    if (parts.lastOrNull case AnswerCitation(refs: final before)
+        when between.trim().isEmpty) {
+      parts.last = AnswerCitation([...before, ...refs]);
+    } else {
+      if (between.isNotEmpty) parts.add(AnswerText(between));
+      parts.add(AnswerCitation(refs));
     }
-    parts.add(AnswerCitation(_refsIn(match[1]!)));
     at = match.end;
   }
   if (at < body.length) parts.add(AnswerText(body.substring(at)));

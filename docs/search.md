@@ -190,8 +190,9 @@ Anything unexpected leaves the page unmeasured and the app then does what the fi
 
 - the book is right-to-left or vertical,
 - the script could not be added or did not run,
-- the chapter is not well-formed XML,
-- the page has no text block past it (the last page of a chapter, which is already counted as finished).
+- the chapter is not well-formed XML.
+
+A page with no text block past it is measured too: the script reports one past the last block, so the page ends with the last block. That covers a chapter's last page with text when only full-page pictures follow it, which the finished-file rule doesn't count as finished.
 
 The cutoff only ever moves forward during a reading session (`pageCutoff` takes the later of the finished-file rule and the measured page), so turning back to reread does not hide what you have already seen.
 

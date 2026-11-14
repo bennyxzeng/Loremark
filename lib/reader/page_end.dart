@@ -6,8 +6,9 @@
 /// same point in the item's plain text, as `pageTextEnds` reports it: inside
 /// [block] if the page ends partway through it.
 ///
-/// The last page of a spine item has no block past it and reports nothing; its
-/// position's progression is 1.0 instead.
+/// A page no block reaches past, the last of a spine item or the last with
+/// text when only pictures follow it, ends with the last block: [block] is the
+/// number of blocks, one past the last.
 class PageEnd {
   const PageEnd(this.sectionIndex, this.block, this.textProgression);
 
