@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:loremark/home/read_screen.dart';
 import 'package:loremark/library/book.dart';
 import 'package:loremark/reader/epub_reader_service.dart';
+import 'package:loremark/reader/page_end.dart';
 import 'package:loremark/reader/page_start.dart';
 import 'package:loremark/reader/reader_position.dart';
 import 'package:loremark/theme/loremark_theme.dart';
@@ -313,6 +314,40 @@ void main() {
       await emitStart(tester, session, start);
 
       expect(store.pageStartSaves, isEmpty);
+    });
+  });
+
+  group('where the page ends', () {
+    const end = PageEnd(1, 7, 0.3);
+
+    Future<void> emitEnd(
+      WidgetTester tester,
+      FakeEpubReaderSession session,
+      PageEnd pageEnd,
+    ) async {
+      session.emitPageEnd(pageEnd);
+      await tester.idle();
+      await tester.pump();
+    }
+
+    testWidgets('is kept for Ask', (tester) async {
+      final session = await openBook(tester);
+      await emit(tester, session, const ReaderPosition(1, 0.2));
+
+      await emitEnd(tester, session, end);
+
+      expect(store.pageEndSaves, [('abc', end)]);
+    });
+
+    testWidgets('isn\'t kept from another section than the position', (
+      tester,
+    ) async {
+      final session = await openBook(tester);
+      await emit(tester, session, const ReaderPosition(2, 0.2));
+
+      await emitEnd(tester, session, end);
+
+      expect(store.pageEndSaves, isEmpty);
     });
   });
 

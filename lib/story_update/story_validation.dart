@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'delta_schema.dart';
 import 'story_book.dart';
 import 'story_merge.dart';
+import 'story_quotes.dart';
 
 /// The version of the lab's validator these checks follow, kept with each run.
 const storyValidatorVersion = '2.0';
@@ -61,10 +62,29 @@ class StoryUpdateValidation {
     this.delta,
     this.after,
     this.idMap,
+    this.quoteRepairs = const [],
   });
 
   final bool structureValid;
   final List<StoryIssue> issues;
+
+  /// The quotes put back to the book's text before checking, which the lab
+  /// doesn't do: see [repairStoryQuotes].
+  final List<QuoteRepair> quoteRepairs;
+
+  /// This, after [repairs] were made to the answer it checked: each is
+  /// reported first, as a warning.
+  StoryUpdateValidation withQuoteRepairs(List<QuoteRepair> repairs) =>
+      repairs.isEmpty
+      ? this
+      : StoryUpdateValidation(
+          structureValid: structureValid,
+          issues: [for (final repair in repairs) repair.issue, ...issues],
+          delta: delta,
+          after: after,
+          idMap: idMap,
+          quoteRepairs: repairs,
+        );
 
   /// The delta with its fields in schema order, if its structure was valid.
   final JsonMap? delta;

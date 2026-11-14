@@ -1,0 +1,407 @@
+# Story Model: file structure and labels
+
+[![English](https://img.shields.io/badge/English-2563EB?style=for-the-badge)](story-model-format.md) [![简体中文](https://img.shields.io/badge/%E7%AE%80%E4%BD%93%E4%B8%AD%E6%96%87-64748B?style=for-the-badge)](story-model-format.zh-CN.md)
+
+[Back to README](../README.md#the-story-model) · [At a glance](#at-a-glance) · [Visual overview](#visual-overview) · [File structure](#file-structure) · [Characters and records](#characters-and-records) · [Events](#events) · [Labels](#labels) · [Revisions](#revisions)
+
+The `stores/` and `runs/` paths and the `story-model show` command on this page come from the story model lab on the [`story-model` branch](https://github.com/bennyxzeng/Loremark/blob/story-model/tools/story_model_lab). The app keeps its stores in the same layout: see [Story Map updates](story-update.md).
+
+<a id="at-a-glance"></a>
+
+## Start here: the story model at a glance
+
+![The story model at a glance: entities, seven kinds of claims, evidence, two labels, and supersede/retract/resolve as the book goes on, all with Chapters 1–2 of 86 as the example](assets/story-model-at-a-glance.svg)
+
+**In one sentence:** a story model records what a reader knows after a given section. It is not a whole-book encyclopedia: after Chapter 2 it holds only what Chapters 1–2 say, and nothing from later on shows up early.
+
+**① Entities and claims.** An entity is a character, location, or organization, and by itself it is only an ID and a kind (Shin is `c006`). Everything we know is split into separate claims that point to entities by ID. There are seven kinds: names, aliases, attributes, relationships, events, questions (uncertainties), and identity links. Small, separate claims can each carry their own evidence and each be overturned by a later section without touching the rest.
+
+**Evidence.** Every claim cites the text: which section, which paragraph, and an exact quote. The tool checks that the quote really is in that paragraph. That only proves the words are there, not that they support the claim; whether a claim is right still needs a person to read the passage.
+
+**② Two labels.** Relationships and events carry both labels; attributes and identity links carry only the first; names, aliases, and questions carry neither. The two labels are independent and combine freely.
+
+| Question | Label | Meaning | Example from 86 |
+| --- | --- | --- | --- |
+| How do we know? | `explicit` | the narration says it directly | Shin is the Spearhead squadron’s captain |
+| | `reported` | a character or in-world source says it; it may be false, and the speaker is recorded | Karlstahl says Handlers call Shin the Reaper and that he breaks his Handlers |
+| | `inferred` | not said outright, but it follows from the text | Annette is an Alba, from “her short hair was an Alba’s silver” |
+| When does it hold? | `current` | the present story | Lena is appointed Handler of the Spearhead squadron |
+| | `past` | earlier: memory, flashback, backstory | Nine years earlier, the Empire of Giad started the war with the Legion |
+| | `future` | planned, predicted, expected | The Republic expects every Legion unit to shut down in two years (illustration) |
+| | `hypothetical` | imagined: “if…” | Raiden thinks that, born in the age of knights, Shin would be the hero of a myth (illustration) |
+| | `unknown` | the text does not say when | does not occur in these chapters |
+
+The two rows marked “illustration” quote sentences from these chapters, but the current model has no such record. There is no `implicit` label: something the text does not say outright but implies is `inferred`.
+
+**③ Reading on, section by section.** Every processed section creates a new revision. A revision number counts processed sections, not chapters, because prologues and interludes are sections too. Old claims are never deleted; when a later section changes what we know, one of three actions makes an old claim inactive:
+
+- **supersede**: a new claim replaces an older one about the same thing. In Chapter 2, Undertaker’s real name turns out to be Shinei Nouzen, and his age goes from “a boy roughly Lena’s age” to “about to turn sixteen”.
+- **retract**: a later section shows an old claim was wrong; it is withdrawn with no replacement.
+- **resolve**: an open question gets its answer.
+
+Because old claims stay, the state after any chapter can be rebuilt. That is how the app switches chapters: at Chapter 1 Shin is Undertaker, at Chapter 2 he is Shinei Nouzen, and Raiden, who first appears in Chapter 2, is not shown at Chapter 1.
+
+**Where the diagram’s terms live in the file:**
+
+| In the diagram | In `story_model.json` |
+| --- | --- |
+| Entities | `entities` |
+| Seven kinds of claims | `names`, `aliases`, `attributes`, `relationships`, `events`, `uncertainties`, `identity_links` under `records` |
+| Evidence | each record’s `evidence` |
+| Two labels | `assertion` and `temporal_context` in each record’s `payload` |
+| supersede / retract / resolve | `transitions` |
+| Claims active now | `current.active_record_ids` |
+| How far the model has read | `processed_sections`, `revision` |
+
+The rest of this page is the field-by-field reference.
+
+---
+
+A Story Model records **who and what the text introduces, what happens, how entities relate, what remains uncertain, and which passages support each claim**. It also preserves when the reader learned something and how later sections change that knowledge.
+
+The example is [`stores/86v1/story_model.json`](https://github.com/bennyxzeng/Loremark/blob/story-model/tools/story_model_lab/stores/86v1/story_model.json), which the app can load from a file; `story-model show` exports any revision as readable Markdown. Every store is built by `update`, one section at a time, starting from an empty model.
+
+Two labels answer different questions: `assertion: "inferred"` means a claim is inferred from the text; `temporal_context: "past"` means it concerns the narrative's past, including a **flashback**. **`flashback` is not a stored enum value.** A past event can be `explicit`, `reported`, or `inferred`.
+
+## Visual overview
+
+The diagrams describe the cumulative **v2** JSON. Boxes retain the actual field names; descriptions explain what their values store. `[]` means a list, `null` means no value, and ID fields reference another saved object. Colors distinguish source information, story knowledge, and revision history.
+
+```mermaid
+flowchart TB
+    MODEL["story_model.json<br/>schema_version = 2.0: format version<br/>scope = cumulative: accumulated knowledge"]
+    SOURCE["Source and coverage<br/>book: title and EPUB hash<br/>processed_sections[]: sections, reading order, input paths/hashes<br/>coverage: starting section and omitted earlier sections"]
+    KNOWLEDGE["Story knowledge<br/>entities[]: stable character / location / organization IDs<br/>records: seven collections of evidence-backed claims"]
+    HISTORY["Revision history<br/>revision: number, ID, timestamp, parent snapshot<br/>transitions[]: replace / retract / resolve decisions<br/>current: computed active-record and identity indexes<br/>provenance: manual corrections"]
+    MODEL --> SOURCE
+    MODEL --> KNOWLEDGE
+    MODEL --> HISTORY
+    classDef source fill:#eff6ff,stroke:#2563eb,color:#172554;
+    classDef knowledge fill:#ecfdf5,stroke:#0f766e,color:#134e4a;
+    classDef history fill:#fff7ed,stroke:#c2410c,color:#7c2d12;
+    class SOURCE source;
+    class KNOWLEDGE knowledge;
+    class HISTORY history;
+```
+
+Follow the detailed diagrams for [record wrappers and evidence](#record-diagram), [entity facts and relationships](#entity-payload-diagram), [events and identity links](#event-payload-diagram), and [revision links](#revision-diagram). The tables below provide the remaining metadata details.
+
+## File structure
+
+### Files around the model
+
+| Path | What it contains |
+| --- | --- |
+| `stores/<name>/story_model.json` | The latest committed cumulative model; this is the file to inspect for current accumulated knowledge. |
+| `stores/<name>/revisions/<revision>-<id>.json` | A full snapshot of each committed revision, preserving what was known then. |
+| `stores/<name>/inputs/<section>-<hash>.json` | Normalized section text and paragraph IDs used to check evidence. |
+| `stores/<name>/provenance/<run-id>/` | Each committed update's delta, ID mapping, commit record, manifest, and any manual corrections. |
+| `runs/<run-id>/story_model.after.json` | A candidate cumulative model from an update; its presence alone does not mean it was committed. |
+| An exported `.md` file | A readable view of one revision; exporting again is required to refresh it. |
+
+The tracked example JSON and revision snapshots are readable on their own. Running `show` or `update` also requires the matching local `inputs/` and `provenance/`; see [Sharing the model with teammates](https://github.com/bennyxzeng/Loremark/blob/story-model/tools/story_model_lab/README.md#sharing-the-model-with-teammates).
+
+### Inside a v2 `story_model.json`
+
+| Top-level field | Contents and purpose |
+| --- | --- |
+| `schema_version` | `"2.0"`: the file format version. |
+| `scope` | `"cumulative"`: knowledge accumulated across processed sections. |
+| `book` | `title` and `epub_sha256`, identifying the source book and exact EPUB file. |
+| `revision` | `number`, `id`, `created_at`, `source_run_id`, `parent_snapshot_path`, and `parent_sha256`: this commit and its link to the previous snapshot. Parent fields are `null` for the first revision. |
+| `processed_sections` | Each section's `section_id`, reading order (`section_order`), `chapter_number`, `title`, EPUB `href`/`fragment`, `text_sha256`, `extraction_version`, `paragraph_count`, saved input path/hash (`input_relative_path`, `input_file_sha256`), `introduced_revision`, and `quotes_checked` (`false` if the section was committed with the quote check off, so its quotes may not match; absent in older revisions, which means `true`). Non-numbered sections can have `chapter_number: null`. |
+| `coverage` | `start_section_id` and `omitted_prefix_section_ids`: where extraction started and which earlier sections were not processed. |
+| `entities` | Characters, locations, and organizations, each with a stable `id`, `kind`, and `introduced_revision`. Names and facts live separately in `records`. |
+| `records` | Seven collections: `names`, `aliases`, `attributes`, `relationships`, `events`, `uncertainties`, and `identity_links`. Old records are retained unchanged. |
+| `transitions` | Evidence-backed changes to earlier records: replacement, retraction, or resolution of a question. |
+| `current` | A computed index containing `active_record_ids`, `resolved_uncertainty_ids`, and `identity_groups`. |
+| `provenance` | `manual_corrections`: every evidence location corrected by hand before a revision was committed, with its revision, record, original and corrected value, and reason. |
+
+A **section** may be a chapter, prologue, or interlude. `section-004`, Chapter 1, and revision 1 describe different things: reading-order section ID, numbered chapter, and committed update count (revision 1 is the store's first section). Check `processed_sections` and `coverage` before assuming the model covers everything before a chapter.
+
+## Characters and records
+
+### Entity types and IDs
+
+| `entities[].kind` | ID example | What belongs here |
+| --- | --- | --- |
+| `character` | `c001` | Individual people or beings treated as persons, including those only mentioned. |
+| `location` | `l001` | Places: countries, cities, buildings, rooms, battlefields, etc. |
+| `organization` | `g001` | Groups acting collectively: governments, militaries, squads, institutions, factions, etc. |
+
+For example, a squad is an organization, its captain is a character, and its base is a location. Entity IDs stay stable across cumulative updates; changing a name does not change the entity's ID.
+
+### The wrapper shared by every record
+
+Each item in any of the seven `records` collections has these fields:
+
+| Field | Meaning |
+| --- | --- |
+| `id` | Stable knowledge-record ID, such as `f000123`. This identifies one claim, not a character or event category. |
+| `introduced_revision` | The revision in which this record was added. |
+| `learned_in_section_id` | The section that revealed the information to the reader, even if the event happened much earlier in the story. |
+| `payload` | The claim itself, with fields determined by its collection. |
+| `evidence` | Supporting passages: `{section_id, paragraph_id, quote}`. Paragraph IDs are local to a section, so use both IDs to locate a quote. |
+
+Quotes must be exact, contiguous substrings of the cited paragraph, at most 300 characters. Every record needs evidence. New update records and transitions cite the **new section**. A matching quote proves that the words occur there; a reviewer must still judge whether they support the claim.
+
+<a id="record-diagram"></a>
+
+### How a record connects a claim to its evidence
+
+Solid arrows show nested content; dotted arrows show ID references. Every collection uses this wrapper. The payload fields are expanded in the next two diagrams.
+
+```mermaid
+flowchart TB
+    RECORD["One records collection item<br/>id: stable claim ID, e.g. f000123<br/>introduced_revision: revision that added it<br/>learned_in_section_id: section where the reader learned it"]
+    PAYLOAD["payload<br/>The name, attribute, relationship, event,<br/>question, or identity claim itself"]
+    EVIDENCE["evidence[]<br/>section_id: source section ID<br/>paragraph_id: paragraph within that section<br/>quote: exact contiguous passage, at most 300 characters"]
+    ENTITY["entities[]<br/>id: c001 / l001 / g001<br/>kind: character / location / organization<br/>introduced_revision: when the entity was added"]
+    SECTION["processed_sections[] and saved input<br/>section_id: joins evidence to a processed section<br/>input_relative_path: saved normalized chapter JSON<br/>paragraphs[].id / text: locate and verify the quote"]
+    RECORD -->|payload| PAYLOAD
+    RECORD -->|evidence| EVIDENCE
+    PAYLOAD -.->|entity IDs, where applicable| ENTITY
+    RECORD -.->|learned_in_section_id| SECTION
+    EVIDENCE -.->|section_id + paragraph_id| SECTION
+```
+
+### The seven knowledge collections
+
+| Collection | What it records | Fields inside `payload` |
+| --- | --- | --- |
+| `names` | An entity's primary name or designation, including a title or call sign when no personal name is known. | `entity_id`, `text` |
+| `aliases` | Other designations shown by the text to refer to the same entity. | `entity_id`, `text` |
+| `attributes` | Individual facts about an entity: age, rank, appearance, occupation, affiliation, ability, etc. | `entity_id`, `label`, `value`, `assertion`, `attributed_to_id` |
+| `relationships` | Directed links between entities, with a one-sentence description and time context. | `source_id`, `target_id`, `label`, `description`, `assertion`, `attributed_to_id`, `temporal_context` |
+| `events` | Individual actions, occurrences, or revelations, with participants, place, narrative order, and time context. | `description`, `participant_ids`, `location_id`, `narrative_order`, `temporal_context`, `story_time`, `assertion`, `attributed_to_id` |
+| `uncertainties` | Open questions about identity, references, causes, or conflicting claims. | `question`, `related_entity_ids` |
+| `identity_links` | Claims that two separately recorded entities are actually the same person, place, or organization. | `left_entity_id`, `right_entity_id`, `assertion`, `explanation` |
+
+An attribute `label` such as `rank` and a relationship `label` such as `member_of` are descriptive strings, not fixed enum lists. Read a relationship as **source → label → target**: `c001 → member_of → g001` means the character belongs to the organization; reversing the endpoints changes the meaning. Relationships can connect any of the three entity kinds.
+
+Not every collection carries every label: `assertion` appears on attributes, relationships, events, and identity links; `temporal_context` appears only on relationships and events. Names, aliases, and uncertainties have evidence but no `assertion` field. Attributes do not have a separate time-context field in this schema.
+
+An alias names an entity already recognized as one entity. An identity link connects **two existing IDs** of the same kind. Only active `explicit` links produce `current.identity_groups`, whose fields are `canonical_id`, `member_ids`, and `link_record_ids`. The earliest-introduced entity supplies the canonical ID (ties use ID order); original entities and records remain intact. `reported` and `inferred` links do not merge identities for display.
+
+<a id="entity-payload-diagram"></a>
+
+### Entity facts and relationship fields
+
+These boxes expand `payload` for `names`/`aliases`, `attributes`, and `relationships`; the common wrapper and evidence above surround each item. Entity metadata is shown in the preceding diagram. `PK` identifies an object's ID, and `FK` marks a reference to another object. Each record belongs to the entity at the indicated endpoint. A relationship has both a source and a target.
+
+```mermaid
+erDiagram
+    direction LR
+    entities ||..o{ names_or_aliases_payload : entity_id
+    entities ||..o{ attributes_payload : entity_id
+    entities ||..o{ relationships_payload : source_id
+    entities ||..o{ relationships_payload : target_id
+
+    entities {
+        string id PK "c001 / l001 / g001"
+    }
+    names_or_aliases_payload {
+        string entity_id FK "entity being named"
+        string text "names: primary; aliases: other name"
+    }
+    attributes_payload {
+        string entity_id FK "entity described"
+        string label "attribute name, e.g. rank"
+        string value "attribute value, e.g. Captain"
+        string assertion "explicit / reported / inferred"
+        string attributed_to_id FK "reported speaker/source ID; nullable"
+    }
+    relationships_payload {
+        string source_id FK "relationship starting entity"
+        string target_id FK "relationship ending entity"
+        string label "directed predicate, e.g. member_of"
+        string description "one-sentence relationship claim"
+        string assertion "explicit / reported / inferred"
+        string attributed_to_id FK "reported speaker/source ID; nullable"
+        string temporal_context "story time frame; flashback = past"
+    }
+```
+
+For example, `source_id = c001`, `label = member_of`, `target_id = g001` links **a character → membership → an organization**. `attributed_to_id` also references `entities`, but only a character or organization; it identifies who makes a reported claim, rather than the entity the claim describes.
+
+## Events
+
+| Event `payload` field | How to read it |
+| --- | --- |
+| `description` | One main action or occurrence, rather than a summary of an entire paragraph. |
+| `participant_ids` | IDs of participating characters or organizations. |
+| `location_id` | The location entity's ID, or `null` when the place is not identifiable. |
+| `narrative_order` | Order in which this section tells the events: 1, 2, 3, …, with no gaps or repeats within that section. It is not a whole-book timeline. |
+| `temporal_context` | Whether the event is current, past, future, hypothetical, or of unknown time relative to the section's present narrative. |
+| `story_time` | Time wording supplied by the text, such as `"spring"` or `"nine years ago"`; `null` if unspecified. Dates are not calculated or invented. |
+| `assertion` | Whether the event is directly stated, reported by a source, or inferred. |
+| `attributed_to_id` | Character/organization making a `reported` claim, when known; otherwise `null`. |
+
+<a id="event-payload-diagram"></a>
+
+### Events, open questions, and identity links
+
+These are the other three payload shapes. The two identity endpoints must have the same entity kind. Optional source references (`attributed_to_id`) follow the rule explained above. Short edge labels keep the connections readable: `who` = `participant_ids`, `where` = `location_id`, and `left`/`right` = the two identity endpoint IDs.
+
+```mermaid
+erDiagram
+    direction LR
+    entities }o..o{ events_payload : who
+    entities o|..o{ events_payload : where
+    entities }o..o{ uncertainties_payload : related_entity_ids
+    entities ||..o{ identity_links_payload : left
+    entities ||..o{ identity_links_payload : right
+
+    entities {
+        string id PK "c001 / l001 / g001"
+    }
+    events_payload {
+        string description "one action, occurrence, or revelation"
+        string[] participant_ids FK "participating characters or organizations"
+        string location_id FK "location entity; nullable"
+        int narrative_order "1, 2, 3... in this section's telling order"
+        string temporal_context "story time frame; flashback = past"
+        string story_time "time wording from the text; nullable"
+        string assertion "explicit / reported / inferred"
+        string attributed_to_id FK "reported speaker/source ID; nullable"
+    }
+    uncertainties_payload {
+        string question "unanswered question raised by the text"
+        string[] related_entity_ids FK "entities involved in the question"
+    }
+    identity_links_payload {
+        string left_entity_id FK "first entity ID"
+        string right_entity_id FK "second entity ID of the same kind"
+        string assertion "explicit / reported / inferred"
+        string explanation "why the two IDs may refer to one identity"
+    }
+```
+
+The many-to-many connections represent ID lists: an event can involve several entities, and an entity can participate in many events. `location_id` is an optional single location. `past` includes flashbacks; it is independent of `assertion`.
+
+This **synthetic example** is one record inside `records.events`; assume `c001` is Mira and `l001` is the harbor:
+
+```json
+{
+  "id": "f000042",
+  "introduced_revision": 2,
+  "learned_in_section_id": "section-005",
+  "payload": {
+    "description": "Mira witnessed a fire at the harbor as a child.",
+    "participant_ids": ["c001"],
+    "location_id": "l001",
+    "narrative_order": 3,
+    "temporal_context": "past",
+    "story_time": "As a child",
+    "assertion": "explicit",
+    "attributed_to_id": null
+  },
+  "evidence": [
+    {
+      "section_id": "section-005",
+      "paragraph_id": "p0012",
+      "quote": "As a child, Mira watched the harbor burn."
+    }
+  ]
+}
+```
+
+The reader learns this in `section-005`, where it is the third extracted event in narrative order. The fire belongs to the story's past. Its `past` label does not move it to an earlier extraction section or reveal it in a revision saved before `section-005`.
+
+## Labels
+
+### `assertion`: how the text supports a claim
+
+| Value | Meaning | Synthetic example |
+| --- | --- | --- |
+| `explicit` | Narration states it directly. | The narrator says Mira is a captain. |
+| `reported` | A character or in-world source makes a claim; it may be false, a rumor, or propaganda. | A broadcast claims that nobody died. |
+| `inferred` | Not directly stated, but reasonably deduced from cited text. The wording should make the inference clear. | Several clues suggest that Mira knew the visitor. |
+
+`attributed_to_id` identifies a known speaker or source for `reported`, using a character or organization ID; use `null` when the source is unknown. It must be `null` for `explicit` and `inferred`. Identity links do not have this field.
+
+The distinction depends on the **claim being recorded**: “a broadcast announced zero casualties” can be an explicit event describing the announcement; “there were zero casualties” is a reported claim when supported only by that broadcast. `inferred` is not a confidence score, and the schema has no confidence percentages.
+
+### `temporal_context`: when the claim holds in the story
+
+| Value | Meaning | Synthetic example |
+| --- | --- | --- |
+| `current` | True or happening in the section's present narrative. | Mira enters the harbor now. |
+| `past` | Earlier than the present narrative: flashback, memory, or backstory. | The text recalls the harbor fire from Mira's childhood. |
+| `future` | Planned, scheduled, or predicted; this alone does not establish that it happens. | The squad plans to leave tomorrow. |
+| `hypothetical` | Imagined, conditional, or counterfactual. | If the gate fell, the city would be exposed. |
+| `unknown` | The text does not establish the time frame. | An incident is mentioned without enough context to place it. |
+
+**Flashbacks use `past`; there is no separate `flashback` value.** These labels combine independently with `assertion`: `explicit` + `past` is a directly narrated past event; `reported` + `past` is someone's account of the past; `inferred` + `past` is a deduction about it. `future` can describe a plan already known at the reading cutoff; it does not mean the model has read later chapters.
+
+Keep these three notions separate:
+
+| Field | Question it answers |
+| --- | --- |
+| `learned_in_section_id` / `introduced_revision` | When did the reader learn this? |
+| `temporal_context` / `story_time` | When does it happen or hold inside the story? |
+| `current.active_record_ids` | Which records are still active in this saved revision? |
+
+An active record may describe the past, a future plan, or an unconfirmed report. Being active does not establish truth or mean `temporal_context: "current"`.
+
+## Revisions
+
+Later sections add records and transitions instead of overwriting old claims. A transition has `id` (such as `t000001`), `introduced_revision`, `learned_in_section_id`, `target_record_id`, `action`, `replacement_record_id`, `resolution`, `reason`, and `evidence`.
+
+| `action` | Meaning | Other fields |
+| --- | --- | --- |
+| `supersede` | A new record replaces an earlier active record, e.g. a new rank or a revealed primary name. | `replacement_record_id` points to the new record; `resolution` is `null`. |
+| `retract` | A later section disproves an earlier claim without replacing it. | `replacement_record_id` and `resolution` are `null`. |
+| `resolve` | A later section answers an open uncertainty. | `resolution` contains the answer; `replacement_record_id` is `null`. Only uncertainties can be resolved. |
+
+<a id="revision-diagram"></a>
+
+### How history produces the current view
+
+Records stay in `records` after a transition deactivates them. The relationships below are references by ID: `target` means `target_record_id`, and `new` means `replacement_record_id`. `current` is a computed index, not a second copy of the claims.
+
+```mermaid
+erDiagram
+    records ||..o| transitions : target
+    records o|..o{ transitions : new
+    current o|..o{ records : active_record_ids
+    current o|..o{ records : resolved_uncertainty_ids
+    current ||--o{ identity_groups : contains
+
+    records {
+        string id PK "f000123; full record remains in history"
+    }
+    transitions {
+        string id PK "t000001; stable transition ID"
+        int introduced_revision "revision applying the change"
+        string learned_in_section_id "section revealing the change"
+        string target_record_id FK "earlier active record to deactivate"
+        string action "supersede / retract / resolve"
+        string replacement_record_id FK "new record for supersede; otherwise null"
+        string resolution "answer for resolve; otherwise null"
+        string reason "why the new section changes the earlier judgment"
+        object[] evidence "section_id, paragraph_id, quote from the new section"
+    }
+    current {
+        string[] active_record_ids FK "records not deactivated by a transition"
+        string[] resolved_uncertainty_ids FK "questions answered by resolve"
+        object[] identity_groups "groups computed from active explicit identity links"
+    }
+    identity_groups {
+        string canonical_id FK "earliest-introduced entity in this group"
+        string[] member_ids FK "all entity IDs in this group"
+        string[] link_record_ids FK "active explicit identity-link record IDs"
+    }
+```
+
+For example, replacing a rank record `f000010` with `f000020` keeps both records, adds a `supersede` transition targeting `f000010`, and leaves only `f000020` active among the pair. Identity-group `canonical_id`/`member_ids` refer to `entities`; `link_record_ids` refer to `records.identity_links`.
+
+Targets must be active records from an earlier revision. Replacement stays in the same collection and concerns the same subject: attributes keep the same entity and label; relationships keep the same direction, label, and time context. A relationship with a different label uses a retraction plus a new record. Replacing events or uncertainties still needs human review of whether they concern the same thing.
+
+All three actions deactivate the target record without deleting it. Resolved questions also appear in `current.resolved_uncertainty_ids`; an answer that is itself a new fact needs its own record. The program computes `current` from this history. An unmentioned fact remains active. A flashback adds a `past` record rather than replacing a `current` relationship with a past one.
+
+Use a saved revision to read the knowledge available then; a historical view must not borrow later names, identity links, or answers. Revision numbers count committed updates, so an interlude also creates a revision.
+
+## Definitions
+
+The exact definitions are in [`cumulative_schemas.py`](https://github.com/bennyxzeng/Loremark/blob/story-model/tools/story_model_lab/src/loremark_story_lab/cumulative_schemas.py), and the extraction rules in the [update prompt](../assets/story_update/update_story_v2.txt).

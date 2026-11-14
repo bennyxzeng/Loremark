@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/widgets.dart';
 import 'package:loremark/reader/epub_reader_service.dart';
+import 'package:loremark/reader/page_end.dart';
 import 'package:loremark/reader/page_start.dart';
 import 'package:loremark/reader/reader_position.dart';
 import 'package:loremark/reader/reading_position_store.dart';
@@ -104,6 +105,12 @@ class FakeEpubReaderSession implements EpubReaderSession {
   /// Reports how far the text on the page the reader is on goes.
   void emitPageTextEnd(TextPosition end) => _pageTextEnds.add(end);
 
+  final StreamController<PageEnd> _pageEnds =
+      StreamController<PageEnd>.broadcast();
+
+  /// Reports where the page the reader is on ends.
+  void emitPageEnd(PageEnd end) => _pageEnds.add(end);
+
   final StreamController<PageStart> _pageStarts =
       StreamController<PageStart>.broadcast();
 
@@ -139,6 +146,9 @@ class FakeEpubReaderSession implements EpubReaderSession {
 
   @override
   Stream<TextPosition> get pageTextEnds => _pageTextEnds.stream;
+
+  @override
+  Stream<PageEnd> get pageEnds => _pageEnds.stream;
 
   @override
   Stream<PageStart> get pageStarts => _pageStarts.stream;
@@ -197,6 +207,7 @@ class FakeEpubReaderSession implements EpubReaderSession {
     closeCalls++;
     await _positions.close();
     await _pageTextEnds.close();
+    await _pageEnds.close();
     await _pageStarts.close();
     await _chapters.close();
     await _selections.close();
@@ -229,6 +240,16 @@ class FakeReadingPositionStore implements ReadingPositionStore {
   @override
   Future<void> savePageStart(String bookId, PageStart start) async =>
       pageStartSaves.add((bookId, start));
+
+  /// Every [savePageEnd], in order.
+  final List<(String, PageEnd)> pageEndSaves = [];
+
+  @override
+  Future<PageEnd?> loadPageEnd(String bookId) async => null;
+
+  @override
+  Future<void> savePageEnd(String bookId, PageEnd end) async =>
+      pageEndSaves.add((bookId, end));
 
   @override
   Directory get root => Directory('fake');

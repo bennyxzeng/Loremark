@@ -238,7 +238,7 @@ void main() {
     await importBook(tester);
 
     await openTab(tester, 'Ask');
-    expect(find.text('Where we left off.'), findsOne);
+    expect(find.text('Ask about what you’ve read.'), findsOne);
     expect(find.text('Ask needs an API key'), findsNothing);
 
     await openTab(tester, 'Story Map');
@@ -267,6 +267,6 @@ void main() {
     connection.isOnline = true;
     await tester.pump(const Duration(milliseconds: 500));
     await openTab(tester, 'Ask');
-    expect(find.text('Where we left off.'), findsOne);
+    expect(find.text('Ask about what you’ve read.'), findsOne);
   });
 }

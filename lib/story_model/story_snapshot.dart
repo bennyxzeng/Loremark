@@ -8,8 +8,10 @@ typedef StoryQuestion = ({
 
 /// How far a reader has got through a story model's sections.
 ///
-/// This is the one spoiler boundary for a Story Map: what it shows, and what
-/// anything answering the reader can draw on, both stop here.
+/// This is the spoiler boundary: what the Story Map shows, and what Ask can
+/// draw on, both stop here. The Story Map measures it to the start of the
+/// reader's page, and Ask to its end, since a reader asks about what they are
+/// looking at.
 class StoryReadingProgress {
   const StoryReadingProgress(
     this.finished, {

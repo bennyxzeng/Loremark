@@ -7,9 +7,9 @@ our living document (Process description → Test Plan & Bugs).
 
 | Type | What it checks | Where | Runs in CI? |
 | :--- | :--- | :--- | :--- |
-| Unit tests | Plain Dart logic: reading position, large-jump rule, story model, passage extraction, search index, local storage | `test/reading/`, `test/reader/`, `test/story_model/`, `test/search/`, `test/library/`, `test/notes/` | Yes |
-| Widget tests | Screens in memory: library, API key, reader, notes, search sheet, Story Map | `test/home/`, `test/library/`, `test/settings/`, `test/story_map/`, `test/notes/` | Yes |
-| Spoiler tests | Nothing past the reader is ever shown (search, story model, text extraction) | `test/search/spoiler_property_test.dart`, `test/acceptance/story_model_spoiler_test.dart` | Yes |
+| Unit tests | Plain Dart logic: reading position, large-jump rule, story model, passage extraction, search index, local storage, Ask's lookups and requests | `test/reading/`, `test/reader/`, `test/story_model/`, `test/search/`, `test/library/`, `test/notes/`, `test/ask/` | Yes |
+| Widget tests | Screens in memory: library, API key, reader, notes, search sheet, Story Map, Ask | `test/home/`, `test/library/`, `test/settings/`, `test/story_map/`, `test/notes/` | Yes |
+| Spoiler tests | Nothing past the reader is ever shown or sent (search, story model, text extraction, Ask) | `test/search/spoiler_property_test.dart`, `test/acceptance/story_model_spoiler_test.dart`, `test/ask/story_lookup_test.dart`, `test/ask/ask_engine_test.dart` | Yes |
 | Edge-case tests | Odd EPUB markup, huge paragraphs, strange search queries | `test/corpus/edge_cases_test.dart` | Yes |
 | **Integration test** | The whole app on a device: first launch, import, read, search, notes, API key, offline | `integration_test/app_test.dart` | Emulator workflow (Android), `ios.yml` (iPhone simulator) |
 | Acceptance tests | 20 force-quits, offline reading, no unexpected network traffic | `tool/acceptance/`, [acceptance.md](acceptance.md) | Emulator workflow |
