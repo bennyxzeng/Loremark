@@ -1,3 +1,6 @@
+import 'dart:ui' show Color;
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter_readium/flutter_readium.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loremark/reader/epub_reader_service.dart';
@@ -103,6 +106,140 @@ void main() {
       );
 
       expect(positionFromLocator(locator, _indexOf)?.progression, 1.0);
+    });
+  });
+
+  group('the last page of a section', () {
+    Locations pages(int current, int total, double? progression) => Locations(
+      progression: progression,
+      additionalProperties: {'currentPage': current, 'totalPages': total},
+    );
+
+    // Values from the Android emulator, a book read right to left: Readium
+    // numbers the pages of a file backwards, 113 of 114 first, then 112.
+    test('a right-to-left file is not finished on its first page', () {
+      expect(isLastPage(pages(113, 114, 0.0)), isFalse);
+      expect(isLastPage(pages(112, 114, 0.00876395003167696)), isFalse);
+      expect(isLastPage(pages(111, 114, 0.01755226693091183)), isFalse);
+      expect(pageIndexOf(pages(113, 114, 0.0)), 0);
+      expect(pageIndexOf(pages(112, 114, 0.00876395003167696)), 1);
+    });
+
+    test('a right-to-left file is finished on its last page, which is 0', () {
+      expect(isLastPage(pages(0, 114, 113 / 114)), isTrue);
+      expect(isLastPage(pages(1, 114, 112 / 114)), isFalse);
+    });
+
+    test('a right-to-left position keeps the page start until the end', () {
+      Locator rtl(int current, double progression) => Locator(
+        href: 'OEBPS/ch1.xhtml',
+        type: _xhtml,
+        locations: pages(current, 114, progression),
+      );
+
+      expect(
+        positionFromLocator(rtl(113, 0.0), _indexOf),
+        const ReaderPosition(1, 0.0),
+      );
+      expect(
+        positionFromLocator(rtl(50, 63 / 114), _indexOf),
+        ReaderPosition(1, 63 / 114),
+      );
+      expect(
+        positionFromLocator(rtl(0, 113 / 114), _indexOf),
+        const ReaderPosition(1, 1.0),
+      );
+    });
+
+    // Values from the same device for a book read left to right.
+    test('a left-to-right file is as before', () {
+      expect(isLastPage(pages(0, 5, 0.0)), isFalse);
+      expect(isLastPage(pages(1, 5, 0.19970359392367543)), isFalse);
+      expect(isLastPage(pages(3, 5, 0.6000370507595406)), isFalse);
+      expect(isLastPage(pages(4, 5, 0.8)), isTrue);
+      expect(pageIndexOf(pages(1, 5, 0.19970359392367543)), 1);
+    });
+
+    test('a one-page file is finished on its only page either way', () {
+      expect(isLastPage(pages(0, 1, 0.0)), isTrue);
+      expect(isLastPage(pages(0, 1, null)), isTrue);
+    });
+
+    test('without a progression the page number is taken as it is', () {
+      expect(isLastPage(pages(4, 5, null)), isTrue);
+      expect(isLastPage(pages(3, 5, null)), isFalse);
+      expect(pageIndexOf(pages(2, 5, null)), 2);
+    });
+
+    test('is not known without page numbers', () {
+      expect(isLastPage(const Locations(progression: 0.9)), isFalse);
+      expect(isLastPage(null), isFalse);
+      expect(pageIndexOf(const Locations(progression: 0.9)), isNull);
+      expect(pageIndexOf(pages(0, 0, 0.5)), isNull);
+      expect(isLastPage(pages(0, 0, 0.5)), isFalse);
+    });
+
+    test('is right for every page of files of 1 to 200 pages, both ways', () {
+      for (var total = 1; total <= 200; total++) {
+        for (var page = 0; page < total; page++) {
+          // The progression is a little off the exact page start, as seen.
+          for (final noise in [-0.3, 0.0, 0.3]) {
+            final progression = ((page + noise) / total).clamp(0.0, 1.0);
+            final ltr = pages(page, total, progression);
+            final rtl = pages(total - 1 - page, total, progression);
+            final last = page == total - 1;
+            final why = 'page $page of $total, noise $noise';
+            expect(isLastPage(ltr), last, reason: 'left to right, $why');
+            expect(isLastPage(rtl), last, reason: 'right to left, $why');
+          }
+        }
+      }
+    });
+
+    group('on iOS', () {
+      // iOS numbers the pages of a file from 1: 1 to 5 for a 5-page file.
+      setUp(() => debugDefaultTargetPlatformOverride = TargetPlatform.iOS);
+      tearDown(() => debugDefaultTargetPlatformOverride = null);
+
+      test('the second to last page is not finished', () {
+        final locator = Locator(
+          href: 'OEBPS/ch1.xhtml',
+          type: _xhtml,
+          locations: pages(4, 5, 0.6),
+        );
+
+        expect(isLastPage(pages(4, 5, 0.6)), isFalse);
+        expect(
+          positionFromLocator(locator, _indexOf),
+          const ReaderPosition(1, 0.6),
+        );
+      });
+
+      test('the last page is finished', () {
+        expect(isLastPage(pages(5, 5, 0.8)), isTrue);
+        expect(isLastPage(pages(1, 1, 0.0)), isTrue);
+      });
+
+      test('page numbers are counted from 0, as on Android', () {
+        expect(pageIndexOf(pages(1, 5, 0.0)), 0);
+        expect(pageIndexOf(pages(2, 5, 0.2)), 1);
+        expect(pageIndexOf(pages(3, 5, null)), 2);
+      });
+
+      test('is right for every page of files of 1 to 200 pages', () {
+        for (var total = 1; total <= 200; total++) {
+          for (var page = 0; page < total; page++) {
+            for (final noise in [-0.3, 0.0, 0.3]) {
+              final progression = ((page + noise) / total).clamp(0.0, 1.0);
+              expect(
+                isLastPage(pages(page + 1, total, progression)),
+                page == total - 1,
+                reason: 'page $page of $total, noise $noise',
+              );
+            }
+          }
+        }
+      });
     });
   });
 
@@ -259,6 +396,222 @@ void main() {
       );
 
       expect(locator, isNull);
+    });
+  });
+
+  group('passageDecorations', () {
+    final readingOrder = [
+      for (final href in _hrefs) Link(href: href, type: _xhtml),
+    ];
+    PassageTarget at(String text, {int section = 2}) => PassageTarget(
+      sectionIndex: section,
+      progression: 0.25,
+      highlight: text,
+    );
+
+    test('highlights a passage with what it also highlights', () {
+      final decorations = passageDecorations(
+        at('First line.').alsoHighlighting([at('Second line.')]),
+        readingOrder,
+        _indexOf,
+      );
+      expect([for (final d in decorations) d.id], ['hit', 'hit-1']);
+      expect(
+        [for (final d in decorations) d.locator.text?.highlight],
+        ['First line.', 'Second line.'],
+      );
+      expect(
+        decorations.every((d) => d.style == passageHighlightStyle),
+        isTrue,
+      );
+    });
+
+    test('is one highlight for a passage alone', () {
+      final decorations = passageDecorations(
+        at('a grey cat'),
+        readingOrder,
+        _indexOf,
+      );
+      expect(decorations.single.id, 'hit');
+    });
+
+    test('leaves out what isn\'t in the reading order', () {
+      final decorations = passageDecorations(
+        at('First line.').alsoHighlighting([at('Gone.', section: 5)]),
+        readingOrder,
+        _indexOf,
+      );
+      expect(decorations.single.locator.text?.highlight, 'First line.');
+    });
+  });
+
+  group('passageSelectionFrom', () {
+    Locator selected({
+      String href = 'OEBPS/ch1.xhtml',
+      LocatorText? text = const LocatorText(
+        before: 'There was ',
+        highlight: 'a grey cat',
+        after: ' on the wall',
+      ),
+    }) => Locator(
+      href: href,
+      type: _xhtml,
+      locations: const Locations(progression: 0.4),
+      text: text,
+    );
+
+    test('carries the action, place and text quote', () {
+      final selection = passageSelectionFrom(
+        SelectionActionEvent(actionId: 'addNote', locator: selected()),
+        _indexOf,
+      );
+
+      expect(selection?.command, SelectionCommand.addNote);
+      expect(selection?.sectionIndex, 1);
+      expect(selection?.progression, 0.4);
+      expect(selection?.text, 'a grey cat');
+      expect(selection?.before, 'There was ');
+      expect(selection?.after, ' on the wall');
+    });
+
+    test('falls back to the selected text when the locator has none', () {
+      final selection = passageSelectionFrom(
+        SelectionActionEvent(
+          actionId: 'highlight',
+          locator: selected(text: null),
+          selectedText: 'a grey cat',
+        ),
+        _indexOf,
+      );
+
+      expect(selection?.command, SelectionCommand.highlight);
+      expect(selection?.text, 'a grey cat');
+      expect(selection?.before, '');
+    });
+
+    test('is null for an action Loremark did not add', () {
+      final selection = passageSelectionFrom(
+        SelectionActionEvent(actionId: 'share', locator: selected()),
+        _indexOf,
+      );
+
+      expect(selection, isNull);
+    });
+
+    test('is null outside the spine or without any text', () {
+      expect(
+        passageSelectionFrom(
+          SelectionActionEvent(
+            actionId: 'copy',
+            locator: selected(href: 'OEBPS/nav.xhtml'),
+          ),
+          _indexOf,
+        ),
+        isNull,
+      );
+      expect(
+        passageSelectionFrom(
+          SelectionActionEvent(
+            actionId: 'copy',
+            locator: selected(text: const LocatorText(highlight: '  ')),
+          ),
+          _indexOf,
+        ),
+        isNull,
+      );
+    });
+  });
+
+  group('selectionMenu', () {
+    test('offers every selection command under its own name', () {
+      expect(
+        [for (final action in selectionMenu) action.id],
+        [for (final command in SelectionCommand.values) command.name],
+      );
+      expect(
+        [for (final action in selectionMenu) action.title],
+        ['Highlight', 'Add note', 'Copy'],
+      );
+    });
+  });
+
+  group('noteDecorations', () {
+    final readingOrder = [
+      for (final href in _hrefs) Link(href: href, type: _xhtml),
+    ];
+
+    test('draws each highlight at its quote in its own color', () {
+      final decorations = noteDecorations(
+        const [
+          NoteHighlight(
+            id: 'note-1',
+            target: PassageTarget(
+              sectionIndex: 1,
+              progression: 0.4,
+              highlight: 'a grey cat',
+              before: 'There was ',
+            ),
+            color: Color(0x6654D27A),
+          ),
+        ],
+        readingOrder,
+        _indexOf,
+      );
+
+      expect(decorations, hasLength(1));
+      expect(decorations.single.id, 'note-1');
+      expect(decorations.single.locator.text?.highlight, 'a grey cat');
+      expect(decorations.single.locator.text?.before, 'There was ');
+      expect(decorations.single.style.tint, const Color(0x6654D27A));
+    });
+
+    // The session applies the same list again whenever the reader moves to
+    // another file, and Readium redraws only decorations that differ.
+    test('builds the same decorations every time for the same notes', () {
+      const highlights = [
+        NoteHighlight(
+          id: 'note-1',
+          target: PassageTarget(
+            sectionIndex: 1,
+            progression: 0.4,
+            highlight: 'a grey cat',
+            before: 'There was ',
+            after: ' on the wall',
+          ),
+          color: Color(0x7354D27A),
+        ),
+      ];
+
+      List<Object?> json() => [
+        for (final decoration in noteDecorations(
+          highlights,
+          readingOrder,
+          _indexOf,
+        ))
+          decoration.toJson(),
+      ];
+
+      expect(json(), json());
+    });
+
+    test('skips a highlight whose section is not in the reading order', () {
+      final decorations = noteDecorations(
+        const [
+          NoteHighlight(
+            id: 'lost',
+            target: PassageTarget(
+              sectionIndex: 9,
+              progression: 0,
+              highlight: 'x',
+            ),
+            color: Color(0x66FFC107),
+          ),
+        ],
+        readingOrder,
+        _indexOf,
+      );
+
+      expect(decorations, isEmpty);
     });
   });
 

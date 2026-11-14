@@ -1,53 +1,68 @@
 # Testing and Continuous Integration
 
-This page describes how Loremark's tests are automated and how CI runs them. It extends the
-test plan in our living document (Process description → Test Plan & Bugs).
+This page says what we test, how to run it, and how bugs are tracked. It extends the test plan in
+our living document (Process description → Test Plan & Bugs).
 
-## Test-automation infrastructure
+## Test types
 
-We use [`flutter_test`](https://api.flutter.dev/flutter/flutter_test/), which is built on
-[`package:test`](https://pub.dev/packages/test). Tests live in `test/`, mirroring `lib/`, and
-run with `flutter test`. It covers both kinds of automated test our plan needs for the app:
+| Type | What it checks | Where | Runs in CI? |
+| :--- | :--- | :--- | :--- |
+| Unit tests | Plain Dart logic: reading position, large-jump rule, story model, passage extraction, search index, local storage, Ask's lookups and requests | `test/reading/`, `test/reader/`, `test/story_model/`, `test/search/`, `test/library/`, `test/notes/`, `test/ask/` | Yes |
+| Widget tests | Screens in memory: library, API key, reader, notes, search sheet, Story Map, Ask | `test/home/`, `test/library/`, `test/settings/`, `test/story_map/`, `test/notes/` | Yes |
+| Spoiler tests | Nothing past the reader is ever shown or sent (search, story model, text extraction, Ask) | `test/search/spoiler_property_test.dart`, `test/acceptance/story_model_spoiler_test.dart`, `test/ask/story_lookup_test.dart`, `test/ask/ask_engine_test.dart` | Yes |
+| Edge-case tests | Odd EPUB markup, huge paragraphs, strange search queries | `test/corpus/edge_cases_test.dart` | Yes |
+| **Integration test** | The whole app on a device: first launch, import, read, search, notes, API key, offline | `integration_test/app_test.dart` | Emulator workflow (Android), `ios.yml` (iPhone simulator) |
+| Acceptance tests | 20 force-quits, offline reading, no unexpected network traffic | `tool/acceptance/`, [acceptance.md](acceptance.md) | Emulator workflow |
+| Benchmarks | A 500,000-word book stays fast enough | `flutter test --tags benchmark`, [benchmarks.md](benchmarks.md) | No (manual) |
+| Real-book corpus | 50 public-domain EPUBs and 24 broken variants | `flutter test --tags corpus`, [corpus-testing.md](corpus-testing.md) | No (needs the books) |
+| Story Map updates | The Dart port matches the story model lab, and a failed update changes nothing | `flutter test test/story_update`, [story-update.md](story-update.md) | Yes |
+| Manual | Usability sessions with outside readers | Not run yet | No |
 
-- **Unit tests** (`test(...)`) for plain Dart logic: the reading cutoff and large-jump check,
-  the versioned story model, theory status and dependencies, `ContextManager` filtering,
-  `ResponseValidator`, local JSON storage, and API error handling.
-- **Widget tests** (`testWidgets(...)`) that build screens in memory and tap, scroll and read
-  them without a device, for example "the chapter slider cannot pass the reader's position".
+Tests use `flutter_test`, the test framework that ships with Flutter. It runs unit and widget
+tests with one command, so there is nothing else to install. `integration_test` is also part of
+the Flutter SDK.
 
-### Why this framework
+## Run the tests
 
-- **`flutter_test` is the Flutter SDK's own test framework.** It ships with Flutter, so there is
-  nothing extra to install or keep compatible. It is the only framework that can pump Flutter
-  widgets without a device, which a general Dart runner cannot do.
-- **One command for the whole app.** `flutter test` runs unit and widget tests together, and the
-  same command runs locally and in CI.
-- **Tags fit our test plan.** Tests that call a real LLM are tagged `live` and excluded by
-  default (see below). This matches the plan's split between deterministic unit tests with mock
-  LLM responses and the separate nondeterministic prompt runs.
+```bash
+flutter pub get
+flutter test --exclude-tags "live || benchmark"        # all unit and widget tests (CI does this)
+flutter test test/reading/text_position_test.dart      # one file
+flutter test --plain-name 'an earlier chapter'         # one test by name
+flutter test integration_test -d <device id>           # integration test, needs an emulator
+dart format lib test integration_test tool && flutter analyze
+```
 
-### Test categories and where they run
+Start an emulator with `flutter emulators --launch <name>`, and find the device id with
+`flutter devices`.
 
-| Test-plan category | How it is automated | In CI? |
-| :--- | :--- | :--- |
-| Unit tests (EPUB reader, story model, notes and theories, AI request coordinator, local storage, API errors) | `flutter test`, with a fake `LLMClient` returning fixed responses | Yes, every push and PR |
-| Widget tests (screens and navigation) | `flutter test` | Yes, every push and PR |
-| Nondeterministic prompt tests | Tagged `live` | No: needs API keys, costs money, output varies (Risks 1 and 4) |
-| Weekly 150-question spoiler run | Two teammates review answers by hand | No |
-| Integration, reliability, scalability, privacy (force-quit, 500,000-word book, Proxyman) | Run on a device or simulator | No: needs a device and network capture |
-| Usability sessions | External readers | No |
+## Integration test
 
-## How to add a new test
+`integration_test/app_test.dart` runs the real app, with the real EPUB reader, on an Android
+emulator or phone. It uses a generated 3-chapter book, so it needs no files or network.
 
-Each feature pull request includes tests for that feature, following the test plan's schedule
-of testing components as they are built. For example, the reading position PR adds
-`test/reading/`. The tests in `test/widget_test.dart` are only smoke tests for the app shell.
+Only three things are replaced: the file picker (returns the generated book), the key store
+(kept in memory) and the API key check (answers by itself).
 
-1. **Create the file** under `test/`, mirroring the path of the code under test and ending in
-   `_test.dart`. For `lib/reading/text_position.dart` the test is
-   `test/reading/text_position_test.dart`. `flutter test` finds every `*_test.dart` file
-   automatically, and CI picks it up with no configuration change.
-2. **Write the test.** Import the code with a `package:loremark/...` import:
+| Test | Steps and checks |
+| :--- | :--- |
+| Reader without an API key | First launch shows "Connect an AI provider". Skip it. Import the book. It opens in the reader. Next page moves the progress. Search finds a word from a read chapter, and finds nothing for a word in a chapter not reached yet. Notes is empty. Ask says "needs an API key". Story Map opens, but says to add a key before updating. Back in the library the book is "LAST OPENED". |
+| Rejected API key | A key the check rejects keeps the reader on the key screen. |
+| Valid API key | A valid key opens the library. After import, Ask opens, and Story Map shows its chapter slider. |
+| Offline | The "You're offline" banner shows. Ask is locked, Story Map still opens. Going back online unlocks Ask. |
+| Story Map files (by hand; system dialogs can't be automated) | Update a section, then pick **Export files…** from the ⋯ menu and save the zip to Files. It unzips to `store/` and `runs/`. **Load from file…** with that zip gives back a map that can still be updated. Loading a lone `story_model.json` shows the map, and says it can only be viewed. |
+
+It cannot select text, so creating a highlight or note is covered by widget tests
+(`test/home/read_screen_notes_test.dart`, `test/notes/`) instead. The generated book has no table
+of contents, so Contents is covered by `test/reader/toc_builder_test.dart` and the real-book corpus.
+
+It is not in the normal CI build, because it needs an emulator, which takes about 10 minutes to
+start and build. It runs in the emulator workflow (see below), or by hand before a release.
+
+## Add a new test
+
+1. Create `test/<same folder as lib>/<name>_test.dart`. `flutter test` finds it by itself.
+2. Import the code with `package:loremark/...`:
 
    ```dart
    import 'package:flutter_test/flutter_test.dart';
@@ -60,103 +75,103 @@ of testing components as they are built. For example, the reading position PR ad
    }
    ```
 
-   Use `testWidgets` instead of `test` for UI; see `test/widget_test.dart`. Group related
-   cases with `group(...)`.
-3. **Do not call a real LLM in a normal test.** Pass a fake `LLMClient` that returns a fixed
-   response. A test that must call a real provider goes in its own file tagged `live`:
-
-   ```dart
-   @Tags(['live'])
-   library;
-   ```
-
-   Skip the test when the API key is missing, so `flutter test --tags live` never fails just
-   because a key is not set.
-4. **Run the same checks CI runs** before pushing:
-
-   ```bash
-   flutter pub get
-   dart format .
-   flutter analyze
-   flutter test --exclude-tags live
-   ```
-
-   Run a single file with `flutter test test/reading/text_position_test.dart`, or one test by
-   name with `flutter test --plain-name 'an earlier chapter'`.
-5. **Open a pull request.** CI runs the new test automatically.
+   Use `testWidgets` for screens. Use a fake instead of a real service: see
+   `test/home/fake_epub_reader_service.dart`.
+3. Run the CI checks (above) and open a pull request. Each feature pull request includes tests for
+   that feature.
 
 ## Continuous integration
 
-### Service and how the repository is linked to it
+We use **GitHub Actions**. The link to the repository is the file `.github/workflows/ci.yml`.
+GitHub runs it on a fresh Ubuntu machine for every matching event, and shows the result as a check
+on the commit and pull request.
 
-We use **GitHub Actions**. It is built into GitHub, so there is no external account or access
-token to set up. The link between CI and the repository is the workflow file committed at
-`.github/workflows/ci.yml`, which defines one job, `Flutter (format, analyze, test)`.
+Why GitHub Actions: our code, pull requests and bug issues are already on GitHub, it is free for
+us, `subosito/flutter-action` installs the exact Flutter version, and it needs no other account.
 
-GitHub reads this file on every matching event and runs the job on a fresh GitHub-hosted
-Ubuntu runner. The job checks out the commit with `actions/checkout`, using the
-`GITHUB_TOKEN` that GitHub creates for each run. The workflow only requests
-`contents: read` permission and use no secrets, so pull requests from forks run safely. Results
-appear as checks on the commit and the pull request, and in the repository's **Actions** tab.
+What a build runs, using Flutter 3.47.7 (the version in `.metadata`):
 
-To reproduce the setup in another repository:
+1. `flutter pub get --enforce-lockfile`: fails if `pubspec.yaml` and `pubspec.lock` disagree.
+2. `dart format --output=none --set-exit-if-changed .`: fails on unformatted code.
+3. `flutter analyze`: fails on any error, warning or lint.
+4. `flutter test --coverage --exclude-tags "live || benchmark"`: runs the tests and records
+   coverage.
+5. A coverage report is written to the job summary, and `lcov.info` is uploaded.
 
-1. Copy `ci.yml` into `.github/workflows/` and push it. GitHub Actions is enabled by default, so
-   the workflow starts running on the next pull request or push to `main` or `ui`.
-2. Check that **Settings → Actions → General → Actions permissions** allows actions to run.
-3. Make CI block merging (a repository admin does this once): in
-   **Settings → Branches → Add branch ruleset** (or **Add classic branch protection rule**) for
-   `main`, turn on **Require a pull request before merging** with one approval, and
-   **Require status checks to pass**, then select the `Flutter (format, analyze, test)` check.
+Any failing step makes the check red.
 
-### Why GitHub Actions
-
-- **Already where our code is.** Our repository, pull requests, code review and bug issues are
-  all on GitHub. Checks appear directly on each pull request, and branch protection can require
-  them without another service.
-- **Free for our use.** Public repositories get unlimited minutes on standard GitHub-hosted
-  runners, and private repositories get a monthly free quota. Travis CI and CircleCI use
-  credit-based plans, so a busy week of pull requests could run out of free builds.
-- **Ready-made Flutter support.** `subosito/flutter-action` installs and caches an exact Flutter
-  version in one step.
-- **macOS runners are available** when we add iOS builds and simulator integration tests,
-  without changing services.
-- **Less setup than Azure Pipelines,** which needs a separate Azure DevOps organization and
-  project linked to GitHub.
-
-### What a CI build runs
-
-The `CI` workflow uses Flutter **3.47.7**, the version in `.metadata`, so CI and our machines
-agree. If the team upgrades Flutter, update `flutter-version` in `ci.yml` in the same pull
-request. The steps are:
-
-1. `flutter pub get --enforce-lockfile`: installs the exact versions in `pubspec.lock`, and fails
-   if `pubspec.yaml` changed without updating the lock file.
-2. `dart format --output=none --set-exit-if-changed .`: fails if any file is not formatted
-   (Effective Dart, as in `coding-guidelines.md`).
-3. `flutter analyze`: fails on any analyzer error, warning or `flutter_lints` issue.
-4. `flutter test --exclude-tags live`: runs every unit and widget test except `live` ones.
-
-Any failing step fails the build and marks the commit or pull request with a red check.
-
-### What triggers a CI build
-
-| Action | Runs CI? |
+| Event | Runs CI? |
 | :--- | :--- |
-| Open, push to, or reopen a pull request (into any branch) | Yes |
-| Push or merge to `main` or `ui` (our integration branch) | Yes |
-| Manual run (**Actions → CI → Run workflow**) | Yes |
-| Push to a feature branch with no pull request | No |
+| Pull request opened, pushed to or reopened | Yes |
+| Push or merge to `main` or `ui` | Yes |
+| Manual run (Actions → CI → Run workflow) | Yes |
+| Push to a branch with no pull request | No |
 
-Feature-branch pushes are checked once a pull request is open, so each change is tested once
-instead of twice. Pushes to `ui` and `main` are checked again after merging, because two pull
-requests can each pass on their own but break once combined. A newer push to the same pull request cancels the older run that is still in
-progress.
+**Device workflows.** Two more workflows run the integration test on a simulated phone:
+`.github/workflows/acceptance.yml` (Android emulator, plus the acceptance tests) and
+`.github/workflows/ios.yml` (iPhone simulator). Each is slow (an emulator or simulator has to start and the app has to build), so they run by hand,
+every Monday, and on pull requests labeled `device-tests`.
 
-### Not yet in CI
+To make CI block merging, an admin turns on **Require status checks to pass** for `main` in
+Settings → Branches and selects `Flutter (format, analyze, test)`.
 
-- **SwiftLint.** `coding-guidelines.md` lists it, but the only Swift code is Flutter's generated
-  `ios/Runner`. We will add a SwiftLint job when we write our own Swift code.
-- **iOS build and simulator integration tests.** These need a macOS runner. We plan to add an
-  `integration_test` job before the beta build.
-- **Live LLM tests.** These stay manual to protect our API budget (Risk 4).
+## Code coverage
+
+Coverage is the share of lines in `lib/` that run during the tests. It shows where no test
+reaches. It does not show that a test checks the right thing.
+
+```bash
+flutter test --coverage --exclude-tags "live || benchmark"
+dart run tool/coverage/report.dart
+```
+
+In CI, the same table is in the job summary and `coverage/lcov.info` is uploaded as an artifact.
+
+Result on 2026-11-04 (900 tests): **94.1%** of lines in `lib/` ran (4,508 of 4,792), and every
+file in `lib/` is loaded by at least one test.
+
+| Folder | Lines covered | % |
+| :--- | ---: | ---: |
+| `lib/reading` | 75 of 75 | 100.0% |
+| `lib/story_model` | 318 of 320 | 99.4% |
+| `lib/theme` | 56 of 57 | 98.2% |
+| `lib/search` | 1,181 of 1,218 | 97.0% |
+| `lib/home` | 492 of 512 | 96.1% |
+| `lib/story_map` | 804 of 851 | 94.5% |
+| `lib/reader` | 555 of 598 | 92.8% |
+| `lib/notes` | 381 of 411 | 92.7% |
+| `lib/library` | 311 of 351 | 88.6% |
+| `lib/settings` | 318 of 365 | 87.1% |
+| `lib/main.dart` | 17 of 34 | 50.0% |
+
+The lowest are `main.dart` (the real keychain and file picker, which the tests replace) and the
+real-device parts of the reader, which only the emulator tests reach.
+
+## Bug tracking
+
+Bugs are tracked in [GitHub Issues](https://github.com/bennyxzeng/Loremark/issues). The full list
+with causes and fixes is in [bug-log.md](bug-log.md): 48 bugs so far: 38 fixed, 1 worked around, 2 fix in review and 7 open.
+
+- **File an issue** with the "Bug report" form (`.github/ISSUE_TEMPLATE/bug_report.yml`). It asks
+  for steps to reproduce, expected and actual result, and the build.
+- **Priority label** (one per bug):
+  - **P0**: spoiler leak, crash or lost data. Fix before any new feature.
+  - **P1**: a feature gives wrong results or is hard to use.
+  - **P2**: small or cosmetic.
+- **Type label** (when it fits): `spoiler`, `crash`, `AI-quality`, `timeline`, `usability`,
+  `test-harness`.
+- **Title** starts with an ID: `BUG-nn` (app), `CI-nn` (tests and CI), `OPEN-nn` (not fixed yet).
+- **Assign** the person who fixes it. When the fix is merged, close the issue with a comment
+  naming the fix commit and pull request. A fix includes a test that fails without it.
+- Add a row to [bug-log.md](bug-log.md).
+
+## Not tested yet
+
+- **Theories.** Deferred until after the beta.
+- **Usability sessions.** They need outside readers.
+- **The large-jump confirmation.** The rule is tested, but no screen asks the reader to confirm
+  yet (issue #53).
+- **iOS on a real iPhone.** The integration test passes 4 of 4 on an iPhone simulator (GitHub
+  Actions run 41785464685), but nobody has tried the app on a real iPhone. On the simulator the
+  reader shows no progress percentage (issue #77). The force-quit, offline and privacy checks are
+  Android only.

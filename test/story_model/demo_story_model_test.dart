@@ -3,13 +3,12 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loremark/story_model/story_model.dart';
-import 'package:loremark/story_model/story_model_loader.dart';
 import 'package:loremark/story_model/story_snapshot.dart';
 
-// Checks the real demo data the Story Map ships with, read from disk.
+// Checks real data from the story model lab: 86—EIGHTY-SIX, Vol. 1, chapters 1-3.
 void main() {
   final model = StoryModel.fromJson(
-    jsonDecode(File(demoStoryModelAsset).readAsStringSync())
+    jsonDecode(File('test/fixtures/86v1_story_model.json').readAsStringSync())
         as Map<String, dynamic>,
   );
   final chapter1 = model.sections.firstWhere((s) => s.chapterNumber == 1);

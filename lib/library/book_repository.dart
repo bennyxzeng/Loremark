@@ -7,6 +7,9 @@ import 'package:path_provider/path_provider.dart';
 
 import 'book.dart';
 import 'epub_metadata.dart';
+import '../ask/ask_history.dart';
+import '../story_update/story_import.dart';
+import '../story_update/story_updater.dart';
 
 /// The reader's imported books, kept on the device.
 ///
@@ -49,9 +52,27 @@ class BookRepository {
         jsonDecode(await _index.readAsString()) as Map<String, dynamic>;
     _books.addAll([
       for (final book in json['books'] as List)
-        Book.fromJson(book as Map<String, dynamic>),
+        _locatedHere(Book.fromJson(book as Map<String, dynamic>)),
     ]);
     _lastOpenedId = json['last_opened_id'] as String?;
+  }
+
+  /// [book] with its files where they are now. The list records full paths, but
+  /// iOS moves the app's folder when the app is reinstalled or updated, and the
+  /// files move with it, keeping their place inside [root].
+  Book _locatedHere(Book book) {
+    String here(String folder, String path) =>
+        '${root.path}/$folder/${path.substring(path.lastIndexOf('/') + 1)}';
+    return Book(
+      id: book.id,
+      title: book.title,
+      author: book.author,
+      epubPath: here('books', book.epubPath),
+      coverPath: book.coverPath == null
+          ? null
+          : here('covers', book.coverPath!),
+      importedAt: book.importedAt,
+    );
   }
 
   /// Copies the EPUB at [sourcePath] into the library.
@@ -115,6 +136,13 @@ class BookRepository {
       final file = File(path);
       if (await file.exists()) await file.delete();
     }
+    final storyModel = Directory(storyStorePath(root.path, book.id));
+    if (await storyModel.exists()) await storyModel.delete(recursive: true);
+    for (final path in storySidePaths(storyModel.path)) {
+      final folder = Directory(path);
+      if (await folder.exists()) await folder.delete(recursive: true);
+    }
+    await AskHistoryStore(root).deleteBook(book.id);
   }
 
   /// Queues a write, so two saves never share the temporary file. A failed

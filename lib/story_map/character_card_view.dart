@@ -13,19 +13,12 @@ Future<void> showCharacterCard(
   StorySnapshot snapshot,
   String entityId,
 ) {
-  return showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    showDragHandle: true,
-    builder: (context) => DraggableScrollableSheet(
-      expand: false,
-      initialChildSize: 0.6,
-      maxChildSize: 0.95,
-      builder: (context, scrollController) => CharacterCardView(
-        snapshot: snapshot,
-        entityId: entityId,
-        scrollController: scrollController,
-      ),
+  return showFactSheet(
+    context,
+    builder: (context, scrollController) => CharacterCardView(
+      snapshot: snapshot,
+      entityId: entityId,
+      scrollController: scrollController,
     ),
   );
 }
@@ -65,7 +58,7 @@ class CharacterCardView extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         Text(
-          '${entityKindLabel(entity.kind)} · First seen in '
+          '${entity.kind.name} · First seen in '
           '${snapshot.firstSeenSection(entityId).label}',
           style: theme.textTheme.bodyMedium?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
@@ -75,9 +68,11 @@ class CharacterCardView extends StatelessWidget {
           const SizedBox(height: 8),
           Text('Also known as ${aliases.join(', ')}'),
         ],
-        if (changes.isNotEmpty) ...[
-          const FactHeading('Changes'),
-          for (final change in changes)
+        for (final MapEntry(key: action, value: group) in changesByAction(
+          changes,
+        ).entries) ...[
+          FactHeading('Changes: ${changeHeading(action)}'),
+          for (final change in group)
             FactTile(
               model: model,
               text:
@@ -92,7 +87,7 @@ class CharacterCardView extends StatelessWidget {
             FactTile(
               model: model,
               text: snapshot.describe(record.payload),
-              tags: assertionTags(record.payload.assertion),
+              tags: [record.payload.assertion.name],
               evidence: record.evidence,
             ),
         ],
@@ -104,9 +99,8 @@ class CharacterCardView extends StatelessWidget {
               text: snapshot.describe(record.payload),
               detail: record.payload.description,
               tags: [
-                if (record.payload.temporalContext == TemporalContext.past)
-                  'past',
-                ...assertionTags(record.payload.assertion),
+                record.payload.temporalContext.name,
+                record.payload.assertion.name,
               ],
               onTap: () => showCharacterCard(
                 context,
@@ -123,9 +117,8 @@ class CharacterCardView extends StatelessWidget {
               text: record.payload.description,
               detail: model.sectionById(record.learnedInSectionId)?.label,
               tags: [
-                if (record.payload.temporalContext == TemporalContext.past)
-                  'flashback',
-                ...assertionTags(record.payload.assertion),
+                record.payload.temporalContext.name,
+                record.payload.assertion.name,
               ],
             ),
         ],

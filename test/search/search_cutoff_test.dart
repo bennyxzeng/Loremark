@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loremark/reader/reader_position.dart';
+import 'package:loremark/reading/text_position.dart';
 import 'package:loremark/search/search_cutoff.dart';
 import 'package:loremark/search/search_index.dart';
 
@@ -80,6 +81,58 @@ void main() {
       const furthest = ReaderPosition(2, 0.5);
 
       expect(searchCutoff(current: current, furthest: furthest), current);
+    });
+  });
+
+  group('pageCutoff', () {
+    test('is the start of the book with nothing reached', () {
+      expect(pageCutoff(), const ReaderPosition(0, 0));
+    });
+
+    test('opens the page text the reader has measured', () {
+      // Section 1 is not finished, but its first page ends at 40% of its text.
+      expect(
+        pageCutoff(
+          current: const ReaderPosition(1, 0.1),
+          furthestPageText: const TextPosition(1, 0.4),
+        ),
+        const ReaderPosition(1, 0.4),
+      );
+    });
+
+    test('keeps a finished earlier section when the page is unmeasured', () {
+      expect(
+        pageCutoff(current: const ReaderPosition(3, 0.2)),
+        const ReaderPosition(2, 1),
+      );
+    });
+
+    test('takes the later of a finished section and a measured page', () {
+      expect(
+        pageCutoff(
+          current: const ReaderPosition(2, 1),
+          furthestPageText: const TextPosition(1, 0.9),
+        ),
+        const ReaderPosition(2, 1),
+      );
+      expect(
+        pageCutoff(
+          current: const ReaderPosition(2, 0.3),
+          furthestPageText: const TextPosition(2, 0.3),
+        ),
+        const ReaderPosition(2, 0.3),
+      );
+    });
+
+    test('does not move back when the reader turns to an earlier page', () {
+      expect(
+        pageCutoff(
+          current: const ReaderPosition(0, 0.1),
+          furthest: const ReaderPosition(2, 0.5),
+          furthestPageText: const TextPosition(2, 0.5),
+        ),
+        const ReaderPosition(2, 0.5),
+      );
     });
   });
 }

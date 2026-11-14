@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:loremark/reader/page_end.dart';
+import 'package:loremark/reader/page_start.dart';
 import 'package:loremark/reader/reader_position.dart';
 import 'package:loremark/reader/reading_position_store.dart';
 
@@ -33,6 +35,92 @@ void main() {
     final restarted = ReadingPositionStore(store.root);
 
     expect(await restarted.load(bookA), position);
+  });
+
+  group('where the page starts', () {
+    const start = PageStart(3, ':root > :nth-child(2) > :nth-child(9)');
+
+    test('is kept across restarts', () async {
+      await store.savePageStart(bookA, start);
+      expect(
+        await ReadingPositionStore(store.root).loadPageStart(bookA),
+        start,
+      );
+    });
+
+    test('and the position don\'t disturb each other', () async {
+      const position = ReaderPosition(3, 0.4);
+      await store.save(bookA, position);
+      await store.savePageStart(bookA, start);
+      expect(await store.load(bookA), position);
+      expect(await store.loadPageStart(bookA), start);
+
+      const later = ReaderPosition(3, 0.5);
+      await store.save(bookA, later);
+      expect(await store.load(bookA), later);
+      expect(await store.loadPageStart(bookA), start);
+    });
+
+    test('saved together with the position, both are written', () async {
+      const position = ReaderPosition(3, 0.4);
+      await Future.wait([
+        store.save(bookA, position),
+        store.savePageStart(bookA, start),
+        store.save(bookA, position),
+      ]);
+      expect(await store.load(bookA), position);
+      expect(await store.loadPageStart(bookA), start);
+    });
+
+    test('is null with none saved', () async {
+      expect(await store.loadPageStart(bookA), isNull);
+      await store.save(bookA, const ReaderPosition(1, 0.5));
+      expect(await store.loadPageStart(bookA), isNull);
+    });
+
+    test('is null when it can\'t be read', () async {
+      await writeRaw(
+        bookA,
+        '{"version":1,"pageStart":{"sectionIndex":-1,"cssSelector":"p"}}',
+      );
+      expect(await store.loadPageStart(bookA), isNull);
+      await writeRaw(bookA, 'not json');
+      expect(await store.loadPageStart(bookA), isNull);
+    });
+  });
+
+  group('where the page ends', () {
+    const end = PageEnd(3, 12, 0.4);
+
+    test('is kept across restarts, beside the rest', () async {
+      const position = ReaderPosition(3, 0.4);
+      const start = PageStart(3, 'p');
+      await Future.wait([
+        store.save(bookA, position),
+        store.savePageStart(bookA, start),
+        store.savePageEnd(bookA, end),
+      ]);
+      final restarted = ReadingPositionStore(store.root);
+      expect(await restarted.loadPageEnd(bookA), end);
+      expect(await restarted.loadPageStart(bookA), start);
+      expect(await restarted.load(bookA), position);
+    });
+
+    test('is null with none saved, or when it can\'t be read', () async {
+      expect(await store.loadPageEnd(bookA), isNull);
+      await writeRaw(
+        bookA,
+        '{"version":1,"pageEnd":{"sectionIndex":1,"block":-2,'
+        '"textProgression":0.5}}',
+      );
+      expect(await store.loadPageEnd(bookA), isNull);
+      await writeRaw(
+        bookA,
+        '{"version":1,"pageEnd":{"sectionIndex":1,"block":2,'
+        '"textProgression":1.5}}',
+      );
+      expect(await store.loadPageEnd(bookA), isNull);
+    });
   });
 
   test('writes the version and the current position', () async {

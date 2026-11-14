@@ -258,8 +258,8 @@ class _SearchSheetState extends State<SearchSheet> {
     final entry = _entryFor(cutoff.sectionIndex);
     final title = entry?.title.trim() ?? '';
     return title.isEmpty
-        ? "Searching completed sections"
-        : "Searching completed sections, through $title";
+        ? "Searching what you've read"
+        : "Searching what you've read, through $title";
   }
 
   Widget _buildBody() {
@@ -285,16 +285,16 @@ class _SearchSheetState extends State<SearchSheet> {
     final query = _searchedQuery;
     if (query == null) {
       return const _Notice(
-        message: 'Find a name, a place, or a line from completed sections.',
+        message: "Find a name, a place, or a line from what you've read.",
       );
     }
     final hits = _results.hits;
-    final hidden = _results.hiddenMatches;
+    // Matches past the cutoff are never mentioned, not even that they exist:
+    // "more ahead" would tell a reader a name turns up later.
     if (hits.isEmpty) {
-      return _Notice(
-        key: const ValueKey('search-empty'),
-        message: 'No matches in completed sections',
-        footer: hidden > 0 ? const _HiddenMatches() : null,
+      return const _Notice(
+        key: ValueKey('search-empty'),
+        message: "No matches in what you've read",
       );
     }
     final groups = _groupByChapter(hits);
@@ -314,7 +314,6 @@ class _SearchSheetState extends State<SearchSheet> {
           ),
           for (final hit in group.hits) _HitTile(hit: hit),
         ],
-        if (hidden > 0) const _HiddenMatches(),
       ],
     );
   }
@@ -349,11 +348,10 @@ class _ChapterGroup {
 
 /// A centered message, such as an empty state, with an optional action.
 class _Notice extends StatelessWidget {
-  const _Notice({super.key, required this.message, this.action, this.footer});
+  const _Notice({super.key, required this.message, this.action});
 
   final String message;
   final Widget? action;
-  final Widget? footer;
 
   @override
   Widget build(BuildContext context) {
@@ -370,27 +368,7 @@ class _Notice extends StatelessWidget {
           ),
         ),
         if (action != null) Center(child: action),
-        ?footer,
       ],
-    );
-  }
-}
-
-/// That more matches wait past the reader's position. No count: how often a
-/// name or a word like "died" comes up later is itself a hint.
-class _HiddenMatches extends StatelessWidget {
-  const _HiddenMatches();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.fromLTRB(22, 16, 22, 0),
-      child: Text(
-        "There's more in chapters you haven't reached yet",
-        key: ValueKey('search-hidden'),
-        textAlign: TextAlign.center,
-        style: TextStyle(fontSize: 12, color: LoremarkColors.muted),
-      ),
     );
   }
 }

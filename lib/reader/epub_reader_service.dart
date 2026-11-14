@@ -1,5 +1,8 @@
 import 'package:flutter/widgets.dart';
 
+import '../reading/text_position.dart';
+import 'page_end.dart';
+import 'page_start.dart';
 import 'reader_position.dart';
 
 /// Opens EPUBs for reading.
@@ -23,11 +26,32 @@ abstract interface class EpubReaderSession {
   /// [ReaderPosition.sectionIndex].
   int get sectionCount;
 
+  /// The chapter the reader is in each time it changes, as one of the
+  /// entries of [tableOfContents]. Pages the renderer can't place in a
+  /// chapter report nothing.
+  Stream<TocEntry> get chapterChanges;
+
   /// Every position the reader moves to: page turns, chapter jumps, and the
   /// initial position once the view has opened. When the reader turns from
   /// the end of a section into the next one, the old section is reported at
   /// exactly 1.0 first.
   Stream<ReaderPosition> get positions;
+
+  /// How far the reader has seen, in the book's text, for each page they land
+  /// on: everything before the reported point is on this page or an earlier
+  /// one. Unlike [positions], the progression is a fraction of the section's
+  /// plain text (`readSectionTexts`), counted in characters, not of its
+  /// pages. A page the renderer can't measure reports nothing.
+  Stream<TextPosition> get pageTextEnds;
+
+  /// Where each page the reader lands on ends, as [pageTextEnds] reports it
+  /// and with the text block it ends in. The last page of a spine item, and a
+  /// page the renderer can't measure, report nothing.
+  Stream<PageEnd> get pageEnds;
+
+  /// Where each page the reader lands on starts. A page the renderer can't
+  /// place reports nothing.
+  Stream<PageStart> get pageStarts;
 
   /// The rendered book, starting at [initialPosition] or the beginning.
   Widget buildView({ReaderPosition? initialPosition});
@@ -46,6 +70,17 @@ abstract interface class EpubReaderSession {
   /// Removes the highlight [showPassage] drew, if any.
   Future<void> clearPassageHighlight();
 
+  /// Text the reader selected, each time they pick an action from the menu
+  /// over it.
+  Stream<PassageSelection> get selections;
+
+  /// The id of each [NoteHighlight] the reader taps on the page.
+  Stream<String> get highlightTaps;
+
+  /// Draws [highlights] on the pages, replacing the ones drawn before. They
+  /// are kept apart from the search highlight, so neither clears the other.
+  Future<void> showNoteHighlights(List<NoteHighlight> highlights);
+
   /// Turns to the next page.
   Future<void> goForward();
 
@@ -63,6 +98,7 @@ class TocEntry {
     required this.href,
     required this.sectionIndex,
     this.depth = 0,
+    this.position,
   });
 
   final String title;
@@ -77,6 +113,15 @@ class TocEntry {
 
   /// Nesting level: 0 for a top-level chapter.
   final int depth;
+
+  /// Where the entry is when the book has no table of contents of its own and
+  /// the entry is one of the sections Loremark cut it into (see
+  /// `sectionsWithoutToc`), otherwise null. The share is of the item's words,
+  /// not its pages.
+  final ReaderPosition? position;
+
+  /// Whether this is a section Loremark made, not a chapter from the book.
+  bool get isSynthetic => position != null;
 
   @override
   String toString() => 'TocEntry($title, $href, $sectionIndex, depth: $depth)';
@@ -94,6 +139,7 @@ class PassageTarget {
     required this.highlight,
     this.before = '',
     this.after = '',
+    this.also = const [],
   });
 
   final int sectionIndex;
@@ -107,8 +153,81 @@ class PassageTarget {
   final String before;
   final String after;
 
+  /// More of the passage to highlight with this, such as the paragraphs after
+  /// it when several are cited together. The jump goes to this one.
+  final List<PassageTarget> also;
+
+  /// This, with [more] to highlight too.
+  PassageTarget alsoHighlighting(List<PassageTarget> more) => PassageTarget(
+    sectionIndex: sectionIndex,
+    progression: progression,
+    highlight: highlight,
+    before: before,
+    after: after,
+    also: [...also, ...more],
+  );
+
   @override
   String toString() => 'PassageTarget($sectionIndex, $progression, $highlight)';
+}
+
+/// What the reader can do with text they selected, in menu order.
+enum SelectionCommand { highlight, addNote, copy }
+
+/// Text the reader selected, and the menu action they picked for it.
+class PassageSelection {
+  const PassageSelection({
+    required this.command,
+    required this.sectionIndex,
+    required this.progression,
+    required this.text,
+    this.before = '',
+    this.after = '',
+  });
+
+  final SelectionCommand command;
+  final int sectionIndex;
+
+  /// About where the selection is in its section, as the renderer reports
+  /// it.
+  final double progression;
+
+  final String text;
+
+  /// The text just before and after the selection, to find it again where
+  /// the same words repeat.
+  final String before;
+  final String after;
+
+  /// The selection as a passage to jump to and highlight later.
+  PassageTarget get target => PassageTarget(
+    sectionIndex: sectionIndex,
+    progression: progression,
+    highlight: text,
+    before: before,
+    after: after,
+  );
+
+  @override
+  String toString() =>
+      'PassageSelection($command, $sectionIndex, $progression, $text)';
+}
+
+/// A saved note or highlight to draw on the page.
+class NoteHighlight {
+  const NoteHighlight({
+    required this.id,
+    required this.target,
+    required this.color,
+  });
+
+  /// Reported on [EpubReaderSession.highlightTaps] when it is tapped.
+  final String id;
+
+  final PassageTarget target;
+
+  /// The fill, translucent so the text shows through.
+  final Color color;
 }
 
 enum EpubOpenFailure {

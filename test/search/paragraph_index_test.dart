@@ -154,4 +154,80 @@ void main() {
     expect(index.visibleTextEnd(0, 4), index.endOf(2));
     expect(index.visibleTextEnd(3, 4), index.endOf(3));
   });
+
+  group('long paragraphs', () {
+    // Five sentences of about 60 characters, 300 in all.
+    String sentence(int n) =>
+        'Sentence number $n goes on for a little while, then it stops.';
+    final long = [for (var n = 1; n <= 12; n++) sentence(n)].join(' ');
+
+    List<String> pieces(String text) {
+      final index = ParagraphIndex([text]);
+      return [for (var i = 0; i < index.count; i++) index.textOf(i)];
+    }
+
+    test('are cut into pieces at sentence ends', () {
+      final result = pieces(long);
+      expect(result.length, greaterThan(1));
+      for (final piece in result) {
+        expect(piece.endsWith('stops.'), isTrue, reason: piece);
+        expect(piece.startsWith('Sentence'), isTrue, reason: piece);
+      }
+    });
+
+    test('lose and repeat nothing', () {
+      expect(pieces(long).join(' '), long);
+    });
+
+    test('make pieces of a few sentences, not one each', () {
+      for (final piece in pieces(long).take(pieces(long).length - 1)) {
+        expect(piece.length, inInclusiveRange(250, 400));
+      }
+    });
+
+    test('join a short last piece to the one before it', () {
+      final text =
+          '${[for (var n = 1; n <= 9; n++) sentence(n)].join(' ')} End.';
+      final result = pieces(text);
+      expect(result.last.endsWith('End.'), isTrue);
+      expect(result.last.length, greaterThan(60));
+    });
+
+    test('keep a short paragraph whole, whatever its sentences', () {
+      const short = 'One. Two. Three. Four. Five.';
+      expect(pieces(short), [short]);
+    });
+
+    test('keep one sentence whole however long it is', () {
+      final run = 'word ' * 200;
+      final text = '${run.trim()}.';
+      expect(pieces(text), [text]);
+    });
+
+    test('are cut after Chinese full stops, which have no space', () {
+      final text = [for (var n = 0; n < 40; n++) '这是第$n句话，它有一些字。'].join();
+      expect(pieces(text).length, greaterThan(1));
+      expect(pieces(text).join(), text);
+    });
+
+    test('have exact offsets for the cutoff', () {
+      final index = ParagraphIndex([long]);
+      for (var i = 0; i < index.count; i++) {
+        expect(
+          long.substring(index.startOf(i), index.endOf(i)),
+          index.textOf(i),
+        );
+      }
+      // A cutoff inside the second piece shows the first piece only.
+      final cut = (index.startOf(1) + 5) / long.length;
+      expect(index.visibleCount(ReaderPosition(0, cut)), 1);
+    });
+
+    test('keep ordinals counting pieces, section by section', () {
+      final index = ParagraphIndex([long, 'Short.']);
+      expect(index.ordinalOf(index.count - 1), 0);
+      expect(index.sectionOf(index.count - 1), 1);
+      expect(index.ordinalOf(1), 1);
+    });
+  });
 }

@@ -6,24 +6,53 @@ typedef StoryQuestion = ({
   RecordTransition? resolution,
 });
 
-/// What the reader knows at the end of [section].
+/// How far a reader has got through a story model's sections.
+///
+/// This is the spoiler boundary: what the Story Map shows, and what Ask can
+/// draw on, both stop here. The Story Map measures it to the start of the
+/// reader's page, and Ask to its end, since a reader asks about what they are
+/// looking at.
+class StoryReadingProgress {
+  const StoryReadingProgress(
+    this.finished, {
+    this.hiddenInNext,
+    this.paragraphsReadInNext = 0,
+  });
+
+  /// How many of the sections, counted from the first, are behind the reader.
+  final int finished;
+
+  /// If the reader is partway through the section after those, the IDs of its
+  /// records and transitions they haven't reached. Otherwise null.
+  final Set<String>? hiddenInNext;
+
+  /// If the reader is partway through the section after those, how many of its
+  /// paragraphs they have turned past. Otherwise 0.
+  final int paragraphsReadInNext;
+
+  /// How many sections have something to show, the partway one included.
+  int get shown => finished + (hiddenInNext == null ? 0 : 1);
+}
+
+/// What the reader knows at the end of [section], or partway through it.
 ///
 /// A record counts once the reader has reached the section it was learned in,
 /// and stops counting once a transition from a reached section supersedes,
 /// retracts or resolves it. Nothing from later sections is visible, so sliding
-/// back to an earlier chapter never shows a spoiler. This follows
+/// back to an earlier chapter never shows a spoiler. Partway through a section,
+/// the records and transitions in [hidden] don't count either. This follows
 /// `project_current` and `identity_groups` in the lab's `merge.py`, with a
 /// cutoff added.
 class StorySnapshot {
-  StorySnapshot(this.model, this.section) {
+  StorySnapshot(this.model, this.section, {this.hidden = const {}}) {
     for (final transition in model.transitions) {
-      if (_reached(transition.learnedInSectionId)) {
+      if (_known(transition.id, transition.learnedInSectionId)) {
         transitions.add(transition);
         _transitionByTarget[transition.targetRecordId] = transition;
       }
     }
     for (final record in model.allRecords) {
-      if (!_reached(record.learnedInSectionId)) continue;
+      if (!_known(record.id, record.learnedInSectionId)) continue;
       final order = model.sectionById(record.learnedInSectionId)!.order;
       for (final id in record.payload.entityIds) {
         final seen = _firstSeenOrder[id];
@@ -37,6 +66,9 @@ class StorySnapshot {
 
   /// The last section the reader has reached.
   final StorySection section;
+
+  /// The IDs of records and transitions of [section] still ahead of the reader.
+  final Set<String> hidden;
 
   /// Transitions from reached sections, oldest first.
   final List<RecordTransition> transitions = [];
@@ -52,14 +84,17 @@ class StorySnapshot {
     return order != null && order <= section.order;
   }
 
+  bool _known(String id, String sectionId) =>
+      _reached(sectionId) && !hidden.contains(id);
+
   /// Whether [record] is known and not yet replaced, withdrawn or answered.
   bool isActive(StoryRecord record) =>
-      _reached(record.learnedInSectionId) &&
+      _known(record.id, record.learnedInSectionId) &&
       !_transitionByTarget.containsKey(record.id);
 
   /// Whether the reader learned [record] in [section] itself.
   bool isNewRecord(StoryRecord record) =>
-      record.learnedInSectionId == section.id;
+      record.learnedInSectionId == section.id && !hidden.contains(record.id);
 
   Iterable<StoryRecord<P>> _active<P extends RecordPayload>(
     List<StoryRecord<P>> records,
@@ -142,6 +177,36 @@ class StorySnapshot {
   bool isNewEntity(String entityId) =>
       firstSeenOrder(entityId) == section.order;
 
+  /// Whether the reader learned in [section] who [entityId] really is.
+  bool isRevealedEntity(String entityId) =>
+      _revealedIds.contains(canonicalId(entityId));
+
+  /// Entities revealed in [section]: by an explicit identity link, or by a name
+  /// replaced with an unrelated one.
+  late final Set<String> _revealedIds = () {
+    final names = {for (final name in model.names) name.id: name.payload};
+    return {
+      for (final record in model.identityLinks)
+        if (isNewRecord(record) &&
+            isActive(record) &&
+            record.payload.assertion == Assertion.explicit &&
+            _isMember(
+              record.payload.leftEntityId,
+              record.payload.rightEntityId,
+            ))
+          canonicalId(record.payload.leftEntityId),
+      for (final transition in transitions)
+        if (transition.learnedInSectionId == section.id)
+          if ((
+                names[transition.targetRecordId],
+                names[transition.replacementRecordId],
+              )
+              case (final before?, final after?)
+              when _isUnrelatedName(before.text, after.text))
+            canonicalId(before.entityId),
+    };
+  }();
+
   /// Entities the reader has met, one per identity group, in order of first
   /// appearance.
   late final List<StoryEntity> knownEntities = () {
@@ -221,7 +286,7 @@ class StorySnapshot {
   late final List<StoryQuestion> questions = () {
     final result = <StoryQuestion>[];
     for (final record in model.uncertainties) {
-      if (!_reached(record.learnedInSectionId)) continue;
+      if (!_known(record.id, record.learnedInSectionId)) continue;
       final transition = _transitionByTarget[record.id];
       if (transition == null) {
         result.add((record: record, resolution: null));
@@ -278,6 +343,14 @@ class StorySnapshot {
         return '$before — ${transition.resolution ?? 'answered'}';
     }
   }
+}
+
+/// Whether neither name contains the other. "Raiden" and "Raiden Shuga" are the
+/// same name spelled out in full, not a new identity.
+bool _isUnrelatedName(String first, String second) {
+  final a = first.toLowerCase();
+  final b = second.toLowerCase();
+  return !a.contains(b) && !b.contains(a);
 }
 
 /// Turns a snake_case label such as `member_of` into "member of".

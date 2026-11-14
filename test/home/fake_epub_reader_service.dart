@@ -3,8 +3,11 @@ import 'dart:io';
 
 import 'package:flutter/widgets.dart';
 import 'package:loremark/reader/epub_reader_service.dart';
+import 'package:loremark/reader/page_end.dart';
+import 'package:loremark/reader/page_start.dart';
 import 'package:loremark/reader/reader_position.dart';
 import 'package:loremark/reader/reading_position_store.dart';
+import 'package:loremark/reading/text_position.dart';
 
 /// A reader service that opens [FakeEpubReaderSession]s, so widget tests
 /// never touch native code.
@@ -73,7 +76,12 @@ class FakeEpubReaderSession implements EpubReaderSession {
   /// The `initialPosition` of every [buildView] call.
   final List<ReaderPosition?> builtViews = [];
   final List<TocEntry> goToCalls = [];
+
+  /// Every position [goToPosition] was asked to go to.
   final List<ReaderPosition> goToPositionCalls = [];
+
+  /// If set, [goToPosition] fails with it.
+  Object? goToPositionError;
   final List<PassageTarget> shownPassages = [];
 
   /// How often the passage highlight was cleared.
@@ -85,8 +93,47 @@ class FakeEpubReaderSession implements EpubReaderSession {
   /// Whether the screen is still listening to [positions].
   bool get hasListener => _positions.hasListener;
 
+  final StreamController<TocEntry> _chapters =
+      StreamController<TocEntry>.broadcast();
+
+  /// Reports the chapter the renderer says the reader is in.
+  void emitChapter(TocEntry chapter) => _chapters.add(chapter);
+
+  final StreamController<TextPosition> _pageTextEnds =
+      StreamController<TextPosition>.broadcast();
+
+  /// Reports how far the text on the page the reader is on goes.
+  void emitPageTextEnd(TextPosition end) => _pageTextEnds.add(end);
+
+  final StreamController<PageEnd> _pageEnds =
+      StreamController<PageEnd>.broadcast();
+
+  /// Reports where the page the reader is on ends.
+  void emitPageEnd(PageEnd end) => _pageEnds.add(end);
+
+  final StreamController<PageStart> _pageStarts =
+      StreamController<PageStart>.broadcast();
+
+  /// Reports where the page the reader is on starts.
+  void emitPageStart(PageStart start) => _pageStarts.add(start);
+
   /// Pretends the reader moved to [position].
   void emit(ReaderPosition position) => _positions.add(position);
+
+  final StreamController<PassageSelection> _selections =
+      StreamController<PassageSelection>.broadcast();
+
+  /// Pretends the reader picked an action from the selection menu.
+  void select(PassageSelection selection) => _selections.add(selection);
+
+  final StreamController<String> _highlightTaps =
+      StreamController<String>.broadcast();
+
+  /// Pretends the reader tapped the note highlight with [id].
+  void tapHighlight(String id) => _highlightTaps.add(id);
+
+  /// Every list [showNoteHighlights] was given, in order.
+  final List<List<NoteHighlight>> shownNoteHighlights = [];
 
   @override
   List<TocEntry> get tableOfContents => toc;
@@ -98,17 +145,39 @@ class FakeEpubReaderSession implements EpubReaderSession {
   Stream<ReaderPosition> get positions => _positions.stream;
 
   @override
+  Stream<TextPosition> get pageTextEnds => _pageTextEnds.stream;
+
+  @override
+  Stream<PageEnd> get pageEnds => _pageEnds.stream;
+
+  @override
+  Stream<PageStart> get pageStarts => _pageStarts.stream;
+
+  @override
+  Stream<TocEntry> get chapterChanges => _chapters.stream;
+
+  @override
   Widget buildView({ReaderPosition? initialPosition}) {
     builtViews.add(initialPosition);
     return const Text('Fake reader view');
   }
 
-  @override
-  Future<void> goTo(TocEntry entry) async => goToCalls.add(entry);
+  /// If set, [goTo] waits for it before it returns.
+  Completer<void>? goToGate;
 
   @override
-  Future<void> goToPosition(ReaderPosition position) async =>
-      goToPositionCalls.add(position);
+  Future<void> goTo(TocEntry entry) async {
+    goToCalls.add(entry);
+    await goToGate?.future;
+  }
+
+  @override
+  Future<void> goToPosition(ReaderPosition position) async {
+    goToPositionCalls.add(position);
+    if (goToPositionError case final error?) {
+      throw error;
+    }
+  }
 
   @override
   Future<void> showPassage(PassageTarget target) async =>
@@ -116,6 +185,16 @@ class FakeEpubReaderSession implements EpubReaderSession {
 
   @override
   Future<void> clearPassageHighlight() async => clearHighlightCalls++;
+
+  @override
+  Stream<PassageSelection> get selections => _selections.stream;
+
+  @override
+  Stream<String> get highlightTaps => _highlightTaps.stream;
+
+  @override
+  Future<void> showNoteHighlights(List<NoteHighlight> highlights) async =>
+      shownNoteHighlights.add(highlights);
 
   @override
   Future<void> goForward() async => forwardCalls++;
@@ -127,6 +206,12 @@ class FakeEpubReaderSession implements EpubReaderSession {
   Future<void> close() async {
     closeCalls++;
     await _positions.close();
+    await _pageTextEnds.close();
+    await _pageEnds.close();
+    await _pageStarts.close();
+    await _chapters.close();
+    await _selections.close();
+    await _highlightTaps.close();
   }
 }
 
@@ -145,6 +230,26 @@ class FakeReadingPositionStore implements ReadingPositionStore {
 
   /// If set, [save] fails with it.
   Object? saveError;
+
+  /// Every [savePageStart], in order.
+  final List<(String, PageStart)> pageStartSaves = [];
+
+  @override
+  Future<PageStart?> loadPageStart(String bookId) async => null;
+
+  @override
+  Future<void> savePageStart(String bookId, PageStart start) async =>
+      pageStartSaves.add((bookId, start));
+
+  /// Every [savePageEnd], in order.
+  final List<(String, PageEnd)> pageEndSaves = [];
+
+  @override
+  Future<PageEnd?> loadPageEnd(String bookId) async => null;
+
+  @override
+  Future<void> savePageEnd(String bookId, PageEnd end) async =>
+      pageEndSaves.add((bookId, end));
 
   @override
   Directory get root => Directory('fake');
