@@ -109,39 +109,190 @@ void main() {
     expect(find.text('age: sixteen'), findsNothing);
   });
 
-  testWidgets('cards group changes under what they did', (tester) async {
+  // The top card only, as the character list behind it has the names too.
+  final topCard = find.byType(CharacterCardView).last;
+
+  Future<void> openCard(WidgetTester tester, String name) async {
     tester.view.physicalSize = const Size(800, 2000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     await pumpStoryMap(tester);
     await showTab(tester, 'Characters');
-
-    await tester.tap(find.text('Mara Quinn'));
+    await tester.tap(find.text(name));
     await tester.pumpAndSettle();
+  }
 
-    expect(find.text('Changes: Replaced'), findsOne);
-    expect(find.text('Changes: Retracted'), findsOne);
-    expect(find.text('Changes: Answered'), findsNothing);
-    expect(find.text('Changes'), findsNothing);
+  Finder onTopCard(Finder finder) =>
+      find.descendant(of: topCard, matching: finder);
+
+  Finder cardChip(String label) => find.descendant(
+    of: onTopCard(find.byType(ChoiceChip)),
+    matching: find.textContaining(label),
+  );
+
+  Future<void> showCardPage(WidgetTester tester, String label) async {
+    // The chips scroll sideways once they don't fit.
+    await tester.ensureVisible(cardChip(label));
+    await tester.pumpAndSettle();
+    await tester.tap(cardChip(label));
+    await tester.pumpAndSettle();
+  }
+
+  /// The top card's chips, with the one showing in brackets.
+  List<String> cardPages(WidgetTester tester) => [
+    for (final chip in tester.widgetList<ChoiceChip>(
+      onTopCard(find.byType(ChoiceChip)),
+    ))
+      chip.selected
+          ? '[${(chip.label as Text).data}]'
+          : (chip.label as Text).data!,
+  ];
+
+  testWidgets('cards group changes under what they did', (tester) async {
+    await openCard(tester, 'Mara Quinn');
+    await showCardPage(tester, 'Changes');
+
+    expect(onTopCard(find.text('Replaced')), findsOne);
+    expect(onTopCard(find.text('Retracted')), findsOne);
+    expect(onTopCard(find.text('Answered')), findsNothing);
+  });
+
+  group('card pages', () {
+    testWidgets('list each kind with its count, details first', (tester) async {
+      await openCard(tester, 'Mara Quinn');
+
+      // Mara has no questions, so that chip is left out.
+      expect(cardPages(tester), [
+        '[Details 1]',
+        'Relationships 3',
+        'Events 2',
+        'Changes 2',
+      ]);
+    });
+
+    testWidgets('start at the first kind the card has', (tester) async {
+      await openCard(tester, 'Elian');
+
+      expect(cardPages(tester), [
+        '[Relationships 1]',
+        'Events 2',
+        'Questions 1',
+      ]);
+    });
+
+    testWidgets('show one kind at a time', (tester) async {
+      await openCard(tester, 'Mara Quinn');
+
+      expect(onTopCard(find.text('role: dock clerk')), findsOne);
+      expect(onTopCard(find.byType(FactLink)), findsNothing);
+
+      await showCardPage(tester, 'Relationships');
+
+      expect(onTopCard(find.text('role: dock clerk')), findsNothing);
+      expect(onTopCard(find.byType(FactLink)), findsNWidgets(3));
+    });
+
+    testWidgets('a card opened from a link starts at its first kind', (
+      tester,
+    ) async {
+      await openCard(tester, 'Elian');
+
+      await tester.tap(onTopCard(find.widgetWithText(FactLink, 'Mara Quinn')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CharacterCardView), findsNWidgets(2));
+      expect(cardPages(tester).first, '[Details 1]');
+      expect(onTopCard(find.text('role: dock clerk')), findsOne);
+    });
+
+    group('scrolled down', () {
+      final pageBar = find.byWidgetPredicate((widget) => widget is FactPageBar);
+
+      // Enough of each for both pages to scroll well past the header.
+      Future<void> pumpLongCard(WidgetTester tester) async {
+        tester.view.physicalSize = const Size(800, 600);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final json = storyModelFixtureJson();
+        final records = json['records'] as Map<String, dynamic>;
+        Map<String, dynamic> record(int n, Map<String, dynamic> payload) => {
+          'id': 'x$n',
+          'introduced_revision': 1,
+          'learned_in_section_id': 's1',
+          'legacy_id': null,
+          'payload': payload,
+          'evidence': <Map<String, dynamic>>[],
+        };
+        for (var n = 0; n < 20; n++) {
+          (records['events'] as List).add(
+            record(n, {
+              'description': 'Mara does thing $n.',
+              'participant_ids': ['c001'],
+              'location_id': null,
+              'narrative_order': 10 + n,
+              'temporal_context': 'current',
+              'story_time': null,
+              'assertion': 'explicit',
+              'attributed_to_id': null,
+            }),
+          );
+          (records['relationships'] as List).add(
+            record(100 + n, {
+              'source_id': 'c001',
+              'target_id': 'c003',
+              'label': 'owes_$n',
+              'description': 'Mara owes Elian $n.',
+              'assertion': 'explicit',
+              'attributed_to_id': null,
+              'temporal_context': 'current',
+            }),
+          );
+        }
+        final model = StoryModel.fromJson(json);
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: CharacterCardView(
+                snapshot: StorySnapshot(model, model.sections.last),
+                entityId: 'c001',
+              ),
+            ),
+          ),
+        );
+        await showCardPage(tester, 'Events');
+        await tester.drag(find.byType(CustomScrollView), const Offset(0, -400));
+        await tester.pumpAndSettle();
+      }
+
+      testWidgets('the chips stay at the top', (tester) async {
+        await pumpLongCard(tester);
+
+        expect(find.text('Mara Quinn').hitTestable(), findsNothing);
+        expect(tester.getTopLeft(pageBar).dy, lessThan(10));
+        expect(cardChip('Details').hitTestable(), findsOne);
+      });
+
+      testWidgets('another kind starts right under the chips', (tester) async {
+        await pumpLongCard(tester);
+
+        await showCardPage(tester, 'Relationships');
+
+        expect(find.text('Mara Quinn').hitTestable(), findsNothing);
+        final barBottom = tester.getBottomLeft(pageBar);
+        final firstFact = tester.getTopLeft(find.byType(FactTile).first);
+        expect(firstFact.dy, greaterThanOrEqualTo(barBottom.dy));
+        expect(firstFact.dy, lessThan(barBottom.dy + 30));
+      });
+    });
   });
 
   group('relationship names on a card', () {
-    // The top card only, as the character list behind it has the names too.
-    final topCard = find.byType(CharacterCardView).last;
-
-    Finder linkOnTopCard(String name) => find.descendant(
-      of: topCard,
-      matching: find.widgetWithText(FactLink, name),
-    );
+    Finder linkOnTopCard(String name) =>
+        onTopCard(find.widgetWithText(FactLink, name));
 
     Future<void> openMarasCard(WidgetTester tester) async {
-      tester.view.physicalSize = const Size(800, 2000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await pumpStoryMap(tester);
-      await showTab(tester, 'Characters');
-      await tester.tap(find.text('Mara Quinn'));
-      await tester.pumpAndSettle();
+      await openCard(tester, 'Mara Quinn');
+      await showCardPage(tester, 'Relationships');
     }
 
     testWidgets('link to the other end, not the card\'s own entity', (
