@@ -115,12 +115,17 @@ class OfflineBanner extends StatelessWidget {
 
 /// The header's small reminder that the device is offline.
 class OfflineChip extends StatelessWidget {
-  const OfflineChip({super.key});
+  const OfflineChip({super.key, this.compact = false});
+
+  /// Just the icon, to leave room beside it. The banner has said what it means.
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(8, 4, 10, 4),
+      padding: compact
+          ? const EdgeInsets.all(4)
+          : const EdgeInsets.fromLTRB(8, 4, 10, 4),
       decoration: BoxDecoration(
         color: LoremarkColors.chip,
         borderRadius: BorderRadius.circular(999),
@@ -129,12 +134,19 @@ class OfflineChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.wifi_off, size: 13, color: LoremarkColors.chipText),
-          const SizedBox(width: 5),
-          Text(
-            'OFFLINE',
-            style: kicker(color: LoremarkColors.chipText, size: 9),
+          Icon(
+            Icons.wifi_off,
+            size: 13,
+            color: LoremarkColors.chipText,
+            semanticLabel: compact ? 'Offline' : null,
           ),
+          if (!compact) ...[
+            const SizedBox(width: 5),
+            Text(
+              'OFFLINE',
+              style: kicker(color: LoremarkColors.chipText, size: 9),
+            ),
+          ],
         ],
       ),
     );

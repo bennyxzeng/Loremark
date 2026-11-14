@@ -10,6 +10,7 @@ import 'package:loremark/story_update/story_api_client.dart';
 import 'package:loremark/story_update/story_book.dart';
 import 'package:loremark/story_update/story_merge.dart';
 import 'package:loremark/story_update/story_model_choice.dart';
+import 'package:loremark/story_update/story_section_kind.dart';
 import 'package:loremark/story_update/story_store.dart';
 import 'package:loremark/story_update/story_updater.dart';
 
@@ -309,6 +310,66 @@ void main() {
     });
   });
 
+  group('cancelling', () {
+    test('stops waiting for the provider, and saves nothing', () async {
+      await buildChapter1();
+      final before = treeOf(storePath);
+      final sent = Completer<void>();
+      final reply = Completer<StoryHttpResponse>();
+      final outcome = update(request(section: null), (url, headers, body) {
+        sent.complete();
+        return reply.future;
+      });
+      await sent.future;
+      StoryUpdater.cancel('book');
+
+      final ended = await outcome;
+      expect(ended.status, 'cancelled');
+      expect(ended.committed, isFalse);
+      expect(StoryUpdater.running('book'), isNull);
+      expect(treeOf(storePath), before);
+
+      // An answer that comes after all is thrown away.
+      reply.complete(StoryHttpResponse(200, _responseBody(chapter2Delta)));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(treeOf(storePath), before);
+    });
+
+    test('before sending, sends nothing', () async {
+      var requests = 0;
+      final outcome = update(request(), (url, headers, body) async {
+        requests++;
+        return StoryHttpResponse(200, _responseBody(chapter1Delta));
+      });
+      // At once, while the book is still being read.
+      StoryUpdater.cancel('book');
+      expect((await outcome).status, 'cancelled');
+      expect(requests, 0);
+      expect(StoryStore(Directory(storePath)).exists, isFalse);
+    });
+
+    test('over the network, drops the connection', () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      final arrived = Completer<void>();
+      // Takes the request and never answers it.
+      server.listen((request) => arrived.complete());
+      final cancel = StoryCancel();
+      final reply = postStoryRequest(
+        Uri.parse('http://127.0.0.1:${server.port}/'),
+        const {},
+        '{}',
+        cancel: cancel,
+      );
+      await arrived.future;
+      cancel.cancel();
+      await expectLater(
+        reply.timeout(const Duration(seconds: 5)),
+        throwsA(isA<IOException>()),
+      );
+    });
+  });
+
   group('the quote check', () {
     JsonMap withBadQuote() {
       final delta = jsonDecode(jsonEncode(chapter2Delta)) as JsonMap;
@@ -350,6 +411,51 @@ void main() {
         'quote_not_found',
       );
       expect(treeOf(storePath), before);
+    });
+
+    test('on, quotes that only slipped are repaired and kept', () async {
+      await buildChapter1();
+      final slipped = jsonDecode(jsonEncode(chapter2Delta)) as JsonMap;
+      final records = slipped['new_records'] as JsonMap;
+      JsonMap evidenceOf(String collection) =>
+          ((((records[collection] as List)[0] as JsonMap)['evidence']
+                  as List)[0]
+              as JsonMap);
+      // In p0006, not p0007.
+      evidenceOf('names')['paragraph_id'] = 'p0007';
+      // The book says "Captain Ilse Varga had been promoted".
+      evidenceOf('attributes')['quote'] = 'Captain Varga had been promoted';
+
+      final outcome = await update(
+        request(section: null, checkQuotes: true),
+        answering(slipped),
+      );
+      expect(outcome.status, 'committed', reason: '${outcome.issues}');
+      expect(outcome.unmatchedQuotes, 0);
+      expect(
+        [
+          for (final issue in outcome.issues)
+            if (issue.code == 'quote_repaired') issue.path,
+        ],
+        [
+          'new_records.names[0].evidence[0]',
+          'new_records.attributes[0].evidence[0]',
+        ],
+      );
+
+      final model = StoryStore(Directory(storePath)).load().model;
+      final kept = [
+        for (final collection in (model['records'] as JsonMap).values)
+          for (final record in (collection as List).cast<JsonMap>())
+            for (final evidence in (record['evidence'] as List).cast<JsonMap>())
+              if (evidence['section_id'] == 'section-003')
+                '${evidence['paragraph_id']} ${evidence['quote']}',
+      ];
+      expect(kept, contains('p0006 The engineer Mara Quill'));
+      expect(kept, contains('p0002 Captain Ilse Varga had been promoted'));
+      expect(kept, isNot(contains('p0007 The engineer Mara Quill')));
+      final sections = model['processed_sections'] as List;
+      expect((sections[1] as JsonMap)['quotes_checked'], isTrue);
     });
 
     test(
@@ -605,10 +711,17 @@ void main() {
         storePath,
       );
       expect(status.isNewStore, isTrue);
-      expect(status.choices.map((choice) => choice.sectionId), [
+      expect(status.pickable.map((choice) => choice.sectionId), [
         'section-007',
         'section-008',
       ]);
+      // The rest are listed, so picking past them says what it leaves out.
+      final unreadable = status.choices.where((choice) => !choice.canPick);
+      expect(unreadable, isNotEmpty);
+      expect(
+        unreadable.map((choice) => choice.problem),
+        everyElement(isNotEmpty),
+      );
     });
 
     test(
@@ -681,7 +794,7 @@ void main() {
       );
     });
 
-    test('lists what each section would leave out', () async {
+    test('lists the sections after the map, and what they are', () async {
       await buildChapter1();
       final status = inspectStoryUpdate(_storyEpub, storePath);
       expect(status.canChoose, isTrue);
@@ -690,11 +803,12 @@ void main() {
         'section-004',
         'section-005',
       ]);
-      expect(status.choices.map((choice) => choice.skips), [
-        isEmpty,
-        ['Chapter 2: The Storm'],
-        ['Chapter 2: The Storm', 'Interlude: The Lamp'],
-      ]);
+      expect(
+        status.choices.map((choice) => choice.kind),
+        everyElement(StorySectionKind.story),
+      );
+      expect(status.choices.every((choice) => choice.canPick), isTrue);
+      expect(status.next?.sectionId, 'section-003');
       expect(status.titleOf('section-005'), 'Chapter 3: Aftermath');
       expect(status.titleOf(null), 'Chapter 2: The Storm');
     });
@@ -730,7 +844,6 @@ void main() {
       );
       final status = inspectStoryUpdate(epub, storePath);
       expect(status.choices.map((choice) => choice.sectionId), ['section-003']);
-      expect(status.choices.single.skips, isEmpty);
       expect(status.canChoose, isFalse);
 
       var requests = 0;
@@ -758,8 +871,12 @@ void main() {
       expect(status.isReady, isFalse);
       expect(status.blocked, contains('Chapter 2'));
       expect(status.canChoose, isTrue);
-      expect(status.choices.single.sectionId, 'section-003');
-      expect(status.choices.single.skips, ['Chapter 2']);
+      expect(status.choices.map((choice) => choice.sectionId), [
+        'section-002',
+        'section-003',
+      ]);
+      expect(status.choices.first.problem, isNotNull);
+      expect(status.pickable.single.sectionId, 'section-003');
 
       // Left alone, it still stops there rather than stepping past unasked.
       var requests = 0;
@@ -799,6 +916,157 @@ void main() {
         expect(outcome.status, 'input_error');
       },
     );
+  });
+
+  group('adding several sections', () {
+    /// The sections after chapter 1, as the reader would pick them.
+    List<StorySectionChoice> later(List<String> ids) => [
+      for (final choice in inspectStoryUpdate(_storyEpub, storePath).choices)
+        if (ids.contains(choice.sectionId)) choice,
+    ];
+
+    RunningStoryBatch addSections(
+      List<StorySectionChoice> sections,
+      StoryHttpPost post,
+    ) => StoryUpdater.runSections(
+      request(section: null),
+      sections,
+      bookId: 'book',
+      apiKey: _apiKey,
+      post: post,
+    );
+
+    List<Object?> processed() => [
+      for (final s
+          in StoryStore(Directory(storePath)).load().model['processed_sections']
+              as List)
+        (s as JsonMap)['section_id'],
+    ];
+
+    /// Answers [emptyDelta], and counts what is asked for by section.
+    (StoryHttpPost, List<String>) counting({
+      Future<StoryHttpResponse> Function(String section)? reply,
+    }) {
+      final asked = <String>[];
+      Future<StoryHttpResponse> post(
+        Uri url,
+        Map<String, String> headers,
+        String body,
+      ) async {
+        final section = RegExp(r'Section ID: (section-\d+)')
+            .firstMatch(body)!
+            .group(1)!;
+        asked.add(section);
+        return await reply?.call(section) ??
+            StoryHttpResponse(200, _responseBody(emptyDelta));
+      }
+
+      return (post, asked);
+    }
+
+    test('adds them in reading order, leaving out the rest', () async {
+      await buildChapter1();
+      final (post, asked) = counting();
+      final batch = addSections(later(['section-003', 'section-005']), post);
+      expect(StoryUpdater.batch('book'), same(batch));
+      expect(StoryUpdater.busy('book'), isTrue);
+
+      final outcome = await batch.done;
+      expect(outcome.complete, isTrue, reason: '${outcome.last.issues}');
+      expect(outcome.added, 2);
+      expect(asked, ['section-003', 'section-005']);
+      expect(processed(), ['section-002', 'section-003', 'section-005']);
+      expect(StoryUpdater.batch('book'), isNull);
+      expect(StoryUpdater.busy('book'), isFalse);
+    });
+
+    test('stops at the first that doesn\'t go in', () async {
+      await buildChapter1();
+      final (post, asked) = counting(
+        reply: (section) async => section == 'section-004'
+            ? const StoryHttpResponse(500, '{}')
+            : StoryHttpResponse(200, _responseBody(emptyDelta)),
+      );
+      final outcome = await addSections(
+        later(['section-003', 'section-004', 'section-005']),
+        post,
+      ).done;
+      expect(outcome.failed, isTrue);
+      expect(outcome.last.status, 'api_error');
+      expect(outcome.lastSection.sectionId, 'section-004');
+      expect(outcome.added, 1);
+      expect(asked, ['section-003', 'section-004']);
+      expect(processed(), ['section-002', 'section-003']);
+    });
+
+    test('cancelling one starts no more', () async {
+      await buildChapter1();
+      final sent = Completer<void>();
+      final reply = Completer<StoryHttpResponse>();
+      final (post, asked) = counting(
+        reply: (section) {
+          if (section == 'section-003') {
+            return Future.value(
+              StoryHttpResponse(200, _responseBody(emptyDelta)),
+            );
+          }
+          sent.complete();
+          return reply.future;
+        },
+      );
+      final batch = addSections(
+        later(['section-003', 'section-004', 'section-005']),
+        post,
+      );
+      await sent.future;
+      expect(batch.index, 1);
+      StoryUpdater.cancel('book');
+
+      final outcome = await batch.done;
+      expect(outcome.cancelled, isTrue);
+      expect(outcome.added, 1);
+      expect(asked, ['section-003', 'section-004']);
+      expect(processed(), ['section-002', 'section-003']);
+    });
+
+    test('can stop once the section under way is in', () async {
+      await buildChapter1();
+      final sent = Completer<void>();
+      final release = Completer<void>();
+      final (post, asked) = counting(
+        reply: (section) async {
+          sent.complete();
+          await release.future;
+          return StoryHttpResponse(200, _responseBody(emptyDelta));
+        },
+      );
+      final batch = addSections(later(['section-003', 'section-004']), post);
+      final changes = <(int, int, bool)>[];
+      batch.changes.listen(
+        (_) =>
+            changes.add((batch.index, batch.outcomes.length, batch.stopping)),
+      );
+      await sent.future;
+      batch.stopAfterCurrent();
+      release.complete();
+
+      final outcome = await batch.done;
+      expect(outcome.stopped, isTrue);
+      expect(outcome.added, 1);
+      expect(asked, ['section-003']);
+      expect(processed(), ['section-002', 'section-003']);
+      expect(changes, [(0, 0, true), (0, 1, true)]);
+    });
+
+    test('runs one batch at a time for a book', () async {
+      await buildChapter1();
+      final (post, _) = counting();
+      final one = addSections(later(['section-003']), post);
+      final two = addSections(later(['section-004']), post);
+      expect(two, same(one));
+      await one.done;
+      expect(processed(), ['section-002', 'section-003']);
+    });
   });
 
   group('a store', () {

@@ -9,12 +9,15 @@ import 'ai_settings.dart';
 /// Asks for the reader's OpenAI, DeepSeek or OpenRouter API key.
 ///
 /// On first run ([onboarding]) it is the whole app until the reader saves a
-/// key or skips; otherwise it is pushed from Settings or a locked tab and
-/// pops once a key is saved.
+/// key or skips; otherwise it is pushed from Settings or a locked tab to add
+/// another key, which can be named, and pops once the key is saved.
 class ApiKeyScreen extends StatefulWidget {
   const ApiKeyScreen({super.key, this.onboarding = false});
 
   final bool onboarding;
+
+  static const keyFieldKey = ValueKey('api-key-field');
+  static const nameFieldKey = ValueKey('api-key-name');
 
   static Future<void> push(BuildContext context) =>
       Navigator.of(context)
@@ -26,6 +29,7 @@ class ApiKeyScreen extends StatefulWidget {
 
 class _ApiKeyScreenState extends State<ApiKeyScreen> {
   final _keyField = TextEditingController();
+  final _nameField = TextEditingController();
   AiProvider _provider = AiProvider.openai;
   bool _checking = false;
   String? _error;
@@ -50,6 +54,7 @@ class _ApiKeyScreenState extends State<ApiKeyScreen> {
   @override
   void dispose() {
     _keyField.dispose();
+    _nameField.dispose();
     super.dispose();
   }
 
@@ -68,6 +73,11 @@ class _ApiKeyScreenState extends State<ApiKeyScreen> {
             '${_provider.label} API keys start with “sk-”. '
             'Check that you copied the whole key.',
       );
+      return;
+    }
+    // Before checking, so a saved key isn't sent to the provider again.
+    if (settings.keys.any((saved) => saved.apiKey == key)) {
+      setState(() => _error = 'This key is already saved.');
       return;
     }
 
@@ -101,10 +111,28 @@ class _ApiKeyScreenState extends State<ApiKeyScreen> {
       }
     }
 
-    await settings.save(AiCredentials(provider: _provider, apiKey: key));
+    final AiCredentials added;
+    try {
+      added = await settings.add(_provider, key, name: _nameField.text);
+    } on AiKeyError catch (error) {
+      if (mounted) setState(() => _error = error.message);
+      return;
+    }
     if (!mounted) return;
     // On first run, saving swaps this screen for the library.
-    if (!widget.onboarding) Navigator.of(context).pop();
+    if (widget.onboarding) return;
+    final messenger = ScaffoldMessenger.of(context);
+    Navigator.of(context).pop();
+    if (settings.credentials?.id != added.id) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            '“${added.label}” is saved. You can switch to it once the AI '
+            'task running now finishes.',
+          ),
+        ),
+      );
+    }
   }
 
   Future<void> _skip() async {
@@ -178,7 +206,9 @@ class _ApiKeyScreenState extends State<ApiKeyScreen> {
                     Text('AI COMPANION', style: kicker()),
                     const SizedBox(height: 9),
                     Text(
-                      'Connect an AI provider',
+                      widget.onboarding
+                          ? 'Connect an AI provider'
+                          : 'Add an API key',
                       style: serif(29, height: 1.18),
                     ),
                     const SizedBox(height: 14),
@@ -269,6 +299,7 @@ class _ApiKeyScreenState extends State<ApiKeyScreen> {
                     ],
                     const SizedBox(height: 22),
                     TextField(
+                      key: ApiKeyScreen.keyFieldKey,
                       controller: _keyField,
                       obscureText: true,
                       autocorrect: false,
@@ -284,6 +315,27 @@ class _ApiKeyScreenState extends State<ApiKeyScreen> {
                         errorMaxLines: 4,
                       ),
                     ),
+                    // A first key needs no name: there is nothing to tell it
+                    // apart from.
+                    if (!widget.onboarding) ...[
+                      const SizedBox(height: 12),
+                      TextField(
+                        key: ApiKeyScreen.nameFieldKey,
+                        controller: _nameField,
+                        enabled: !_checking,
+                        maxLength: 30,
+                        textCapitalization: TextCapitalization.sentences,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) => _submit(),
+                        decoration: InputDecoration(
+                          labelText: 'Name (optional)',
+                          hintText: 'e.g. Personal, Work',
+                          helperText:
+                              'Shown in Settings instead of '
+                              '“${_provider.label}”.',
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 10),
                     const _Note(
                       icon: Icons.lock_outline,

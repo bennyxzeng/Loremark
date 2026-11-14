@@ -13,6 +13,10 @@
 | `loremark-companion-front-view-v2.png` | Edited with the built-in image generation tool from the front-view redraw. | Current full-body character profile with thinner boot soles. |
 | `loremark-chibi-moments.png` | Generated with the built-in image generation tool from the original character sheet. | Original three-moment illustration, retained as an alternate. |
 | `loremark-chibi-moments-v2.png` | Generated with the built-in image generation tool using the character sheet's bottom-row chibi proportions. | Current three-moment strip with exaggerated big-head, tiny-body chibi proportions. |
+| `story-model-at-a-glance.svg` | Copied without changes from `tools/story_model_lab/images/story_model_at_a_glance.svg` on the `story-model` branch. | Story model overview in the README and the English format guide. |
+| `story-model-at-a-glance.zh-CN.svg` | Copied without changes from `tools/story_model_lab/images/story_model_at_a_glance.zh-CN.svg` on the `story-model` branch. | Story model overview in the Chinese format guide. |
+| `ask-at-a-glance.svg` | Drawn for this repository in the style of the story model overview. The Chapter 1 and 2 answers are illustrations written from the real records and paragraph numbers of the `86v1` store on the `story-model` branch. | Ask overview in the README and the English Ask guide. |
+| `ask-at-a-glance.zh-CN.svg` | The Chinese version of `ask-at-a-glance.svg`. | Ask overview in the Chinese Ask guide. |
 
 The generated images are illustrations, not application screenshots. All assets are stored in this repository so the README does not depend on temporary image URLs. The character profile draws on the supplied sheet; English dialogue is translated or adapted from its Chinese character notes. The chibi captions are new editorial copy.
 

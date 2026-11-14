@@ -9,6 +9,7 @@ import 'package:xml/xml.dart';
 import '../library/epub_package.dart';
 import '../reader/css_selector.dart';
 import '../reader/epub_sections.dart';
+import 'story_section_kind.dart';
 
 /// A JSON object, as stored in a story model and sent to the provider.
 typedef JsonMap = Map<String, dynamic>;
@@ -62,6 +63,10 @@ const _romanValues = {
   'D': 500,
   'M': 1000,
 };
+
+/// The length taken for a section whose text can't be read, which is too long
+/// to be a page of pictures.
+const _unknownLength = 1 << 30;
 
 /// The position of a section that starts with its document. Every element
 /// inside the body has a position of 0 or more.
@@ -143,6 +148,23 @@ class StoryBookSection {
   /// Why this section cannot be cut from its document reliably, if it can't.
   final String? problem;
   final notes = <String>[];
+
+  /// False if the spine lists its document as `linear="no"`: outside the
+  /// reading order, such as notes opened from a link.
+  bool linear = true;
+
+  /// The types of the landmarks, or EPUB 2 guide entries, that point at this
+  /// section, such as `bodymatter` or `afterword`.
+  final landmarkTypes = <String>{};
+}
+
+/// A landmark, or an EPUB 2 guide entry: where the book says a part of it is.
+class _Landmark {
+  const _Landmark(this.href, this.fragment, this.types);
+
+  final String href;
+  final String? fragment;
+  final Set<String> types;
 }
 
 class _TocEntry {
@@ -186,6 +208,7 @@ class StoryBook {
     );
     book.warnings.addAll(warnings);
     book.sections.addAll(book._buildSections(spine, entries));
+    book._readSemantics(package);
     return book;
   }
 
@@ -198,6 +221,14 @@ class StoryBook {
   final EpubPackage _package;
   final warnings = <String>[];
   final sections = <StoryBookSection>[];
+
+  /// The order of the section the book's landmarks say its body matter starts
+  /// at, if they say.
+  int? bodyStartOrder;
+
+  /// The order of the section the book's landmarks say its back matter starts
+  /// at, if they say.
+  int? backStartOrder;
   final _documents = <String, XmlDocument>{};
   final _documentErrors = <String, String>{};
 
@@ -333,6 +364,110 @@ class StoryBook {
     return ordered;
   }
 
+  /// Notes what the book says about its parts: which documents are outside the
+  /// reading order, and where its landmarks point. Sections stay as they are.
+  void _readSemantics(EpubPackage package) {
+    final linear = <String, bool>{};
+    for (final ref in package.spine) {
+      final path = package.manifest[ref.idref]?.path;
+      if (path != null) linear[path] = (linear[path] ?? false) || ref.linear;
+    }
+    for (final section in sections) {
+      section.linear = linear[section.href] ?? true;
+    }
+    for (final landmark in _readLandmarks(package)) {
+      final section = _sectionAt(landmark.href, landmark.fragment);
+      if (section == null) continue;
+      section.landmarkTypes.addAll(landmark.types);
+      if (landmark.types.contains('bodymatter')) {
+        bodyStartOrder ??= section.order;
+      }
+      if (landmark.types.contains('backmatter')) {
+        backStartOrder ??= section.order;
+      }
+    }
+  }
+
+  /// The section [href]`#`[fragment] falls in, if it can be told.
+  StoryBookSection? _sectionAt(String href, String? fragment) {
+    final inDocument = sections.where((s) => s.href == href).toList();
+    if (inDocument.isEmpty) return null;
+    if (fragment == null) return inDocument.first;
+    final exact = inDocument.where((s) => s.fragment == fragment).firstOrNull;
+    if (exact != null || inDocument.length == 1) {
+      return exact ?? inDocument.single;
+    }
+    // An anchor that no section starts at is in the last one starting before it.
+    final document = _document(href);
+    if (document == null) return null;
+    try {
+      final ordinals = _elementOrdinals(document);
+      int positionOf(String? fragment) {
+        final element = _anchorElement(document, fragment);
+        return element == null ? _documentStart : ordinals[element] ?? -2;
+      }
+
+      final target = positionOf(fragment);
+      StoryBookSection? found;
+      for (final section in inDocument) {
+        if (section.problem != null) return null;
+        if (positionOf(section.fragment) <= target) found = section;
+      }
+      return found;
+    } on StoryEpubError {
+      return null;
+    }
+  }
+
+  /// What [section] looks like, given its [chapter] as [extract] gives it.
+  /// Without one, as for a section that can't be cut, only what the book says
+  /// and the title count.
+  StorySectionKind kindOf(StoryBookSection section, JsonMap? chapter) {
+    final paragraphs = (chapter?['paragraphs'] as List?)?.cast<JsonMap>();
+    return classifyStorySection(
+      title: section.title,
+      types: {...section.landmarkTypes, ..._structuralTypes(section)},
+      order: section.order,
+      bodyStart: bodyStartOrder,
+      backStart: backStartOrder,
+      linear: section.linear,
+      textChars: paragraphs == null
+          ? _unknownLength
+          : paragraphs.fold(
+              0,
+              (total, paragraph) =>
+                  total + (paragraph['text'] as String).length,
+            ),
+      imageCount: chapter?['omitted_image_count'] as int? ?? 0,
+    );
+  }
+
+  /// The `epub:type`s and `doc-` roles [section] starts inside: those of its
+  /// anchor and every element around it, or for a section starting with its
+  /// document, those of the body and the element it starts with.
+  Set<String> _structuralTypes(StoryBookSection section) {
+    final document = _document(section.href);
+    if (document == null) return const {};
+    final List<XmlElement> elements;
+    try {
+      final anchor = section.problem == null
+          ? _anchorElement(document, section.fragment)
+          : null;
+      final body = _bodyOf(document);
+      if (anchor != null) {
+        elements = [anchor, ...anchor.ancestorElements];
+      } else {
+        elements = [
+          if (body is XmlElement) body,
+          ?body.childElements.firstOrNull,
+        ];
+      }
+    } on StoryEpubError {
+      return const {};
+    }
+    return {for (final element in elements) ..._semanticTypes(element)};
+  }
+
   void _boundaryPositions(
     XmlDocument document,
     List<(int, _TocEntry)> entries,
@@ -440,6 +575,26 @@ class StoryBook {
     if (target == null || !target.ancestors.any((a) => identical(a, body))) {
       return null;
     }
+    final collector = _collect(section, target: target);
+    return collector.beforeTarget ?? collector.paragraphs.length;
+  }
+
+  /// How many of [section]'s paragraphs end before text block number [block] of
+  /// its document, counted from 0 the way the page script counts them (see
+  /// `textBlocks`). That block is the first one not wholly on the reader's page,
+  /// so these paragraphs are all on the page or an earlier one. All of them if
+  /// the block comes after the section, and none if it comes before.
+  ///
+  /// Null if the document has no such block. Throws a [StoryEpubError] if the
+  /// section can't be cut from its document reliably.
+  int? paragraphsBeforeBlock(StoryBookSection section, int block) {
+    if (block < 0) return null;
+    final document = _documentOf(section);
+    // Found the way `textProgressionOfBlock` finds it, so the numbers agree.
+    final body = document.findAllElements('body').firstOrNull;
+    if (body == null) return null;
+    final target = textBlocks(body).skip(block).firstOrNull;
+    if (target == null) return null;
     final collector = _collect(section, target: target);
     return collector.beforeTarget ?? collector.paragraphs.length;
   }
@@ -633,6 +788,78 @@ List<_TocEntry> _readNcx(EpubPackage package, String ncxHref) {
   }
   return entries;
 }
+
+/// The landmarks of the EPUB 3 nav, then the EPUB 2 guide's entries.
+/// Neither is needed, so one that can't be read is left out.
+List<_Landmark> _readLandmarks(EpubPackage package) {
+  final landmarks = <_Landmark>[];
+  void add(String base, String? href, Set<String> types) {
+    if (href == null || href.isEmpty || types.isEmpty) return;
+    try {
+      final entry = _tocEntry(base, href, '');
+      landmarks.add(_Landmark(entry.href, entry.fragment, types));
+    } on StoryEpubError {
+      // Somewhere outside the book.
+    }
+  }
+
+  final navItem = package.manifest.values
+      .where((item) => item.properties.contains('nav'))
+      .firstOrNull;
+  if (navItem != null) {
+    try {
+      final root = _parseMember(package, navItem.path);
+      for (final nav in root.descendantElements) {
+        if (nav.name.local != 'nav' || !_epubTypes(nav).contains('landmarks')) {
+          continue;
+        }
+        for (final link in nav.descendantElements) {
+          if (link.name.local != 'a') continue;
+          add(navItem.path, link.getAttribute('href'), _epubTypes(link));
+        }
+      }
+    } on StoryEpubError {
+      // The table of contents says what is wrong with the nav.
+    }
+  }
+
+  final guide = package.opf
+      .findAllElements('guide', namespaceUri: '*')
+      .firstOrNull;
+  for (final reference
+      in guide?.findElements('reference', namespaceUri: '*') ??
+          const <XmlElement>[]) {
+    final type = reference.getAttribute('type')?.trim().toLowerCase() ?? '';
+    add(package.opfPath, reference.getAttribute('href'), {
+      if (type.isNotEmpty) _guideTypes[type] ?? type.replaceFirst('other.', ''),
+    });
+  }
+  return landmarks;
+}
+
+/// EPUB 2 guide types that the EPUB 3 vocabulary names differently.
+const _guideTypes = {
+  'text': 'bodymatter',
+  'title-page': 'titlepage',
+  'acknowledgements': 'acknowledgments',
+  'notes': 'endnotes',
+};
+
+/// The `epub:type`s on [element], without a vocabulary's prefix.
+Set<String> _epubTypes(XmlElement element) => {
+  for (final type in (_attribute(element, 'epub:type') ?? '').split(
+    _whitespace,
+  ))
+    if (type.isNotEmpty) type.substring(type.indexOf(':') + 1).toLowerCase(),
+};
+
+/// The `epub:type`s and `doc-` roles on [element], such as `afterword` for
+/// both `epub:type="afterword"` and `role="doc-afterword"`.
+Set<String> _semanticTypes(XmlElement element) => {
+  ..._epubTypes(element),
+  for (final role in (_attribute(element, 'role') ?? '').split(_whitespace))
+    if (role.startsWith('doc-')) role.substring(4).toLowerCase(),
+};
 
 _TocEntry _tocEntry(String base, String href, String title) {
   if (RegExp(r'^[a-zA-Z][a-zA-Z0-9+.\-]*:').hasMatch(href) ||

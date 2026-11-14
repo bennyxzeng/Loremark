@@ -93,9 +93,10 @@ class StoryParagraphs {
 /// read: all of the sections they have finished, and the start of the one they
 /// are partway through. Empty if there is no map.
 ///
-/// [progress] is the spoiler boundary, the same one the map shows up to: see
-/// `StoryMapBackend.readingProgress`. A map can hold sections the reader hasn't
-/// reached, since updating isn't tied to reading progress.
+/// [progress] is the spoiler boundary: `StoryMapBackend.readingProgress` for
+/// the map, or `AskBackend.askReach` for Ask, which goes to the end of the page.
+/// A map can hold sections the reader hasn't reached, since updating isn't
+/// tied to reading progress.
 ///
 /// Throws a [StoryStoreError] or a [StoryEpubError] if a section's text can't be
 /// had, rather than returning part of what is visible.
@@ -261,6 +262,47 @@ StoryReadingProgress readStoryProgress(
   required int finished,
   required List<String> sectionsOnPage,
   required String cssSelector,
+}) => _readProgress(
+  storePath,
+  epubPath,
+  finished: finished,
+  sectionsOnPage: sectionsOnPage,
+  paragraphsRead: (book, section) =>
+      book.paragraphsBefore(section, cssSelector),
+);
+
+/// How far Ask may go in the Story Map at [storePath]: [finished] sections, and
+/// everything wholly on the reader's page as well, which ends inside text block
+/// number [endBlock] (see `PageEnd`) of the document holding [sectionsOnPage].
+///
+/// The Story Map itself stops at the page's start ([readStoryProgress]); Ask
+/// takes the whole page, since a reader asks about what they are looking at.
+/// A paragraph that carries on to the next page isn't counted. Anything
+/// unexpected leaves the count at what position alone says.
+StoryReadingProgress readStoryProgressToPageEnd(
+  String storePath,
+  String epubPath, {
+  required int finished,
+  required List<String> sectionsOnPage,
+  required int endBlock,
+}) => _readProgress(
+  storePath,
+  epubPath,
+  finished: finished,
+  sectionsOnPage: sectionsOnPage,
+  paragraphsRead: (book, section) =>
+      book.paragraphsBeforeBlock(section, endBlock),
+);
+
+/// [finished] sections, then as many of [sectionsOnPage] as [paragraphsRead]
+/// says are behind the reader, down to the paragraph in the first that isn't.
+StoryReadingProgress _readProgress(
+  String storePath,
+  String epubPath, {
+  required int finished,
+  required List<String> sectionsOnPage,
+  required int? Function(StoryBook book, StoryBookSection section)
+  paragraphsRead,
 }) {
   final unmeasured = StoryReadingProgress(finished);
   try {
@@ -282,7 +324,7 @@ StoryReadingProgress readStoryProgress(
       if (book.extract(source)['text_sha256'] != saved['text_sha256']) {
         return StoryReadingProgress(done);
       }
-      final read = book.paragraphsBefore(source, cssSelector);
+      final read = paragraphsRead(book, source);
       if (read == null) return StoryReadingProgress(done);
       if (read >= (saved['paragraph_count'] as int)) {
         done++;

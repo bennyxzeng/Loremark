@@ -1,0 +1,291 @@
+//
+//  Copyright 2025 Readium Foundation. All rights reserved.
+//  Use of this source code is governed by the BSD-style license
+//  available in the top-level LICENSE file of the project.
+//
+
+import Foundation
+import ReadiumShared
+import ReadiumStreamer
+import Flutter
+
+struct FlutterReadiumError {
+  let message: String
+  let code: String?
+  /// Structured supplementary payload — a JSON object, not a freeform string.
+  /// Optional fields: `href`, `attempt`, `maxAttempts`, `httpStatus`. See
+  /// `docs/api-reference/error-codes.md`.
+  let data: [String: Any]?
+
+  init(message: String, code: String? = nil, data: [String: Any]? = nil) {
+    self.message = message
+    self.code = code
+    self.data = data
+  }
+
+  func toJsonString() -> String {
+    var map: [String: Any] = ["message": message]
+    if let code { map["code"] = code }
+    if let data, !data.isEmpty { map["data"] = data }
+    guard
+      let bytes = try? JSONSerialization.data(withJSONObject: map),
+      let str = String(data: bytes, encoding: .utf8)
+    else {
+      return #"{"message":"FlutterReadiumError serialization failed"}"#
+    }
+    return str
+  }
+
+  func toFlutterError() -> FlutterError {
+    FlutterError(code: code ?? "unknown", message: message, details: data)
+  }
+}
+
+enum ReadiumError: Error {
+  case formatNotSupported(String)
+  case unsupportedScheme(String)
+  case readingError(Error)
+  case notFound(String?)
+  case forbidden(String?)
+  case publicationIsRestricted(Error)
+  case voiceNotFound
+  case unknown(Error?)
+}
+
+extension Error {
+  func toReadiumError() -> ReadiumError {
+    switch self {
+    case is AssetRetrieveError:
+      return (self as! AssetRetrieveError).toReadiumError()
+    case is AssetRetrieveURLError:
+      return (self as! AssetRetrieveURLError).toReadiumError()
+    case is PublicationOpenError:
+      return (self as! PublicationOpenError).toReadiumError()
+    default:
+      return .unknown(self)
+    }
+  }
+}
+
+extension AssetRetrieveURLError {
+  func toReadiumError() -> ReadiumError {
+    switch self {
+    case .formatNotSupported:
+      return .formatNotSupported(self.localizedDescription)
+    case .schemeNotSupported(let scheme):
+      return .unsupportedScheme("scheme not supported: \(scheme)")
+    case .reading(let error):
+      return .readingError(error)
+    }
+  }
+}
+
+extension AssetRetrieveError {
+  func toReadiumError() -> ReadiumError {
+    switch self {
+    case .formatNotSupported:
+      return .formatNotSupported(self.localizedDescription)
+    case .reading(let error):
+      return .readingError(error)
+    }
+  }
+}
+
+extension PublicationOpenError {
+  func toReadiumError() -> ReadiumError {
+    switch self {
+    case .formatNotSupported:
+      return .formatNotSupported(self.localizedDescription)
+    case .reading(let error):
+      return .readingError(error)
+    }
+  }
+}
+
+extension HTTPError {
+  var statusCode: HTTPStatus? {
+    if case let .errorResponse(response) = self {
+      return response.status
+    }
+    return nil
+  }
+  var responseHeaders: [String: String]? {
+    if case let .errorResponse(response) = self {
+      return response.headers
+    }
+    return nil
+  }
+  var responseBody: Data? {
+    if case let .errorResponse(response) = self {
+      return response.body
+    }
+    return nil
+  }
+}
+
+extension AccessError {
+  var httpError: HTTPError? {
+    if case let .http(httpError) = self {
+      return httpError
+    }
+    return nil
+  }
+  var fsError: FileSystemError? {
+    if case let .fileSystem(fsErr) = self {
+      return fsErr
+    }
+    return nil
+  }
+}
+
+extension ReadError {
+  var httpError: HTTPError? {
+    if case let .access(.http(httpError)) = self {
+      return httpError
+    }
+    return nil
+  }
+  var fsError: FileSystemError? {
+    if case let .access(.fileSystem(fsErr)) = self {
+      return fsErr
+    }
+    return nil
+  }
+}
+
+extension ReadiumError: UserErrorConvertible {
+  func toFlutterError() -> FlutterError {
+    switch self {
+    case .formatNotSupported(let msg):
+      return FlutterReadiumError(
+        message: self.localizedDescription,
+        code: "formatNotSupported",
+        data: ["message": msg]
+      ).toFlutterError()
+    case .unsupportedScheme(let msg):
+      return FlutterReadiumError(
+        message: self.localizedDescription,
+        code: "unsupportedScheme",
+        data: ["message": msg]
+      ).toFlutterError()
+    case .readingError(let err):
+      switch err {
+      case ReadiumShared.ArchiveOpenError.reading(.access(.http(let httpError))),
+           ReadiumShared.ReadError.access(.http(let httpError)),
+           ReadiumShared.AccessError.http(let httpError):
+        let kind: String = {
+          switch httpError {
+          case .errorResponse: return "errorResponse"
+          case .malformedRequest: return "malformedRequest"
+          case .malformedResponse: return "malformedResponse"
+          case .timeout: return "timeout"
+          case .unreachable: return "unreachable"
+          case .redirection: return "redirection"
+          case .security: return "security"
+          case .rangeNotSupported: return "rangeNotSupported"
+          case .offline: return "offline"
+          case .fileSystem: return "fileSystem"
+          case .cancelled: return "cancelled"
+          case .other: return "other"
+          }
+        }()
+        let message: String
+        let status = httpError.statusCode?.rawValue
+        if let status {
+          message = "HTTPError(\(kind), status=\(status))"
+        } else {
+          message = "HTTPError(\(kind)): \(httpError.localizedDescription)"
+        }
+        var data: [String: Any] = ["message": httpError.localizedDescription]
+        if let status {
+          data["httpStatus"] = status
+        }
+        return FlutterReadiumError(
+          message: message,
+          code: Self.openingErrorCode(forHTTPStatus: status),
+          data: data
+        ).toFlutterError()
+      case ReadiumShared.ArchiveOpenError.reading(.access(.fileSystem(let fsError))),
+           ReadiumShared.ReadError.access(.fileSystem(let fsError)),
+           ReadiumShared.AccessError.fileSystem(let fsError):
+        return FlutterReadiumError(
+          message: "FilesystemError",
+          code: "readingError",
+          data: ["message": fsError.localizedDescription]
+        ).toFlutterError()
+      default:
+        return FlutterReadiumError(
+          message: self.localizedDescription,
+          code: "readingError",
+          data: ["message": err.localizedDescription]
+        ).toFlutterError()
+      }
+    case .notFound(let msg):
+      return FlutterReadiumError(
+        message: self.localizedDescription,
+        code: "notFound",
+        data: msg.map { ["message": $0] }
+      ).toFlutterError()
+    case .publicationIsRestricted(let err):
+      return FlutterReadiumError(
+        message: self.localizedDescription,
+        code: "forbidden",
+        data: ["message": err.localizedDescription]
+      ).toFlutterError()
+    case .voiceNotFound:
+      return FlutterReadiumError(
+        message: self.localizedDescription,
+        code: "voiceNotFound"
+      ).toFlutterError()
+    default:
+      return FlutterReadiumError(
+        message: self.localizedDescription,
+        code: "unknown"
+      ).toFlutterError()
+    }
+  }
+
+  private static func openingErrorCode(forHTTPStatus status: Int?) -> String {
+    switch status {
+    case 401:
+      return "incorrectCredentials"
+    case 403:
+      return "forbidden"
+    case 404:
+      return "notFound"
+    case 415:
+      return "formatNotSupported"
+    case 500:
+      return "unavailable"
+    default:
+      return "readingError"
+    }
+  }
+
+  func userError() -> UserError {
+    UserError(cause: self) {
+      switch self {
+      case .formatNotSupported:
+        return "library_error_formatNotSupported".localized
+      case .unsupportedScheme:
+        return "library_error_formatNotSupported".localized
+      case .notFound:
+        return "library_error_bookNotFound".localized
+      case .readingError:
+        return "library_error_readingError".localized
+      case .forbidden(_):
+        return "library_error_forbidden".localized
+      case .voiceNotFound:
+        return "library_error_voiceNotFound".localized
+      case let .publicationIsRestricted(error):
+        if let error = error as? UserErrorConvertible {
+          return error.userError().message
+        } else {
+          return "library_error_publicationIsRestricted".localized
+        }
+      case .unknown:
+        return "library_error_unknown".localized
+      }
+    }
+  }
+}

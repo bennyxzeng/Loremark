@@ -39,7 +39,9 @@ dependencies:
   archive: ^4.5.2
   xml: ^7.1.0
   crypto: ^3.0.8
-  flutter_readium: 0.8.0
+  # 0.8.0 with one iOS fix: see third_party/flutter_readium/LOREMARK.md.
+  flutter_readium:
+    path: third_party/flutter_readium
   flutter_secure_storage: ^11.2.0
   url_launcher: ^6.3.3
   connectivity_plus: ^7.3.2
@@ -78,8 +80,13 @@ flutter:
   assets:
     # The prompt and schema Story Map updates send to the AI provider.
     - assets/story_update/
+    # The prompt Ask sends with each question.
+    - assets/chat/
     # Companion illustrations, cropped and compressed from assets/images/.
     - assets/app/
+    # The animated companion in Ask, built from assets/ai_chat_illust/ by
+    # tool/companion/build_companion.py.
+    - assets/companion/
     - assets/reader/page_end.js
 
   # To add assets to your application, add an assets section, like this:

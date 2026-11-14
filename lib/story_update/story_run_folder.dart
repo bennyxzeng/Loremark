@@ -4,6 +4,7 @@ import 'dart:io';
 import 'story_api_client.dart';
 import 'story_book.dart';
 import 'story_model_choice.dart';
+import 'story_quotes.dart';
 import 'story_store.dart';
 import 'story_validation.dart';
 
@@ -28,6 +29,9 @@ const _exitCodes = {
   'empty_output': 3,
   'stale_base': 5,
   'commit_failed': 2,
+  // The lab has no such ending. 130 is what a shell reports for a run stopped
+  // with Ctrl-C.
+  'cancelled': 130,
 };
 
 /// Everything kept about one update, whether or not it worked, in the same files
@@ -35,6 +39,8 @@ const _exitCodes = {
 ///
 /// Left out, because their features aren't in the app: `diff.md`, `review.md`,
 /// manual corrections, and the `evidence` and `counts` of `validation.json`.
+/// Added: `quote_repairs.json`, the quotes put back to the book's text before
+/// checking, in the form of the lab's `manual_corrections.json`.
 ///
 /// What is written before the request has to succeed, or nothing is sent: the
 /// answer couldn't be kept. After that the request has been paid for, so failing
@@ -244,8 +250,18 @@ class StoryRunFolder {
       'warning_count': warnings,
       'validator_version': storyValidatorVersion,
       'validated_at': storyUtcNow(),
+      'quote_repair_version': storyQuoteRepairVersion,
+      'quote_repair_count': validation.quoteRepairs.length,
     };
     _safely(() {
+      if (validation.quoteRepairs.isNotEmpty) {
+        // In the lab's form for manual corrections, by who made them.
+        final at = storyUtcNow();
+        _writeJson('quote_repairs.json', [
+          for (final repair in validation.quoteRepairs)
+            ...repair.corrections(at),
+        ]);
+      }
       _writeJson('validation.json', {
         'validator_version': storyValidatorVersion,
         'passed': validation.passed,

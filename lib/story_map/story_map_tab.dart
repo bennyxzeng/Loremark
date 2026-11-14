@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../library/book.dart';
@@ -8,7 +10,9 @@ import '../story_model/story_snapshot.dart';
 import '../story_update/story_import.dart';
 import '../story_update/story_updater.dart';
 import 'story_map_backend.dart';
+import 'story_map_intro.dart';
 import 'story_map_screen.dart';
+import 'story_map_status.dart';
 import 'story_update_bar.dart';
 
 /// The Story Map tab of [book]: its stored map, and the button that adds to it.
@@ -21,6 +25,9 @@ class StoryMapTab extends StatefulWidget {
     required this.book,
     required this.backend,
     required this.active,
+    this.status,
+    this.onKeepReading,
+    this.onUpdateFinished,
   });
 
   final Book book;
@@ -29,6 +36,16 @@ class StoryMapTab extends StatefulWidget {
   /// Whether this is the tab showing. The reader may have read on since it last
   /// was, so coming back looks at their position again.
   final bool active;
+
+  /// Told how updates and the map change, for the rest of the book to show.
+  final StoryMapStatusController? status;
+
+  /// Goes back to the book while an update runs.
+  final VoidCallback? onKeepReading;
+
+  /// Told how each update ended, however the reader got to it, while this tab
+  /// is there to see it end: once for all the sections it was asked to add.
+  final ValueChanged<StoryBatchOutcome>? onUpdateFinished;
 
   @override
   State<StoryMapTab> createState() => _StoryMapTabState();
@@ -41,16 +58,33 @@ class _StoryMapTabState extends State<StoryMapTab> {
   Object? _loadError;
   StoryUpdateStatus? _status;
 
-  /// When the update under way began, if one is.
-  DateTime? _updateStartedAt;
+  /// The sections being added, if they are.
+  RunningStoryBatch? _batch;
+  StreamSubscription<void>? _batchChanges;
 
-  /// The section asked of the update under way; null for the next one.
-  String? _updateSectionId;
+  /// How many of [_batch]'s sections were done when it last changed.
+  int _batchSeen = 0;
+
+  /// The map being read again after a section went in, if it is.
+  Future<void>? _reloading;
+
+  /// The sections asked for, and when, until the update has begun. Starting
+  /// one takes a moment, and the tab already shows it as under way.
+  List<StorySectionChoice>? _starting;
+  DateTime? _startingAt;
+
+  /// Whether the reader has cancelled the update under way, which hasn't
+  /// stopped yet.
+  bool _cancelling = false;
   String? _notice;
   String? _failure;
 
   /// Whether files are being exported or loaded.
   bool _filesBusy = false;
+
+  /// Whether the intro shows. It starts hidden, so a reader who closed it
+  /// before doesn't see it flash while the backend is asked.
+  bool _showIntro = false;
 
   /// Counts the maps loaded from a file. What the slider remembers belongs to the
   /// map it was on, so a different map starts it afresh.
@@ -64,13 +98,19 @@ class _StoryMapTabState extends State<StoryMapTab> {
     _load().then((_) {
       if (mounted && widget.active) _inspect();
     });
+    _loadIntro();
     final running = _backend.running(widget.book);
-    if (running != null) {
-      _updateStartedAt = running.startedAt;
-      _updateSectionId = running.sectionId;
-      _awaitOutcome(running.outcome);
-    }
+    // The status already knows of it, having asked the backend too.
+    if (running != null) _follow(running, tellStatus: false);
   }
+
+  @override
+  void dispose() {
+    _batchChanges?.cancel();
+    super.dispose();
+  }
+
+  bool get _updating => _batch != null || _starting != null;
 
   @override
   void didUpdateWidget(StoryMapTab oldWidget) {
@@ -94,12 +134,34 @@ class _StoryMapTabState extends State<StoryMapTab> {
         _loaded = true;
         _loadError = null;
       });
+      widget.status?.mapLoaded(model?.sections);
     } on Object catch (error) {
       if (!mounted) return;
       setState(() {
         _loaded = true;
         _loadError = error;
       });
+      widget.status?.mapUnreadable();
+    }
+  }
+
+  Future<void> _loadIntro() async {
+    try {
+      final seen = await _backend.introSeen();
+      if (mounted && !seen) setState(() => _showIntro = true);
+    } on Object {
+      // Leave it hidden rather than show it on every visit.
+    }
+  }
+
+  /// Hides the intro now, and for good once that is saved. If saving fails,
+  /// it shows again next time.
+  Future<void> _dismissIntro() async {
+    setState(() => _showIntro = false);
+    try {
+      await _backend.markIntroSeen();
+    } on Object {
+      // Nothing else depends on it.
     }
   }
 
@@ -129,47 +191,128 @@ class _StoryMapTabState extends State<StoryMapTab> {
   }
 
   Future<void> _pressUpdate() async {
+    final status = _status;
+    if (status == null) return;
+    if (status.isNewStore) return _pressChoose();
+    final next = status.next;
+    if (next != null) await _startUpdate([next]);
+  }
+
+  Future<void> _pressChoose() async {
     final credentials = AiSettingsScope.of(context).credentials;
     final status = _status;
     if (credentials == null || status == null) return;
-    if (!status.isNewStore) return _startUpdate();
-    final start = await showStoryStartDialog(
+    final sections = await showStorySectionsSheet(
       context,
       status: status,
       providerLabel: credentials.provider.label,
     );
-    if (start != null) await _startUpdate(sectionId: start);
+    if (sections != null && sections.isNotEmpty) await _startUpdate(sections);
   }
 
-  Future<void> _pressChoose() async {
-    final status = _status;
-    if (status == null) return;
-    final section = await showStorySectionDialog(context, status: status);
-    if (section != null) await _startUpdate(sectionId: section);
-  }
-
-  Future<void> _startUpdate({String? sectionId}) async {
+  Future<void> _startUpdate(List<StorySectionChoice> sections) async {
     // The reader may have left while a dialog was open.
-    if (!mounted) return;
+    if (!mounted || _updating) return;
     final settings = AiSettingsScope.of(context);
     final credentials = settings.credentials;
     if (credentials == null) return;
+    final startedAt = DateTime.now();
     setState(() {
-      _updateStartedAt = DateTime.now();
-      _updateSectionId = sectionId;
+      _starting = sections;
+      _startingAt = startedAt;
+      _cancelling = false;
       _notice = null;
       _failure = null;
     });
-    await _awaitOutcome(
-      _backend.update(
+    widget.status?.updateStarted(startedAt, total: sections.length);
+    final RunningStoryBatch batch;
+    try {
+      batch = await _backend.update(
         widget.book,
         credentials: credentials,
         model: settings.storyModel,
         effort: settings.storyEffort,
         checkQuotes: settings.checkStoryQuotes,
-        sectionId: sectionId,
-      ),
+        sections: sections,
+      );
+    } on Object catch (error) {
+      // Nothing was sent, so there is nothing to be charged for.
+      widget.status?.updateEnded();
+      if (mounted) {
+        setState(() {
+          _starting = null;
+          _startingAt = null;
+          _failure = 'The update couldn’t start: $error';
+        });
+      }
+      return;
+    }
+    _starting = null;
+    _startingAt = null;
+    // If the reader has left, it still finishes and is found on the store next
+    // time.
+    if (mounted) _follow(batch);
+  }
+
+  /// Shows [batch] as it goes, and how it ended. While the tab is first being
+  /// built, the status mustn't be told, since the header is being built too.
+  void _follow(RunningStoryBatch batch, {bool tellStatus = true}) {
+    _batchChanges?.cancel();
+    _batch = batch;
+    // One just started may have finished a section already. One found on
+    // coming back has its sections in the map the tab is loading.
+    _batchSeen = tellStatus ? 0 : batch.outcomes.length;
+    _cancelling = batch.cancelling;
+    _batchChanges = batch.changes.listen((_) => _batchChanged(batch));
+    // Rebuilds, and tells the status which section is under way.
+    if (tellStatus) _batchChanged(batch);
+    batch.done.then((outcome) => _batchEnded(batch, outcome));
+  }
+
+  void _batchChanged(RunningStoryBatch batch) {
+    if (!mounted || !identical(batch, _batch)) return;
+    final outcomes = batch.outcomes;
+    if (outcomes.length > _batchSeen) {
+      _batchSeen = outcomes.length;
+      // Show each section as it goes in, rather than all at the end.
+      if (outcomes.last.committed) _reloading = _reload();
+    }
+    if (outcomes.length <= batch.index) {
+      widget.status?.updateStarted(
+        batch.currentStartedAt,
+        step: batch.index,
+        total: batch.total,
+      );
+    }
+    setState(() {});
+  }
+
+  Future<void> _reload() async {
+    await _load();
+    await _inspect();
+  }
+
+  Future<void> _pressCancel() async {
+    final batch = _batch;
+    if (batch == null) return;
+    final remaining = batch.stopping ? 0 : batch.total - batch.index - 1;
+    final choice = await showStoryCancelDialog(
+      context,
+      current: batch.current.title,
+      remaining: remaining,
     );
+    // The update may have ended while the dialog was open.
+    if (choice == null || !mounted || !identical(batch, _batch)) return;
+    switch (choice) {
+      case StoryStopChoice.afterThisOne:
+        _backend.stopAfterCurrent(widget.book);
+        widget.status?.stopRequested();
+        setState(() {});
+      case StoryStopChoice.now:
+        setState(() => _cancelling = true);
+        widget.status?.cancelRequested();
+        _backend.cancelUpdate(widget.book);
+    }
   }
 
   Future<void> _pressExport() async {
@@ -254,40 +397,97 @@ class _StoryMapTabState extends State<StoryMapTab> {
     ].join(' ');
   }
 
-  /// Waits for an update, then shows how it went. If the reader has left, it
-  /// still finishes and is found on the store next time.
-  Future<void> _awaitOutcome(Future<StoryUpdateOutcome> update) async {
-    final outcome = await update;
-    if (!mounted) return;
-    final took = formatStoryElapsed(
-      DateTime.now().difference(_updateStartedAt!),
+  /// Shows how [batch] ended: [outcome].
+  Future<void> _batchEnded(
+    RunningStoryBatch batch,
+    StoryBatchOutcome outcome,
+  ) async {
+    // Its changes have ended with it, so there's nothing to wait for.
+    unawaited(_batchChanges?.cancel());
+    _batchChanges = null;
+    await _reloading;
+    _reloading = null;
+    if (!mounted || !identical(batch, _batch)) return;
+    final now = DateTime.now();
+    final took = formatStoryElapsed(now.difference(batch.startedAt));
+    final sectionTook = formatStoryElapsed(
+      now.difference(batch.currentStartedAt),
     );
-    if (!outcome.committed) {
-      setState(() {
-        _updateStartedAt = null;
-        _failure = '${describeStoryUpdateFailure(outcome)} Took $took.';
-      });
-      return;
-    }
-    await _load();
-    await _inspect();
-    if (!mounted) return;
-    final sections = _model?.sections.length ?? 0;
-    setState(() {
-      _updateStartedAt = null;
-      _notice = [
-        'Added ${outcome.sectionTitle} in $took.',
-        // Never jump past the reader: the slider asks first.
-        if (_progress.shown < sections) 'Drag the slider to see it.',
-        if (outcome.unmatchedQuotes > 0)
-          '${outcome.unmatchedQuotes} quote(s) couldn’t be matched to the book.',
+    final total = outcome.total;
+    final added = outcome.added;
+    final last = outcome.last;
+    final lastTitle = last.sectionTitle ?? outcome.lastSection.title;
+    final mapSections = _model?.sections.length ?? 0;
+    // Never jump past the reader: the slider asks first.
+    final dragHint = added > 0 && _progress.shown < mapSections
+        ? 'Drag the slider to see ${added == 1 ? 'it' : 'them'}.'
+        : null;
+    final quotes = outcome.unmatchedQuotes > 0
+        ? '${outcome.unmatchedQuotes} quote(s) couldn’t be matched to the book.'
+        : null;
+    final soFar = added == 0 ? null : 'Added $added of $total sections.';
+    String? notice;
+    String? failure;
+    if (outcome.cancelled) {
+      // The reader asked for it, so it isn't shown as a failure.
+      notice = [
+        total == 1
+            ? 'Cancelled after $sectionTook. Nothing was saved, but your '
+                  'provider may still charge for it.'
+            : 'Cancelled $lastTitle after $sectionTook. It wasn’t saved, but '
+                  'your provider may still charge for it.',
+        ?soFar,
+        ?dragHint,
       ].join(' ');
+    } else if (outcome.failed) {
+      final why = '${describeStoryUpdateFailure(last)} Took $sectionTook.';
+      if (total == 1) {
+        failure = why;
+      } else {
+        notice = [?soFar, ?dragHint, ?quotes].join(' ');
+        failure =
+            '$lastTitle didn’t go through. $why '
+                    '${outcome.outcomes.length == total ? '' : 'The rest weren’t started.'}'
+                .trim();
+      }
+    } else if (outcome.stopped) {
+      notice = [
+        batch.cancelling
+            // Cancelled too late: the answer had come, and has been kept.
+            ? 'Cancelled too late to stop $lastTitle, so it was added.'
+            : 'Stopped after $lastTitle.',
+        'Added $added of $total sections in $took.',
+        ?dragHint,
+        ?quotes,
+      ].join(' ');
+    } else {
+      notice = [
+        total == 1
+            ? 'Added $lastTitle in $took.'
+            : 'Added $total sections in $took.',
+        ?dragHint,
+        ?quotes,
+      ].join(' ');
+    }
+    setState(() {
+      _batch = null;
+      _cancelling = false;
+      _notice = (notice?.isEmpty ?? true) ? null : notice;
+      _failure = failure;
     });
+    _tellEnded(outcome);
+  }
+
+  /// Tells the rest of the book, once this tab shows how [outcome] went.
+  void _tellEnded(StoryBatchOutcome outcome) {
+    widget.status?.updateEnded();
+    widget.onUpdateFinished?.call(outcome);
   }
 
   @override
   Widget build(BuildContext context) {
     final model = _model;
+    final batch = _batch;
     final hasKey = AiSettingsScope.of(context).hasKey;
     final Widget body;
     if (_loadError != null) {
@@ -326,16 +526,24 @@ class _StoryMapTabState extends State<StoryMapTab> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (_showIntro) StoryMapIntro(onDismiss: _dismissIntro),
         StoryUpdateBar(
           status: _status,
-          updateStartedAt: _updateStartedAt,
-          updateSectionId: _updateSectionId,
+          updateStartedAt: batch?.currentStartedAt ?? _startingAt,
+          updateTitle: (batch?.current ?? _starting?.first)?.title,
+          updateStep: batch?.index ?? 0,
+          updateTotal: batch?.total ?? _starting?.length ?? 1,
+          runStartedAt: batch?.startedAt ?? _startingAt,
+          cancelling: _cancelling,
+          stopping: batch?.stopping ?? false,
           online: ConnectionScope.of(context).isOnline,
           hasKey: hasKey,
           filesBusy: _filesBusy,
           notice: _notice,
           failure: _failure,
           onUpdate: _pressUpdate,
+          onCancel: _pressCancel,
+          onKeepReading: widget.onKeepReading,
           onChoose: _pressChoose,
           onLoad: _pressLoad,
           onExport: _pressExport,

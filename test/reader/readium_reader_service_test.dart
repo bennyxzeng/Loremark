@@ -399,6 +399,52 @@ void main() {
     });
   });
 
+  group('passageDecorations', () {
+    final readingOrder = [
+      for (final href in _hrefs) Link(href: href, type: _xhtml),
+    ];
+    PassageTarget at(String text, {int section = 2}) => PassageTarget(
+      sectionIndex: section,
+      progression: 0.25,
+      highlight: text,
+    );
+
+    test('highlights a passage with what it also highlights', () {
+      final decorations = passageDecorations(
+        at('First line.').alsoHighlighting([at('Second line.')]),
+        readingOrder,
+        _indexOf,
+      );
+      expect([for (final d in decorations) d.id], ['hit', 'hit-1']);
+      expect(
+        [for (final d in decorations) d.locator.text?.highlight],
+        ['First line.', 'Second line.'],
+      );
+      expect(
+        decorations.every((d) => d.style == passageHighlightStyle),
+        isTrue,
+      );
+    });
+
+    test('is one highlight for a passage alone', () {
+      final decorations = passageDecorations(
+        at('a grey cat'),
+        readingOrder,
+        _indexOf,
+      );
+      expect(decorations.single.id, 'hit');
+    });
+
+    test('leaves out what isn\'t in the reading order', () {
+      final decorations = passageDecorations(
+        at('First line.').alsoHighlighting([at('Gone.', section: 5)]),
+        readingOrder,
+        _indexOf,
+      );
+      expect(decorations.single.locator.text?.highlight, 'First line.');
+    });
+  });
+
   group('passageSelectionFrom', () {
     Locator selected({
       String href = 'OEBPS/ch1.xhtml',
