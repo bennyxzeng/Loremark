@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../home/empty_state.dart';
@@ -6,6 +8,28 @@ import 'add_note_sheet.dart';
 import 'annotation_service.dart';
 import 'highlight_colors.dart';
 import 'note.dart';
+import 'theory.dart';
+
+/// This asks the Notes tab to scroll to one note and briefly emphasise it.
+/// The screen that owns the tabs switches to the Notes tab and calls [focus].
+/// It is also how the theory banner opens a theory in the Notes tab.
+class NoteFocusController extends ChangeNotifier {
+  String? _pending;
+
+  /// This asks the Notes tab to show the note with the given id. If the tab is
+  /// not built yet, it shows the note as soon as it is.
+  void focus(String noteId) {
+    _pending = noteId;
+    notifyListeners();
+  }
+
+  /// This hands out the note id the tab still has to show, once.
+  String? takePending() {
+    final id = _pending;
+    _pending = null;
+    return id;
+  }
+}
 
 /// This is the list shown in the Notes tab. It lists every note and highlight of
 /// the book by chapter and lets the reader search, filter, edit, and delete them.
@@ -18,7 +42,15 @@ class NoteList extends StatefulWidget {
   /// at that passage. (Optional)
   final ValueChanged<Note>? onOpenNote;
 
-  const NoteList({super.key, required this.service, this.onOpenNote});
+  /// This lets other code scroll the list to one note. (Optional)
+  final NoteFocusController? focusController;
+
+  const NoteList({
+    super.key,
+    required this.service,
+    this.onOpenNote,
+    this.focusController,
+  });
 
   @override
   State<NoteList> createState() => _NoteListState();
@@ -33,11 +65,67 @@ class _NoteListState extends State<NoteList> {
   HighlightColor? _color;
   // This is whether the reader is looking at notes, highlights, or both.
   NoteTypeFilter _type = NoteTypeFilter.all;
+  // This is the note that was just asked for, drawn with an outline for a moment.
+  String? _emphasisedId;
+  Timer? _emphasisTimer;
+  // These find each note card on screen so the list can scroll to one.
+  final _cardKeys = <String, GlobalKey>{};
+
+  @override
+  void initState() {
+    super.initState();
+    widget.focusController?.addListener(_onFocusRequested);
+    // A request made before this tab was built is still waiting.
+    if (widget.focusController?.takePending() case final id?) _focusNote(id);
+  }
+
+  @override
+  void didUpdateWidget(NoteList oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.focusController != widget.focusController) {
+      oldWidget.focusController?.removeListener(_onFocusRequested);
+      widget.focusController?.addListener(_onFocusRequested);
+    }
+  }
 
   @override
   void dispose() {
+    widget.focusController?.removeListener(_onFocusRequested);
+    _emphasisTimer?.cancel();
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _onFocusRequested() {
+    final id = widget.focusController?.takePending();
+    if (id != null) _focusNote(id);
+  }
+
+  // This clears the filters so the note is not hidden, scrolls to it, and
+  // outlines it for two seconds.
+  void _focusNote(String id) {
+    if (!widget.service.notes.any((note) => note.id == id)) return;
+    _emphasisTimer?.cancel();
+    setState(() {
+      _searchController.clear();
+      _chapter = null;
+      _color = null;
+      _type = NoteTypeFilter.all;
+      _emphasisedId = id;
+    });
+    _emphasisTimer = Timer(const Duration(seconds: 2), () {
+      if (mounted) setState(() => _emphasisedId = null);
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final context = _cardKeys[id]?.currentContext;
+      if (context != null && context.mounted) {
+        Scrollable.ensureVisible(
+          context,
+          alignment: 0.2,
+          duration: const Duration(milliseconds: 250),
+        );
+      }
+    });
   }
 
   NoteFilter get _filter => NoteFilter(
@@ -89,38 +177,61 @@ class _NoteListState extends State<NoteList> {
             Expanded(
               child: groups.isEmpty
                   ? const _Message('No notes match your search.')
-                  : ListView(
+                  // A plain scroll view builds every card, which the scroll to a
+                  // focused note needs, and a book has few enough notes for that.
+                  : SingleChildScrollView(
                       padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                      children: [
-                        for (final group in groups) ...[
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
-                            child: Text(
-                              group.chapterLabel,
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
-                          ),
-                          for (final note in group.notes)
-                            _NoteCard(
-                              note: note,
-                              onTap: widget.onOpenNote == null
-                                  ? null
-                                  : () => widget.onOpenNote!(note),
-                              onEdit: () => editNoteWithSheet(
-                                context,
-                                widget.service,
-                                note,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          for (final group in groups) ...[
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
+                              child: Text(
+                                group.chapterLabel,
+                                style: Theme.of(context).textTheme.titleMedium,
                               ),
-                              onDelete: () => _deleteNote(note),
                             ),
+                            for (final note in group.notes)
+                              _NoteCard(
+                                key: _cardKeys.putIfAbsent(
+                                  note.id,
+                                  GlobalKey.new,
+                                ),
+                                note: note,
+                                emphasised: note.id == _emphasisedId,
+                                status: note.kind == NoteKind.theory
+                                    ? service.statusOf(note.id)
+                                    : null,
+                                buildsOn: _buildsOnText(service, note),
+                                onTap: widget.onOpenNote == null
+                                    ? null
+                                    : () => widget.onOpenNote!(note),
+                                onEdit: () => editNoteWithSheet(
+                                  context,
+                                  widget.service,
+                                  note,
+                                ),
+                                onDelete: () => _deleteNote(note),
+                              ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
             ),
           ],
         );
       },
     );
+  }
+
+  // This is the text of the older theory a theory builds on, or null if it
+  // builds on nothing (or on a theory that is gone).
+  String? _buildsOnText(AnnotationService service, Note note) {
+    final id = note.theory?.dependsOnId;
+    if (id == null) return null;
+    final parent = service.notes.where((each) => each.id == id).firstOrNull;
+    return parent == null ? null : shortenTheoryText(parent.body, 60);
   }
 
   // This builds the search box, the All / Notes / Highlights toggle, the chapter
@@ -195,7 +306,7 @@ class _NoteListState extends State<NoteList> {
   }
 }
 
-/// This opens the note sheet with the note's current text and color, and saves
+/// This opens the note sheet with the note's current text, color, and kind, and saves
 /// what the reader changes. The sheet also has a button to remove the note.
 /// Used by the Notes tab and by tapping a highlight in the Read tab.
 /// Parameters:
@@ -214,15 +325,31 @@ Future<void> editNoteWithSheet(
     selectedText: note.selectedText,
     initialBody: note.body,
     initialColor: note.color,
+    initialKind: note.kind,
+    initialDependsOnId: note.theory?.dependsOnId,
+    olderTheories: service.theoriesBefore(note.id),
     title: note.isHighlightOnly ? 'Add note' : 'Edit note',
     removeLabel: note.isHighlightOnly ? 'Remove highlight' : 'Delete note',
   );
   if (result == null || !context.mounted) return;
   switch (result) {
-    case AddNoteResult(:final body, :final color):
+    case AddNoteResult(
+      :final body,
+      :final color,
+      :final kind,
+      :final dependsOnId,
+    ):
       await saveOrReport(
         context,
-        () => service.editNote(note.id, body: body, color: color),
+        () => service.editNote(
+          note.id,
+          body: body,
+          color: color,
+          kind: kind,
+          dependsOnId: dependsOnId,
+          // A theory saved with "None" builds on nothing.
+          clearDependsOn: kind == NoteKind.theory && dependsOnId == null,
+        ),
       );
     case RemoveNoteResult():
       if (!note.isHighlightOnly) {
@@ -277,14 +404,29 @@ Future<void> saveOrReport(
 
 /// This is one note in the Notes tab. It shows the selected passage with its
 /// highlight color, the reader's note under it, and a menu to edit or delete.
+/// A theory also shows a "Theory" tag, how it is doing, the older theory it
+/// builds on, and each of its sub-theories with what settled it.
 class _NoteCard extends StatelessWidget {
   final Note note;
+
+  /// This is how the theory is doing, or null for a personal note.
+  final TheoryStatus? status;
+
+  /// This is the older theory it builds on, or null.
+  final String? buildsOn;
+
+  /// This is true for a moment after the card was asked for.
+  final bool emphasised;
   final VoidCallback? onTap;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   const _NoteCard({
+    super.key,
     required this.note,
+    required this.status,
+    required this.buildsOn,
+    required this.emphasised,
     required this.onTap,
     required this.onEdit,
     required this.onDelete,
@@ -292,8 +434,16 @@ class _NoteCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final theory = note.theory;
     return Card(
       clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: emphasised
+            ? BorderSide(color: scheme.primary, width: 2)
+            : BorderSide.none,
+      ),
       child: InkWell(
         onTap: onTap,
         child: IntrinsicHeight(
@@ -308,6 +458,10 @@ class _NoteCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (status != null) ...[
+                        _TheoryTags(status: status!),
+                        const SizedBox(height: 8),
+                      ],
                       Text(
                         '“${note.selectedText}”',
                         style: const TextStyle(fontStyle: FontStyle.italic),
@@ -317,6 +471,18 @@ class _NoteCard extends StatelessWidget {
                       if (!note.isHighlightOnly) ...[
                         const SizedBox(height: 8),
                         Text(note.body),
+                      ],
+                      if (buildsOn != null) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          'Builds on: $buildsOn',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
+                      if (theory != null && theory.subTheories.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        for (final sub in theory.subTheories)
+                          _SubTheoryRow(sub: sub),
                       ],
                     ],
                   ),
@@ -333,6 +499,124 @@ class _NoteCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// This is the "Theory" tag and the status chip at the top of a theory.
+class _TheoryTags extends StatelessWidget {
+  final TheoryStatus status;
+
+  const _TheoryTags({required this.status});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final (background, foreground) = switch (status) {
+      TheoryStatus.confirmed => (
+        scheme.primaryContainer,
+        scheme.onPrimaryContainer,
+      ),
+      TheoryStatus.partiallyCorrect => (
+        scheme.tertiaryContainer,
+        scheme.onTertiaryContainer,
+      ),
+      TheoryStatus.differentOutcome || TheoryStatus.invalidated => (
+        scheme.errorContainer,
+        scheme.onErrorContainer,
+      ),
+      TheoryStatus.unconfirmed => (
+        scheme.surfaceContainerHighest,
+        scheme.onSurfaceVariant,
+      ),
+    };
+    return Wrap(
+      spacing: 6,
+      runSpacing: 4,
+      children: [
+        _Tag(
+          label: 'Theory',
+          background: scheme.secondaryContainer,
+          foreground: scheme.onSecondaryContainer,
+        ),
+        _Tag(
+          label: status.label,
+          background: background,
+          foreground: foreground,
+        ),
+      ],
+    );
+  }
+}
+
+class _Tag extends StatelessWidget {
+  final String label;
+  final Color background;
+  final Color foreground;
+
+  const _Tag({
+    required this.label,
+    required this.background,
+    required this.foreground,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.labelMedium
+            ?.copyWith(color: foreground),
+      ),
+    );
+  }
+}
+
+/// This is one sub-theory of a theory: its verdict, and if the book settled it,
+/// the quote that did and the chapter it is from.
+class _SubTheoryRow extends StatelessWidget {
+  final SubTheory sub;
+
+  const _SubTheoryRow({required this.sub});
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final evidence = sub.evidence;
+    final (icon, verdict) = switch (sub.verdict) {
+      SubTheoryVerdict.open => (Icons.radio_button_unchecked, 'Open'),
+      SubTheoryVerdict.confirmed => (Icons.check_circle_outline, 'Confirmed'),
+      SubTheoryVerdict.refuted => (Icons.cancel_outlined, 'Refuted'),
+    };
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('${sub.text} ($verdict)', style: textTheme.bodyMedium),
+                if (evidence != null)
+                  Text(
+                    '“${evidence.quote}” (${evidence.chapterLabel})',
+                    style: textTheme.bodySmall?.copyWith(
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import 'note.dart';
 import 'note_repository.dart';
+import 'theory.dart';
 
 /// This exception is thrown when a reader tries to save a note with no text.
 /// (See Use Case #3, exception 4a)
@@ -167,7 +168,12 @@ class AnnotationService extends ChangeNotifier {
   /// - textBefore, textAfter: The text just around the passage. (Optional)
   /// - body: What the reader wrote. (Required, cannot be blank)
   /// - color: The highlight color of the passage.
-  /// Returns: The saved note, or throws an [EmptyNoteException] if the body is blank.
+  /// - kind: Whether it is a personal note or a theory. (Optional, personal note by default)
+  /// - dependsOnId: The older theory of this book that a new theory builds on.
+  ///   (Optional, only for a theory)
+  /// Returns: The saved note. Throws an [EmptyNoteException] if the body is
+  /// blank, and an [ArgumentError] if [dependsOnId] is given for a personal
+  /// note or does not name a theory of this book.
   Future<Note> addNote({
     required NoteAnchor anchor,
     required String chapterLabel,
@@ -176,8 +182,19 @@ class AnnotationService extends ChangeNotifier {
     String textAfter = '',
     required String body,
     HighlightColor color = HighlightColor.yellow,
+    NoteKind kind = NoteKind.personalNote,
+    String? dependsOnId,
   }) async {
     if (body.trim().isEmpty) throw const EmptyNoteException();
+    if (kind == NoteKind.personalNote && dependsOnId != null) {
+      throw ArgumentError.value(
+        dependsOnId,
+        'dependsOnId',
+        'only a theory can build on another theory',
+      );
+    }
+    // Every theory saved so far was made before this one, so any may be built on.
+    if (dependsOnId != null) _requireTheory(dependsOnId);
     return _add(
       anchor: anchor,
       chapterLabel: chapterLabel,
@@ -186,6 +203,10 @@ class AnnotationService extends ChangeNotifier {
       textAfter: textAfter,
       body: body.trim(),
       color: color,
+      kind: kind,
+      theory: kind == NoteKind.theory
+          ? TheoryState(dependsOnId: dependsOnId)
+          : null,
     );
   }
 
@@ -208,22 +229,57 @@ class AnnotationService extends ChangeNotifier {
     color: color,
   );
 
-  /// This changes the text and/or color of a saved note.
+  /// This changes a saved note. Editing a theory's text starts it over: its
+  /// sub-theories and check progress are cleared, because it is a new prediction.
+  /// A note can be switched between personal note and theory, and one that
+  /// becomes a personal note loses its theory data.
   /// Parameters:
   /// - id: The id of the note to edit.
   /// - body: The new text. (Optional, cannot be blank if given)
   /// - color: The new highlight color. (Optional)
-  /// Returns: The edited note.
+  /// - kind: The new kind. (Optional)
+  /// - dependsOnId: The older theory this one builds on. (Optional, only for a
+  ///   theory, and only a theory made before this one)
+  /// - clearDependsOn: True to remove the link instead. (Optional)
+  /// Returns: The edited note. Throws an [ArgumentError] if the dependency is
+  /// not allowed.
   Future<Note> editNote(
     String id, {
     String? body,
     HighlightColor? color,
+    NoteKind? kind,
+    String? dependsOnId,
+    bool clearDependsOn = false,
   }) async {
     if (body != null && body.trim().isEmpty) throw const EmptyNoteException();
     final index = _indexOf(id);
-    final edited = _notes[index].copyWith(
+    final old = _notes[index];
+    final newKind = kind ?? old.kind;
+    if (newKind == NoteKind.personalNote && dependsOnId != null) {
+      throw ArgumentError.value(
+        dependsOnId,
+        'dependsOnId',
+        'only a theory can build on another theory',
+      );
+    }
+    TheoryState? theory;
+    if (newKind == NoteKind.theory) {
+      theory = old.theory ?? const TheoryState();
+      if (clearDependsOn) theory = theory.copyWith(clearDependsOn: true);
+      if (dependsOnId != null) {
+        _requireOlderTheory(dependsOnId, than: old);
+        theory = theory.copyWith(dependsOnId: dependsOnId);
+      }
+      final textChanged = body != null && body.trim() != old.body;
+      if (old.kind == NoteKind.theory && textChanged) {
+        theory = TheoryState(dependsOnId: theory.dependsOnId);
+      }
+    }
+    final edited = old.copyWith(
       body: body?.trim(),
       color: color,
+      kind: newKind,
+      theory: theory,
       updatedAt: _clock(),
     );
     await _save([..._notes]..[index] = edited);
@@ -232,9 +288,67 @@ class AnnotationService extends ChangeNotifier {
 
   /// This deletes a note. The app asks the reader to confirm first, except for a
   /// highlight with no text, since nothing written is lost.
+  /// A theory that built on the deleted one stops building on anything, and
+  /// everything is saved in one go.
   Future<void> deleteNote(String id) async {
+    _indexOf(id);
+    await _save([
+      for (final note in _notes)
+        if (note.id != id)
+          if (note.theory?.dependsOnId == id)
+            note.copyWith(theory: note.theory!.copyWith(clearDependsOn: true))
+          else
+            note,
+    ]);
+  }
+
+  /// These are the theories of the book in reading order.
+  List<Note> get theories => List.unmodifiable([
+    for (final note in _notes)
+      if (note.kind == NoteKind.theory) note,
+  ]);
+
+  /// These are the theories of the book that a note could build on: the ones
+  /// made before the note with the given id, in reading order.
+  /// Used for the "Builds on" picker.
+  List<Note> theoriesBefore(String id) {
+    final note = _notes[_indexOf(id)];
+    return [
+      for (final each in _notes)
+        if (each.kind == NoteKind.theory && _isOlder(each, note)) each,
+    ];
+  }
+
+  /// This tells how the theory with the given id is doing right now.
+  /// It is worked out from the sub-theories and the theories it builds on each time.
+  /// Throws a [NoteNotFoundException] if there is no such note, and an
+  /// [ArgumentError] if the note is not a theory.
+  TheoryStatus statusOf(String id) {
+    final note = _notes[_indexOf(id)];
+    return theoryStatus(note, {for (final each in _notes) each.id: each});
+  }
+
+  /// This changes what is tracked about a theory and saves it. It is the one
+  /// way the theory checker writes verdicts, evidence, and progress.
+  /// The note's text and its edit time are left alone.
+  /// Parameters:
+  /// - id: The id of the theory.
+  /// - change: Gets the current [TheoryState] and returns the new one.
+  /// Returns: The updated note. Throws a [NoteNotFoundException] if there is no
+  /// such note, and an [ArgumentError] if it is not a theory.
+  Future<Note> updateTheory(
+    String id,
+    TheoryState Function(TheoryState current) change,
+  ) async {
     final index = _indexOf(id);
-    await _save([..._notes]..removeAt(index));
+    final old = _notes[index];
+    final current = old.theory;
+    if (old.kind != NoteKind.theory || current == null) {
+      throw ArgumentError.value(id, 'id', 'is not a theory');
+    }
+    final updated = old.copyWith(theory: change(current));
+    await _save([..._notes]..[index] = updated);
+    return updated;
   }
 
   /// This groups the notes by chapter for the Notes tab, after applying the filter.
@@ -262,6 +376,8 @@ class AnnotationService extends ChangeNotifier {
     required String textAfter,
     required String body,
     required HighlightColor color,
+    NoteKind kind = NoteKind.personalNote,
+    TheoryState? theory,
   }) async {
     final now = _clock();
     final note = Note(
@@ -274,11 +390,49 @@ class AnnotationService extends ChangeNotifier {
       textAfter: textAfter,
       body: body,
       color: color,
+      kind: kind,
+      theory: theory,
       createdAt: now,
       updatedAt: now,
     );
     await _save([..._notes, note]);
     return note;
+  }
+
+  // This makes sure the id names a theory of this book, or throws an ArgumentError.
+  Note _requireTheory(String id) {
+    final note = _notes.where((note) => note.id == id).firstOrNull;
+    if (note == null || note.kind != NoteKind.theory) {
+      throw ArgumentError.value(
+        id,
+        'dependsOnId',
+        'is not a theory of this book',
+      );
+    }
+    return note;
+  }
+
+  // This is the same check, and also makes sure the theory is older than [than],
+  // which is what keeps the links from ever forming a loop.
+  void _requireOlderTheory(String id, {required Note than}) {
+    final parent = _requireTheory(id);
+    if (!_isOlder(parent, than)) {
+      throw ArgumentError.value(
+        id,
+        'dependsOnId',
+        'must be a theory made before the one that builds on it',
+      );
+    }
+  }
+
+  // This is true when [a] was made before [b]. Notes made at the same moment
+  // are told apart by the counter at the end of the id.
+  static bool _isOlder(Note a, Note b) {
+    if (a.id == b.id) return false;
+    final byTime = a.createdAt.compareTo(b.createdAt);
+    if (byTime != 0) return byTime < 0;
+    int counter(Note note) => int.tryParse(note.id.split('-').last) ?? 0;
+    return counter(a) < counter(b);
   }
 
   int _indexOf(String id) {
