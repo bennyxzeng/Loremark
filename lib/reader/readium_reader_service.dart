@@ -676,6 +676,8 @@ String? positionLogLine(Locator locator, int? section, {DateTime? now}) {
     'currentPage': properties['currentPage'],
     'totalPages': properties['totalPages'],
     'tUs': (now ?? DateTime.now()).microsecondsSinceEpoch,
+    // Where the page starts, which the Story Map counts from.
+    'cssSelector': ?locations.cssSelector,
   };
   return 'LOREMARK_POSITION ${jsonEncode(fields)}';
 }

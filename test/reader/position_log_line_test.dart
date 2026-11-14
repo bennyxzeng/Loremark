@@ -33,6 +33,28 @@ void main() {
       });
     });
 
+    test('adds where the page starts when the locator has it', () {
+      const selector = r"[src='images\/010\.jpg']";
+      final line = positionLogLine(
+        Locator(
+          href: 'OEBPS/ch3.xhtml',
+          type: 'application/xhtml+xml',
+          locations: Locations(
+            progression: 0.25,
+            cssSelector: selector,
+            additionalProperties: {'currentPage': 2, 'totalPages': 8},
+          ),
+        ),
+        4,
+        now: now,
+      );
+
+      expect(
+        jsonDecode(line!.substring(prefix.length))['cssSelector'],
+        selector,
+      );
+    });
+
     test('skips the bare locator that has no page numbers', () {
       expect(positionLogLine(_locator(), 4, now: now), isNull);
       expect(
