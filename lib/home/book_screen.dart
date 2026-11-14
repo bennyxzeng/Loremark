@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../ask/ask_backend.dart';
 import '../ask/ask_controller.dart';
 import '../library/book.dart';
+import '../insights/file_reading_insights.dart';
 import '../notes/annotation_service.dart';
 import '../reader/epub_reader_service.dart';
 import '../reader/readium_reader_service.dart';
@@ -248,6 +249,12 @@ class _BookScreenState extends State<BookScreen> {
                           child: ReadScreen(
                             book: widget.book,
                             readerService: const ReadiumReaderService(),
+                            isActive: _selectedTab == _readTab,
+                            openInsights: () => FileReadingInsights.open(
+                              bookId: widget.book.id,
+                              epubPath: widget.book.epubPath,
+                            ),
+                            onOpenStoryMap: () => _selectTab(_storyMapTab),
                             openSearch: () => openPassageSearch(
                               bookId: widget.book.id,
                               epubPath: widget.book.epubPath,
