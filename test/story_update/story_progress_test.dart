@@ -174,6 +174,19 @@ void main() {
       expect(book.paragraphsBefore(three, _child(2)), 0);
     });
 
+    test('counts every paragraph on a picture page after the last', () {
+      // Readium names a page that starts with a picture by its escaped src.
+      final pictured = StoryBook.open(
+        _epub(
+          a:
+              '<h1>Chapter 1</h1><p>Alpha</p><p>Beta</p>'
+              '<figure><img src="images/010.jpg" alt=""/></figure>',
+        ),
+      );
+      final first = pictured.sections.firstWhere((s) => s.title == 'Chapter 1');
+      expect(pictured.paragraphsBefore(first, r"[src='images\/010\.jpg']"), 3);
+    });
+
     test('says so when it can\'t place the element', () {
       expect(book.paragraphsBefore(one, ':root > :nth-child(9)'), isNull);
       expect(book.paragraphsBefore(one, 'p:not(.x)'), isNull);
