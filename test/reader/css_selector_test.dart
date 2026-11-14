@@ -42,6 +42,23 @@ void main() {
     expect(textAt(r'#\31 23'), 'Five');
   });
 
+  test('undoes escapes in attribute values', () {
+    // What Readium writes for a page that starts with a picture.
+    final picture = XmlDocument.parse(
+      '<html><body><p>Text</p><figure>'
+      '<img src="images/010.jpg" alt="it\'s"/></figure></body></html>',
+    );
+    String? found(String selector) =>
+        firstElementMatching(picture, selector)?.getAttribute('src');
+    expect(found(r"[src='images\/010\.jpg']"), 'images/010.jpg');
+    expect(found(r'[src="images\/010\.jpg"]'), 'images/010.jpg');
+    expect(found("[src='images/010.jpg']"), 'images/010.jpg');
+    expect(found(r"[src='images\2f 010.jpg']"), 'images/010.jpg');
+    // An escaped quote doesn't end the value.
+    expect(found(r"[alt='it\'s']"), 'images/010.jpg');
+    expect(found(r"[src='images\/011\.jpg']"), isNull);
+  });
+
   test('tells a child from a descendant', () {
     expect(textAt('body > p:nth-of-type(2)'), 'Twoinner');
     expect(textAt('div p'), 'Three');
@@ -74,6 +91,8 @@ void main() {
     ':nth-child(0)',
     '[data-x=y]',
     '[data-x',
+    "[data-x='y]",
+    r"[data-x='y\']",
     r'p\',
   ]) {
     test('refuses "$selector" rather than guess', () {

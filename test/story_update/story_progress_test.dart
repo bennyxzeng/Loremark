@@ -17,8 +17,12 @@ String _page(String body) =>
     '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>t</title></head>'
     '<body>$body</body></html>';
 
-/// One chapter in a file of its own, then two sharing a file.
-Uint8List _epub() {
+/// One chapter in a file of its own, with body [a], then two sharing a file.
+Uint8List _epub({
+  String a =
+      '<h1>Chapter 1</h1><p>Alpha</p>'
+      '<p>Beta <span>inside</span> more</p><p>Gamma</p>',
+}) {
   final files = {
     'META-INF/container.xml':
         '<container version="1.0" '
@@ -43,10 +47,7 @@ Uint8List _epub() {
         '<li><a href="b.xhtml#two">Chapter 2</a></li>'
         '<li><a href="b.xhtml#three">Chapter 3</a></li>'
         '</ol></nav></body></html>',
-    'OEBPS/a.xhtml': _page(
-      '<h1>Chapter 1</h1><p>Alpha</p>'
-      '<p>Beta <span>inside</span> more</p><p>Gamma</p>',
-    ),
+    'OEBPS/a.xhtml': _page(a),
     'OEBPS/b.xhtml': _page(
       '<h1 id="two">Chapter 2</h1><p>Delta</p>'
       '<h1 id="three">Chapter 3</h1><p>Epsilon</p><p>Zeta</p>',
@@ -171,6 +172,19 @@ void main() {
       // Still in chapter 2: none of chapter 3 has been read.
       expect(book.paragraphsBefore(two, _child(2)), 1);
       expect(book.paragraphsBefore(three, _child(2)), 0);
+    });
+
+    test('counts every paragraph on a picture page after the last', () {
+      // Readium names a page that starts with a picture by its escaped src.
+      final pictured = StoryBook.open(
+        _epub(
+          a:
+              '<h1>Chapter 1</h1><p>Alpha</p><p>Beta</p>'
+              '<figure><img src="images/010.jpg" alt=""/></figure>',
+        ),
+      );
+      final first = pictured.sections.firstWhere((s) => s.title == 'Chapter 1');
+      expect(pictured.paragraphsBefore(first, r"[src='images\/010\.jpg']"), 3);
     });
 
     test('says so when it can\'t place the element', () {
