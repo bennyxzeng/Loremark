@@ -249,12 +249,26 @@ class _StoryMapScreenState extends State<StoryMapScreen> {
         if (snapshot == null)
           Expanded(
             child: Center(
-              child: FilledButton.tonal(
-                onPressed: () {
-                  _dragStartIndex = _sectionIndex;
-                  _confirmShowing(0);
-                },
-                child: Text('Show ${sections.first.label} anyway'),
+              // A long title wraps, so it needs room at the sides and between
+              // the lines and the button's edges.
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: FilledButton.tonal(
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 10,
+                    ),
+                  ),
+                  onPressed: () {
+                    _dragStartIndex = _sectionIndex;
+                    _confirmShowing(0);
+                  },
+                  child: Text(
+                    'Show ${sections.first.label} anyway',
+                    textAlign: TextAlign.center,
+                  ),
+                ),
               ),
             ),
           )
