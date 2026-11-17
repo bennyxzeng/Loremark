@@ -227,24 +227,21 @@ class _StoryMapScreenState extends State<StoryMapScreen> {
           ),
         ),
         if (sections.length > 1)
+          // No names at the ends: a section without a number goes by its
+          // whole title, which could leave the slider no room. Dragging shows
+          // the section's name above the thumb.
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                Text(sections.first.label, style: theme.textTheme.labelSmall),
-                Expanded(
-                  child: Slider(
-                    value: sliderIndex.toDouble(),
-                    max: (sections.length - 1).toDouble(),
-                    divisions: sections.length - 1,
-                    label: sections[sliderIndex].label,
-                    onChangeStart: (_) => _dragStartIndex = _sectionIndex,
-                    onChanged: (value) => _slideTo(value.round()),
-                    onChangeEnd: (value) => _slideEnded(value.round()),
-                  ),
-                ),
-                Text(sections.last.label, style: theme.textTheme.labelSmall),
-              ],
+            child: Slider(
+              value: sliderIndex.toDouble(),
+              max: (sections.length - 1).toDouble(),
+              divisions: sections.length - 1,
+              label: sections[sliderIndex].label,
+              semanticFormatterCallback: (value) =>
+                  '${value.round() + 1} of ${sections.length}',
+              onChangeStart: (_) => _dragStartIndex = _sectionIndex,
+              onChanged: (value) => _slideTo(value.round()),
+              onChangeEnd: (value) => _slideEnded(value.round()),
             ),
           )
         else

@@ -80,6 +80,36 @@ void main() {
     expect(find.text('Elian'), findsNothing);
   });
 
+  testWidgets('long section titles leave the slider its width', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final semantics = tester.ensureSemantics();
+    // Sections without a number go by their whole title.
+    final json = storyModelFixtureJson()
+      ..['processed_sections'] = [
+        for (final (id, order, title) in [
+          ('s2', 2, 'BIBLIOGRAPHY'),
+          ('s1', 1, 'SECTION IV FAIRY STORIES—MODERN FANTASTIC TALES'),
+        ])
+          {'section_id': id, 'section_order': order, 'title': title},
+      ];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: StoryMapScreen(model: StoryModel.fromJson(json))),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(tester.getSize(find.byType(Slider)).width, 390 - 32);
+    // Without names at the ends, a screen reader says where the slider is.
+    expect(
+      find.semantics.byValue('2 of 2').evaluate().single,
+      isSemantics(label: 'BIBLIOGRAPHY', isSlider: true),
+    );
+    semantics.dispose();
+  });
+
   testWidgets('search filters by name and alias', (tester) async {
     await pumpStoryMap(tester);
     await showTab(tester, 'Characters');
