@@ -80,6 +80,60 @@ void main() {
     expect(find.text('Elian'), findsNothing);
   });
 
+  group('long section titles', () {
+    // Sections without a number go by their whole title.
+    Future<void> pumpLongTitles(
+      WidgetTester tester, {
+      int? finishedSections,
+    }) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final json = storyModelFixtureJson()
+        ..['processed_sections'] = [
+          for (final (id, order, title) in [
+            ('s2', 2, 'BIBLIOGRAPHY'),
+            ('s1', 1, 'SECTION IV FAIRY STORIES—MODERN FANTASTIC TALES'),
+          ])
+            {'section_id': id, 'section_order': order, 'title': title},
+        ];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StoryMapScreen(
+              model: StoryModel.fromJson(json),
+              finishedSections: finishedSections,
+            ),
+          ),
+        ),
+      );
+    }
+
+    testWidgets('leave the slider its width', (tester) async {
+      final semantics = tester.ensureSemantics();
+      await pumpLongTitles(tester);
+
+      expect(tester.takeException(), isNull);
+      expect(tester.getSize(find.byType(Slider)).width, 390 - 32);
+      // Without names at the ends, a screen reader says where the slider is.
+      expect(
+        find.semantics.byValue('2 of 2').evaluate().single,
+        isSemantics(label: 'BIBLIOGRAPHY', isSlider: true),
+      );
+      semantics.dispose();
+    });
+
+    testWidgets('keep the show-anyway button off the edges', (tester) async {
+      await pumpLongTitles(tester, finishedSections: 0);
+
+      final button = tester.getRect(find.byType(FilledButton));
+      expect(button.left, greaterThanOrEqualTo(32));
+      expect(button.right, lessThanOrEqualTo(390 - 32));
+      final label = tester.widget<Text>(find.textContaining('anyway'));
+      expect(label.textAlign, TextAlign.center);
+    });
+  });
+
   testWidgets('search filters by name and alias', (tester) async {
     await pumpStoryMap(tester);
     await showTab(tester, 'Characters');
