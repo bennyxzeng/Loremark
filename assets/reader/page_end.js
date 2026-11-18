@@ -13,6 +13,9 @@
 // in document order, <k> is how many characters of block <n>, not counting
 // whitespace, are on the page (0 if the block starts on the next one), and
 // <tail> is the last few of those characters before the page ends, URL-encoded.
+// When no block reaches past the page, as on a chapter's last page with text
+// even if pages of pictures follow it, <n> is the number of blocks and <k> is
+// 0: the page ends with the last block.
 // epub_sections.dart counts the same blocks and characters in its own copy of
 // the chapter, so extra elements Readium adds to the page, and different
 // whitespace, cannot shift anything. It then checks the tail against its own
@@ -76,13 +79,13 @@
   }
 
   // The first text block whose last line is past the right edge of the screen,
-  // so it is not fully on this page, with how much of it is. Null if there is
-  // none, as on the last page of a chapter.
+  // so it is not fully on this page, with how much of it is. If there is none,
+  // the number of blocks (see endAfterLastBlock).
   function firstBlockPastPage() {
     if (!horizontalLtr()) return null;
     var blocks = textBlocks();
     var width = window.innerWidth;
-    if (!(width > 0)) return null;
+    if (!(width > 0) || blocks.length === 0) return null;
 
     function shownAtOrAfter(i, end) {
       while (i < end && !lastLine(blocks[i])) i++;
@@ -108,15 +111,39 @@
       }
     }
     var found = shownAtOrAfter(low, blocks.length);
-    if (found >= blocks.length || !past(found)) return null;
+    if (found >= blocks.length) return endAfterLastBlock(blocks);
+    if (!past(found)) return null;
     var characters = charactersOnPage(blocks[found], width);
-    var tail = '';
+    return {
+      block: found,
+      characters: characters,
+      tail: encodedTail(blocks, found, characters),
+    };
+  }
+
+  // No block reaches past the page, so the page ends with the last block:
+  // reported as one past it. Null unless the last block shown ends on this
+  // screen or an earlier page. Below the screen, as in a chapter that scrolls,
+  // it has not been seen.
+  function endAfterLastBlock(blocks) {
+    var last = null;
+    for (var i = blocks.length - 1; i >= 0 && !last; i--) last = lastLine(blocks[i]);
+    if (!last || last.bottom > window.innerHeight) return null;
+    return {
+      block: blocks.length,
+      characters: 0,
+      tail: encodedTail(blocks, blocks.length, 0),
+    };
+  }
+
+  // tailBefore, URL-encoded, or empty if it can't be.
+  function encodedTail(blocks, index, characters) {
     try {
-      tail = encodeURIComponent(tailBefore(blocks, found, characters));
+      return encodeURIComponent(tailBefore(blocks, index, characters));
     } catch (e) {
       // A lone surrogate can't be encoded: send no tail, so no check.
+      return '';
     }
-    return { block: found, characters: characters, tail: tail };
   }
 
   function isSkipped(node, block) {
@@ -197,9 +224,12 @@
   }
 
   // The last TAIL characters, not counting whitespace, before the page end:
-  // [characters] characters into block [index].
+  // [characters] characters into block [index], which may be one past the
+  // last block.
   function tailBefore(blocks, index, characters) {
-    var text = nonWhitespaceText(blocks[index]).slice(0, characters);
+    var text = index < blocks.length
+      ? nonWhitespaceText(blocks[index]).slice(0, characters)
+      : '';
     for (var i = index - 1; text.length < TAIL && i >= 0; i--) {
       text = nonWhitespaceText(blocks[i]) + text;
     }

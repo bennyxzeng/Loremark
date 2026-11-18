@@ -122,7 +122,8 @@ final _servedScript = [
 const _pageEndMarker = 'loremark-end:';
 
 /// Where the page [locator] is ends, as reported by the page script: the
-/// number of the first text block that doesn't fit on it, how many of that
+/// number of the first text block that doesn't fit on it (the number of
+/// blocks if they all do, so it ends with the last one), how many of that
 /// block's characters, not counting whitespace, do, and the last few
 /// characters before the end to check the count against. Null if the script
 /// reported none.

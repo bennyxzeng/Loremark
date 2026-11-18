@@ -17,8 +17,12 @@ String _page(String body) =>
     '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>t</title></head>'
     '<body>$body</body></html>';
 
-/// One chapter in a file of its own, then two sharing a file.
-Uint8List _epub() {
+/// One chapter in a file of its own, with body [a], then two sharing a file.
+Uint8List _epub({
+  String a =
+      '<h1>Chapter 1</h1><p>Alpha</p>'
+      '<p>Beta <span>inside</span> more</p><p>Gamma</p>',
+}) {
   final files = {
     'META-INF/container.xml':
         '<container version="1.0" '
@@ -43,10 +47,7 @@ Uint8List _epub() {
         '<li><a href="b.xhtml#two">Chapter 2</a></li>'
         '<li><a href="b.xhtml#three">Chapter 3</a></li>'
         '</ol></nav></body></html>',
-    'OEBPS/a.xhtml': _page(
-      '<h1>Chapter 1</h1><p>Alpha</p>'
-      '<p>Beta <span>inside</span> more</p><p>Gamma</p>',
-    ),
+    'OEBPS/a.xhtml': _page(a),
     'OEBPS/b.xhtml': _page(
       '<h1 id="two">Chapter 2</h1><p>Delta</p>'
       '<h1 id="three">Chapter 3</h1><p>Epsilon</p><p>Zeta</p>',
@@ -208,8 +209,25 @@ void main() {
     });
 
     test('by block, says so when there is no such block', () {
-      expect(book.paragraphsBeforeBlock(one, 4), isNull);
+      expect(book.paragraphsBeforeBlock(one, 5), isNull);
       expect(book.paragraphsBeforeBlock(one, -1), isNull);
+    });
+
+    // No block past the page: it ends with the last one.
+    test('one past the last block, counts every paragraph through it', () {
+      expect(book.paragraphsBeforeBlock(one, 4), 4);
+      // Chapter 2, Delta, Chapter 3, Epsilon, Zeta.
+      expect(book.paragraphsBeforeBlock(two, 5), 2);
+      expect(book.paragraphsBeforeBlock(three, 5), 3);
+    });
+
+    test('one past the last block, leaves out text in no block after it', () {
+      final loose = StoryBook.open(
+        _epub(a: '<h1>Chapter 1</h1><p>Alpha</p><p>Beta</p>Loose words'),
+      );
+      final first = loose.sections.firstWhere((s) => s.title == 'Chapter 1');
+      expect(loose.extract(first)['paragraphs'], hasLength(4));
+      expect(loose.paragraphsBeforeBlock(first, 3), 3);
     });
   });
 
@@ -515,6 +533,20 @@ void main() {
         endBlock: 0,
       );
       expect(progress.shown, 0);
+    });
+
+    test('to the end of a page past which no block goes, takes it all', () {
+      // The heading and eight paragraphs are blocks 0 to 8.
+      final progress = readStoryProgressToPageEnd(
+        storePath,
+        epub,
+        finished: 0,
+        sectionsOnPage: const ['section-002'],
+        endBlock: 9,
+      );
+      expect(paragraphCount(), 9);
+      expect(progress.finished, 1);
+      expect(progress.hiddenInNext, isNull);
     });
 
     test('a page end that names no block leaves it at position alone', () {

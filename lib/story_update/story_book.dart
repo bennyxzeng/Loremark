@@ -585,6 +585,9 @@ class StoryBook {
   /// so these paragraphs are all on the page or an earlier one. All of them if
   /// the block comes after the section, and none if it comes before.
   ///
+  /// [block] one past the last block means no block reaches past the page,
+  /// which ends with the last one: the paragraphs up to the end of that block.
+  ///
   /// Null if the document has no such block. Throws a [StoryEpubError] if the
   /// section can't be cut from its document reliably.
   int? paragraphsBeforeBlock(StoryBookSection section, int block) {
@@ -593,10 +596,14 @@ class StoryBook {
     // Found the way `textProgressionOfBlock` finds it, so the numbers agree.
     final body = document.findAllElements('body').firstOrNull;
     if (body == null) return null;
-    final target = textBlocks(body).skip(block).firstOrNull;
-    if (target == null) return null;
-    final collector = _collect(section, target: target);
-    return collector.beforeTarget ?? collector.paragraphs.length;
+    final blocks = textBlocks(body).toList();
+    if (block < blocks.length) {
+      final collector = _collect(section, target: blocks[block]);
+      return collector.beforeTarget ?? collector.paragraphs.length;
+    }
+    if (block > blocks.length || blocks.isEmpty) return null;
+    final collector = _collect(section, target: blocks.last);
+    return collector.throughTarget ?? collector.paragraphs.length;
   }
 
   XmlDocument _documentOf(StoryBookSection section) {
@@ -974,6 +981,10 @@ class _RangeCollector {
   /// How many paragraphs were complete when the walk reached [target], or null
   /// if it never did.
   int? beforeTarget;
+
+  /// How many paragraphs were complete when the walk left [target], counting
+  /// the one it ends if it is a block, or null if the walk never left it.
+  int? throughTarget;
   bool active;
   bool done = false;
   int suppressed = 0;
@@ -1026,5 +1037,6 @@ class _RangeCollector {
     walk(element);
     if (skipped) suppressed--;
     if (block) flush();
+    if (identical(element, target)) throughTarget = paragraphs.length;
   }
 }

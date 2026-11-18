@@ -306,7 +306,9 @@ class _AskScreenState extends State<AskScreen> {
 
   /// Shows [lines] of the recent pages an answer was given when the reader's
   /// page ended at [limit], with one on either side; or all of them if [lines]
-  /// is empty or isn't among them.
+  /// is empty or isn't among them. Nothing after the last line, which ends at
+  /// the page; before the first, the line of the book before it, marked as
+  /// not sent to Ask.
   Future<void> _openRecentPages(List<int> lines, TextPosition limit) async {
     final messenger = ScaffoldMessenger.maybeOf(context);
     RecentPages? pages;
@@ -337,6 +339,8 @@ class _AskScreenState extends State<AskScreen> {
         : pages.target(first).alsoHighlighting([
             for (final line in ordered.skip(1)) pages.target(line),
           ]);
+    // The first line has nothing before it among those Ask saw.
+    final unseen = first == 1 ? pages.page.lineBefore?.text : null;
     await showFactSheet(
       context,
       builder: (sheetContext, scrollController) => _PassageSheet(
@@ -345,6 +349,10 @@ class _AskScreenState extends State<AskScreen> {
         intro:
             'What Ask saw: the page you were on when you asked, and a few '
             'pages before it.',
+        unseen: unseen,
+        // All of them, or up to the last with the one after the cited: then
+        // it ends where the page did.
+        endsAtPage: last == null || last + 1 >= all.length,
         passages: first == null || last == null
             ? [for (final at in all) (at.text, false)]
             : [
@@ -1469,6 +1477,8 @@ class _PassageSheet extends StatelessWidget {
     required this.passages,
     required this.onOpen,
     this.intro,
+    this.unseen,
+    this.endsAtPage = false,
   });
 
   final ScrollController scrollController;
@@ -1478,6 +1488,14 @@ class _PassageSheet extends StatelessWidget {
   /// Each passage's text, and whether it is the one cited.
   final List<(String, bool)> passages;
   final VoidCallback onOpen;
+
+  /// Text before [passages] that Ask wasn't sent, shown faded above a line
+  /// marking where what it saw starts.
+  final String? unseen;
+
+  /// Whether [passages] end where the reader's page did, marked with a line
+  /// after them: nothing past it is shown, and a sentence may stop short.
+  final bool endsAtPage;
 
   @override
   Widget build(BuildContext context) {
@@ -1495,6 +1513,16 @@ class _PassageSheet extends StatelessWidget {
           ),
         ],
         const SizedBox(height: 12),
+        if (unseen case final unseen?) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+            child: Text(
+              unseen,
+              style: serif(15, height: 1.6, color: LoremarkColors.muted),
+            ),
+          ),
+          const _SheetRule('Ask saw from here'),
+        ],
         for (final (text, cited) in passages)
           Container(
             margin: const EdgeInsets.only(bottom: 10),
@@ -1521,6 +1549,7 @@ class _PassageSheet extends StatelessWidget {
               ),
             ),
           ),
+        if (endsAtPage) const _SheetRule('Your page ended here'),
         const SizedBox(height: 6),
         Align(
           alignment: Alignment.centerLeft,
@@ -1531,6 +1560,37 @@ class _PassageSheet extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// A line across the sheet marking a place in the text, with [label] on it.
+class _SheetRule extends StatelessWidget {
+  const _SheetRule(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    const rule = Expanded(child: Divider(color: LoremarkColors.line));
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          rule,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 11.5,
+                color: LoremarkColors.muted,
+              ),
+            ),
+          ),
+          rule,
+        ],
+      ),
     );
   }
 }
