@@ -6,13 +6,12 @@ import 'text_position.dart';
 ///
 /// The boundary is the furthest position the reader has confirmed reading.
 /// Small steps forward move it automatically, but a jump leaves it where it is
-/// until [confirmJump]: more than [maxJumpSections] sections past it, or, in
-/// its own section, more than [maxJumpPages] pages past it. When the section's
-/// page count is unknown, more than [maxJumpProgression] of the section is a
-/// jump. While the reader is past the boundary after a jump, [pendingJump] is
-/// where they are.
+/// until [confirmJump]: more than [maxJumpPages] page turns past it, in its
+/// own section or on into the next, or any section after that. When a page
+/// count is unknown, more than [maxJumpProgression] of a section is a jump.
+/// While the reader is past the boundary after a jump, [pendingJump] is where
+/// they are.
 class ReadingProgressTracker {
-  final int maxJumpSections;
   final int maxJumpPages;
   final double maxJumpProgression;
 
@@ -24,9 +23,12 @@ class ReadingProgressTracker {
   double? _currentTotal;
   double? _boundaryTotal;
 
+  /// How many pages the sections of [current] and [boundary] have, if known.
+  int? _currentPages;
+  int? _boundaryPages;
+
   /// Creates a tracker for a book that has not been opened yet.
   ReadingProgressTracker({
-    this.maxJumpSections = 2,
     this.maxJumpPages = 10,
     this.maxJumpProgression = 0.3,
   }) : _current = const TextPosition(0, 0),
@@ -41,7 +43,6 @@ class ReadingProgressTracker {
     required this._boundary,
     this._currentTotal,
     this._boundaryTotal,
-    this.maxJumpSections = 2,
     this.maxJumpPages = 10,
     this.maxJumpProgression = 0.3,
   }) {
@@ -92,6 +93,7 @@ class ReadingProgressTracker {
     final previous = _current;
     _current = position;
     _currentTotal = totalProgression;
+    _currentPages = sectionPages;
     if (position > _furthest) {
       _furthest = position;
     }
@@ -110,24 +112,38 @@ class ReadingProgressTracker {
     }
     _boundary = position;
     _boundaryTotal = totalProgression;
+    _boundaryPages = sectionPages;
     _pendingJump = null;
   }
 
   /// Whether [position], past the boundary, is too far to count as read
-  /// without asking.
+  /// without asking. The next section counts as read on only from the end of
+  /// the boundary's, so skipping to it from the middle of a chapter is a jump.
+  /// A section past the next is always a jump, since nothing says how long
+  /// the one between is.
   bool _isJump(TextPosition position, int? sectionPages) {
-    if (position.sectionIndex != _boundary.sectionIndex) {
-      return position.sectionIndex - _boundary.sectionIndex > maxJumpSections;
+    final sections = position.sectionIndex - _boundary.sectionIndex;
+    if (sections > 1) return true;
+    final boundaryPages = sections == 0 ? sectionPages : _boundaryPages;
+    if (sectionPages == null || boundaryPages == null) {
+      final read = sections == 0
+          ? position.progression - _boundary.progression
+          : 1 - _boundary.progression + position.progression;
+      return read > maxJumpProgression;
     }
-    if (sectionPages == null) {
-      return position.progression - _boundary.progression > maxJumpProgression;
-    }
-    // The last page reports 1.0, not where it starts, which would count it as
-    // one page more. Rounded, since page starts are not exact fractions.
-    final start = min(position.progression, (sectionPages - 1) / sectionPages);
-    return ((start - _boundary.progression) * sectionPages).round() >
-        maxJumpPages;
+    final from = _pageIndex(_boundary.progression, boundaryPages);
+    final to = _pageIndex(position.progression, sectionPages);
+    // Into the next section: the boundary's pages left, then one turn onto
+    // its first page, then its pages up to [position].
+    final turns = sections == 0 ? to - from : boundaryPages - from + to;
+    return turns > maxJumpPages;
   }
+
+  /// The page of a section of [pages] that [progression] is on. The last page
+  /// reports 1.0, not where it starts. Rounded, since page starts are not
+  /// exact fractions.
+  static int _pageIndex(double progression, int pages) =>
+      (min(progression, (pages - 1) / pages) * pages).round();
 
   /// Moves the boundary to the pending jump after the user confirms it.
   void confirmJump() {
@@ -138,6 +154,7 @@ class ReadingProgressTracker {
     _boundary = pending;
     // A pending jump is always where the reader is.
     _boundaryTotal = _currentTotal;
+    _boundaryPages = _currentPages;
     _pendingJump = null;
   }
 

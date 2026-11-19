@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 
 import '../theme/loremark_theme.dart';
@@ -11,6 +13,7 @@ class BoundaryBar extends StatelessWidget {
     required this.boundary,
     required this.current,
     required this.ahead,
+    this.onTap,
   });
 
   /// How far into the whole book the boundary is, or null if unknown.
@@ -22,11 +25,26 @@ class BoundaryBar extends StatelessWidget {
   /// Whether the reader jumped past the boundary and is still there.
   final bool ahead;
 
+  /// Called when the bar is tapped, or null if it does nothing.
+  final VoidCallback? onTap;
+
   static const _barHeight = 4.0;
   static const _markerSize = 12.0;
 
   @override
   Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      // Tappable the whole height of the page buttons, not just the thin bar.
+      behavior: HitTestBehavior.opaque,
+      child: SizedBox(
+        height: kMinInteractiveDimension,
+        child: Center(child: _drawn()),
+      ),
+    );
+  }
+
+  Widget _drawn() {
     return SizedBox(
       height: _markerSize,
       child: LayoutBuilder(
@@ -57,10 +75,11 @@ class BoundaryBar extends StatelessWidget {
                 ),
               if (current != null)
                 Positioned(
-                  // Kept whole at either end of the bar.
+                  // Kept whole at either end of the bar, even one squeezed
+                  // narrower than the marker beside the Skipped ahead button.
                   left: (x(current) - _markerSize / 2).clamp(
                     0.0,
-                    width - _markerSize,
+                    max(0.0, width - _markerSize),
                   ),
                   child: Container(
                     key: const ValueKey('reader-marker'),

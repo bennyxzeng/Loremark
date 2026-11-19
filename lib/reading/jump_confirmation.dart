@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 import '../reader/reading_position_store.dart';
 import 'reading_progress_tracker.dart';
 import 'text_position.dart';
@@ -35,4 +37,46 @@ Future<ReadingProgressTracker> loadTracker(
         ? saved?.totalProgression
         : progress.boundaryTotal,
   );
+}
+
+/// What the reader chose when asked about a jump ahead.
+enum JumpAnswer {
+  /// Count what was skipped as read.
+  countAsRead,
+
+  /// Return to where they were before the jump.
+  goBack,
+
+  /// Stay without counting it, such as to look something up.
+  keepReading,
+}
+
+/// Asks whether what the reader skipped counts as read.
+/// [JumpAnswer.keepReading] if the dialog is closed without an answer.
+Future<JumpAnswer> confirmSkippedChapters(BuildContext context) async {
+  final answer = await showDialog<JumpAnswer>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('You skipped ahead'),
+      content: const Text(
+        'Count what you skipped as read? Story Map and Ask only use what '
+        'you’ve read.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, JumpAnswer.keepReading),
+          child: const Text('Keep reading'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, JumpAnswer.goBack),
+          child: const Text('Go back'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, JumpAnswer.countAsRead),
+          child: const Text('Count as read'),
+        ),
+      ],
+    ),
+  );
+  return answer ?? JumpAnswer.keepReading;
 }

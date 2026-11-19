@@ -25,13 +25,13 @@ import '../story_map/story_map_status.dart';
 import '../story_map/story_map_tab.dart';
 import '../story_update/story_updater.dart';
 import '../theme/loremark_theme.dart';
-import 'ahead_banner.dart';
 import 'ask_screen.dart';
 import 'boundary_bar.dart';
 import 'eased_keyboard.dart';
 import 'notes_screen.dart';
 import 'offline_banner.dart';
 import 'read_screen.dart';
+import 'skipped_ahead_button.dart';
 import 'reader_header.dart';
 import 'story_update_banner.dart';
 import 'swipe_hint.dart';
@@ -182,10 +182,11 @@ class _BookScreenState extends State<BookScreen> {
   /// Where the reader moved before [_progress] loaded, checked once it has.
   ReaderPosition? _movedBeforeLoad;
 
-  /// What the bar by the page count and the banner show: how far into the
-  /// book the boundary and the reader are, and whether the reader jumped past
-  /// the boundary and is still there. Only they listen, so the reader isn't
-  /// rebuilt on every page. Null until [_progress] loads.
+  /// What the bar by the page count shows: how far into the book the boundary
+  /// and the reader are, and whether the reader jumped past the boundary and
+  /// is still there, which also shows the Skipped ahead button. Only they
+  /// listen, so the reader isn't rebuilt on every page. Null until
+  /// [_progress] loads.
   final _place =
       ValueNotifier<({double? boundary, double? current, bool ahead})?>(null);
 
@@ -210,7 +211,8 @@ class _BookScreenState extends State<BookScreen> {
     }
     if (!mounted) return;
     _progress = progress;
-    // A book left past the boundary shows the banner at once.
+    // A book left past the boundary shows that on the bar, without asking
+    // again.
     _showPlace(progress);
     final moved = _movedBeforeLoad;
     _movedBeforeLoad = null;
@@ -228,14 +230,15 @@ class _BookScreenState extends State<BookScreen> {
   }
 
   /// Moves the boundary with the reader and saves it when it or the furthest
-  /// position changes. After a jump too far ahead the banner shows until the
-  /// reader goes back or counts it as read.
+  /// position changes. A jump too far ahead is asked about once, as it
+  /// happens; reading on past it only shows on the bar.
   void _trackProgress(
     ReadingProgressTracker progress,
     ReaderPosition position,
   ) {
     final furthest = progress.furthest;
     final boundary = progress.boundary;
+    final wasAhead = progress.pendingJump != null;
     progress.updatePosition(
       TextPosition(position.sectionIndex, position.progression),
       sectionPages: position.sectionPages,
@@ -245,6 +248,22 @@ class _BookScreenState extends State<BookScreen> {
       unawaited(_saveProgress(progress));
     }
     _showPlace(progress);
+    if (!wasAhead && progress.pendingJump != null) {
+      unawaited(_confirmJump());
+    }
+  }
+
+  Future<void> _confirmJump() async {
+    final answer = await confirmSkippedChapters(context);
+    if (!mounted) return;
+    switch (answer) {
+      case JumpAnswer.countAsRead:
+        _countAsRead();
+      case JumpAnswer.goBack:
+        _goBack();
+      case JumpAnswer.keepReading:
+        break;
+    }
   }
 
   void _showPlace(ReadingProgressTracker progress) {
@@ -255,6 +274,26 @@ class _BookScreenState extends State<BookScreen> {
     );
   }
 
+  /// The bar by the page count, and while the reader is ahead of the
+  /// boundary, the Skipped ahead button beside it. Both ask again about the
+  /// jump.
+  Widget _progressBar(({double? boundary, double? current, bool ahead}) place) {
+    final bar = BoundaryBar(
+      boundary: place.boundary,
+      current: place.current,
+      ahead: place.ahead,
+      onTap: place.ahead ? () => unawaited(_confirmJump()) : null,
+    );
+    if (!place.ahead) return bar;
+    return Row(
+      children: [
+        Expanded(child: bar),
+        const SizedBox(width: 8),
+        SkippedAheadButton(onPressed: () => unawaited(_confirmJump())),
+      ],
+    );
+  }
+
   void _countAsRead() {
     final progress = _progress!;
     progress.confirmJump();
@@ -262,8 +301,8 @@ class _BookScreenState extends State<BookScreen> {
     unawaited(_saveProgress(progress));
   }
 
-  /// The banner goes once the reader is there, behind the boundary. If going
-  /// back fails, it stays.
+  /// Once the reader is there, behind the boundary, the jump is dropped. If
+  /// going back fails, it still waits.
   void _goBack() {
     final from = _progress!.jumpedFrom;
     unawaited(
@@ -371,55 +410,27 @@ class _BookScreenState extends State<BookScreen> {
                     IndexedStack(
                       index: _selectedTab,
                       children: [
-                        Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            SwipeHint(
-                              child: ReadScreen(
-                                book: widget.book,
-                                readerService: widget.readerService,
-                                openPositionStore: widget.openPositionStore,
-                                openSearch: () => openPassageSearch(
-                                  bookId: widget.book.id,
-                                  epubPath: widget.book.epubPath,
-                                ),
-                                notes: _notes,
-                                noteJumps: _noteJumps,
-                                passageJumps: _passageJumps,
-                                positionJumps: _positionJumps,
-                                onPositionChanged: _readerMoved,
-                                progressBar: ValueListenableBuilder(
-                                  valueListenable: _place,
-                                  builder: (context, place, _) => place == null
-                                      ? const SizedBox.shrink()
-                                      : BoundaryBar(
-                                          boundary: place.boundary,
-                                          current: place.current,
-                                          ahead: place.ahead,
-                                        ),
-                                ),
-                              ),
+                        SwipeHint(
+                          child: ReadScreen(
+                            book: widget.book,
+                            readerService: widget.readerService,
+                            openPositionStore: widget.openPositionStore,
+                            openSearch: () => openPassageSearch(
+                              bookId: widget.book.id,
+                              epubPath: widget.book.epubPath,
                             ),
-                            // Where the swipe hint goes, above the page
-                            // buttons.
-                            Positioned(
-                              left: 12,
-                              right: 12,
-                              bottom: 60,
-                              child: ValueListenableBuilder(
-                                valueListenable: _place,
-                                builder: (context, place, _) =>
-                                    place?.ahead ?? false
-                                    ? Center(
-                                        child: AheadBanner(
-                                          onGoBack: _goBack,
-                                          onCountAsRead: _countAsRead,
-                                        ),
-                                      )
-                                    : const SizedBox.shrink(),
-                              ),
+                            notes: _notes,
+                            noteJumps: _noteJumps,
+                            passageJumps: _passageJumps,
+                            positionJumps: _positionJumps,
+                            onPositionChanged: _readerMoved,
+                            progressBar: ValueListenableBuilder(
+                              valueListenable: _place,
+                              builder: (context, place, _) => place == null
+                                  ? const SizedBox.shrink()
+                                  : _progressBar(place),
                             ),
-                          ],
+                          ),
                         ),
                         AiLock(
                           feature: 'Ask',

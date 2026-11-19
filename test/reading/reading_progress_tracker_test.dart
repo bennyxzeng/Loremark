@@ -50,10 +50,10 @@ void main() {
   });
 
   test('small step forward moves the boundary', () {
-    tracker.updatePosition(const TextPosition(7, 0.9));
-    expect(tracker.current, const TextPosition(7, 0.9));
-    expect(tracker.furthest, const TextPosition(7, 0.9));
-    expect(tracker.boundary, const TextPosition(7, 0.9));
+    tracker.updatePosition(const TextPosition(5, 0.7));
+    expect(tracker.current, const TextPosition(5, 0.7));
+    expect(tracker.furthest, const TextPosition(5, 0.7));
+    expect(tracker.boundary, const TextPosition(5, 0.7));
     expect(tracker.pendingJump, isNull);
   });
 
@@ -110,11 +110,11 @@ void main() {
 
   test('going back after an unconfirmed jump drops it', () {
     tracker.updatePosition(const TextPosition(8, 0.0));
-    tracker.updatePosition(const TextPosition(6, 0.0));
+    tracker.updatePosition(const TextPosition(5, 0.6));
     expect(tracker.pendingJump, isNull);
-    expect(tracker.boundary, const TextPosition(6, 0.0));
+    expect(tracker.boundary, const TextPosition(5, 0.6));
     tracker.confirmJump();
-    expect(tracker.boundary, const TextPosition(6, 0.0));
+    expect(tracker.boundary, const TextPosition(5, 0.6));
   });
 
   group('jumpedFrom', () {
@@ -142,12 +142,67 @@ void main() {
     expect(tracker.boundary, const TextPosition(5, 0.5));
   });
 
-  test('maxJumpSections changes the threshold', () {
-    final strict = ReadingProgressTracker(maxJumpSections: 0);
-    strict.updatePosition(const TextPosition(0, 0.2));
-    expect(strict.pendingJump, isNull);
-    strict.updatePosition(const TextPosition(1, 0.0));
-    expect(strict.pendingJump, const TextPosition(1, 0.0));
+  group('into the next section', () {
+    // Section 3 has 20 pages, section 4 has 30.
+    ReadingProgressTracker from(TextPosition boundary) =>
+        ReadingProgressTracker.resume(
+          current: boundary,
+          furthest: boundary,
+          boundary: boundary,
+        );
+
+    test('from the last page moves the boundary', () {
+      final reading = from(const TextPosition(3, 15 / 20));
+      reading.updatePosition(const TextPosition(3, 1.0), sectionPages: 20);
+      reading.updatePosition(const TextPosition(4, 0), sectionPages: 30);
+      expect(reading.pendingJump, isNull);
+      expect(reading.boundary, const TextPosition(4, 0));
+    });
+
+    test('with the reports of the last pages dropped moves the boundary', () {
+      final reading = from(const TextPosition(3, 10 / 20));
+      reading.updatePosition(const TextPosition(3, 17 / 20), sectionPages: 20);
+      reading.updatePosition(const TextPosition(4, 1 / 30), sectionPages: 30);
+      expect(reading.pendingJump, isNull);
+    });
+
+    test('from the middle of a chapter is a jump', () {
+      final reading = from(const TextPosition(3, 0));
+      reading.updatePosition(const TextPosition(3, 5 / 20), sectionPages: 20);
+      reading.updatePosition(const TextPosition(4, 0), sectionPages: 30);
+      expect(reading.pendingJump, const TextPosition(4, 0));
+      expect(reading.boundary, const TextPosition(3, 5 / 20));
+    });
+
+    test('two sections on is a jump, even from the last page', () {
+      final reading = from(const TextPosition(3, 1.0));
+      reading.updatePosition(const TextPosition(5, 0), sectionPages: 30);
+      expect(reading.pendingJump, const TextPosition(5, 0));
+    });
+
+    test('after Count as read is still counted in pages', () {
+      final reading = from(const TextPosition(3, 0));
+      reading.updatePosition(const TextPosition(3, 12 / 20), sectionPages: 20);
+      reading.confirmJump();
+      // Eight pages on. By its share of the section, 0.4 of it was left,
+      // which would be a jump.
+      reading.updatePosition(const TextPosition(4, 0), sectionPages: 30);
+      expect(reading.pendingJump, isNull);
+    });
+
+    group('without a page count', () {
+      test('from near the end moves the boundary', () {
+        final reading = from(const TextPosition(3, 0.9));
+        reading.updatePosition(const TextPosition(4, 0.1));
+        expect(reading.boundary, const TextPosition(4, 0.1));
+      });
+
+      test('from the middle is a jump', () {
+        final reading = from(const TextPosition(3, 0.5));
+        reading.updatePosition(const TextPosition(4, 0));
+        expect(reading.pendingJump, const TextPosition(4, 0));
+      });
+    });
   });
 
   group('within one section', () {
@@ -285,7 +340,7 @@ void main() {
     });
 
     test('the boundary takes the total of where it moves to', () {
-      totals.updatePosition(const TextPosition(6, 0.1), totalProgression: 0.35);
+      totals.updatePosition(const TextPosition(5, 0.6), totalProgression: 0.35);
       expect(totals.boundaryTotal, 0.35);
       expect(totals.currentTotal, 0.35);
     });
@@ -305,7 +360,7 @@ void main() {
     });
 
     test('is unknown where the reader didn\'t say', () {
-      totals.updatePosition(const TextPosition(6, 0.1));
+      totals.updatePosition(const TextPosition(5, 0.6));
       expect(totals.boundaryTotal, isNull);
       expect(totals.currentTotal, isNull);
     });

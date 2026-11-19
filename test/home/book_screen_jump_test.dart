@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loremark/home/book_screen.dart';
 import 'package:loremark/home/boundary_bar.dart';
+import 'package:loremark/home/skipped_ahead_button.dart';
 import 'package:loremark/library/book.dart';
 import 'package:loremark/reader/reader_position.dart';
 import 'package:loremark/reader/reading_position_store.dart';
@@ -100,32 +101,42 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  const banner = 'You’re ahead of where you’ve read';
+  const question = 'You skipped ahead';
 
-  testWidgets('reading on moves the boundary with no banner', (tester) async {
+  Future<void> answer(WidgetTester tester, String button) async {
+    await tester.tap(find.text(button));
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> tapBar(WidgetTester tester) async {
+    await tester.tap(find.byType(BoundaryBar));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('reading on moves the boundary without asking', (tester) async {
     await pumpBook(tester);
-    await moveTo(tester, const ReaderPosition(2, 0.1, totalProgression: 0.3));
-    expect(find.text(banner), findsNothing);
+    await moveTo(tester, const ReaderPosition(1, 0.6, totalProgression: 0.3));
+    expect(find.text(question), findsNothing);
     expect(store.progressSaves.last, (
       book.id,
-      const TextPosition(2, 0.1),
-      const TextPosition(2, 0.1),
+      const TextPosition(1, 0.6),
+      const TextPosition(1, 0.6),
       0.3,
     ));
   });
 
-  testWidgets('going back shows no banner and saves nothing', (tester) async {
+  testWidgets('going back neither asks nor saves', (tester) async {
     await pumpBook(tester);
     await moveTo(tester, const ReaderPosition(0, 0.3));
-    expect(find.text(banner), findsNothing);
+    expect(find.text(question), findsNothing);
     expect(store.progressSaves, isEmpty);
   });
 
   group('a jump ahead', () {
-    testWidgets('shows the banner and keeps the boundary', (tester) async {
+    testWidgets('asks and keeps the boundary', (tester) async {
       await pumpBook(tester);
       await moveTo(tester, const ReaderPosition(5, 0.2));
-      expect(find.text(banner), findsOne);
+      expect(find.text(question), findsOne);
       expect(store.progressSaves.last, (
         book.id,
         const TextPosition(5, 0.2),
@@ -134,28 +145,38 @@ void main() {
       ));
     });
 
-    testWidgets('keeps the banner while the reader reads on, into the next '
-        'section too', (tester) async {
+    testWidgets('to the next chapter from the middle of this one asks', (
+      tester,
+    ) async {
       await pumpBook(tester);
+      await moveTo(tester, const ReaderPosition(2, 0));
+      expect(find.text(question), findsOne);
+      expect(store.progressSaves.last.$3, read);
+    });
+
+    testWidgets('on Keep reading leaves nothing over the page and isn’t asked '
+        'about again as the reader reads on', (tester) async {
+      await pumpBook(tester);
+      await moveTo(tester, const ReaderPosition(5, 0.2));
+      await answer(tester, 'Keep reading');
+      expect(find.text(question), findsNothing);
+      expect(find.text('Count as read'), findsNothing);
+
       for (final position in const [
-        ReaderPosition(5, 0.2),
         ReaderPosition(5, 0.6),
         ReaderPosition(6, 0),
+        ReaderPosition(12, 0),
       ]) {
         await moveTo(tester, position);
-        expect(find.text(banner), findsOne);
+        expect(find.text(question), findsNothing);
       }
       expect(store.progressSaves.last.$3, read);
     });
 
-    testWidgets('moves the boundary and hides the banner on Count as read', (
-      tester,
-    ) async {
+    testWidgets('moves the boundary on Count as read', (tester) async {
       await pumpBook(tester);
       await moveTo(tester, const ReaderPosition(5, 0.2, totalProgression: 0.6));
-      await tester.tap(find.text('Count as read'));
-      await tester.pumpAndSettle();
-      expect(find.text(banner), findsNothing);
+      await answer(tester, 'Count as read');
       expect(store.progressSaves.last, (
         book.id,
         const TextPosition(5, 0.2),
@@ -164,29 +185,25 @@ void main() {
       ));
 
       await moveTo(tester, const ReaderPosition(5, 0.4));
-      expect(find.text(banner), findsNothing);
+      expect(find.text(question), findsNothing);
     });
 
-    testWidgets('goes back to where the reader was on Go back, and the banner '
-        'goes once they are there', (tester) async {
+    testWidgets('goes back to where the reader was on Go back', (tester) async {
       await pumpBook(tester);
       await moveTo(tester, const ReaderPosition(1, 0.5));
       await moveTo(tester, const ReaderPosition(5, 0.2));
-      await tester.tap(find.text('Go back'));
-      await tester.pumpAndSettle();
+      await answer(tester, 'Go back');
       expect(reader.sessions.single.goToPositionCalls, [
         const ReaderPosition(1, 0.5),
       ]);
-      expect(find.text(banner), findsOne);
 
+      // Arriving there drops the jump; the boundary never moved.
       await moveTo(tester, const ReaderPosition(1, 0.5));
-      expect(find.text(banner), findsNothing);
+      expect(find.text(question), findsNothing);
       expect(store.progressSaves.last.$3, read);
     });
 
-    testWidgets('of many pages in one chapter shows the banner', (
-      tester,
-    ) async {
+    testWidgets('of many pages in one chapter asks', (tester) async {
       const page54 = TextPosition(1, 54 / 120);
       store.progress[book.id] = (
         furthest: page54,
@@ -198,10 +215,10 @@ void main() {
         tester,
         const ReaderPosition(1, 87 / 120, sectionPages: 120),
       );
-      expect(find.text(banner), findsOne);
+      expect(find.text(question), findsOne);
     });
 
-    testWidgets('made before the progress loads shows the banner once it has', (
+    testWidgets('made before the progress loads asks once it has', (
       tester,
     ) async {
       final slow = _SlowStore()
@@ -212,17 +229,35 @@ void main() {
         );
       await pumpBook(tester, openPositionStore: () async => slow);
       await moveTo(tester, const ReaderPosition(5, 0.2));
-      expect(find.text(banner), findsNothing);
+      expect(find.text(question), findsNothing);
 
       slow.gate.complete();
       await tester.pumpAndSettle();
-      expect(find.text(banner), findsOne);
+      expect(find.text(question), findsOne);
+    });
+
+    testWidgets('is asked about again on a tap on the bar', (tester) async {
+      await pumpBook(tester);
+      await moveTo(tester, const ReaderPosition(5, 0.2, totalProgression: 0.6));
+      await answer(tester, 'Keep reading');
+
+      await tapBar(tester);
+      expect(find.text(question), findsOne);
+      await answer(tester, 'Count as read');
+      expect(store.progressSaves.last.$3, const TextPosition(5, 0.2));
     });
   });
 
-  testWidgets('a book left past the boundary shows the banner on open, and Go '
-      'back goes to the boundary', (tester) async {
-    const left = ReaderPosition(5, 0.2);
+  testWidgets('a tap on the bar with no jump asks nothing', (tester) async {
+    await pumpBook(tester);
+    await moveTo(tester, const ReaderPosition(1, 0.5, totalProgression: 0.2));
+    await tapBar(tester);
+    expect(find.text(question), findsNothing);
+  });
+
+  testWidgets('a book left past the boundary isn’t asked about on open, but a '
+      'tap on the bar asks, and Go back goes to the boundary', (tester) async {
+    const left = ReaderPosition(5, 0.2, totalProgression: 0.6);
     store = FakeReadingPositionStore(positions: {book.id: left})
       ..progress[book.id] = (
         furthest: const TextPosition(5, 0.2),
@@ -230,13 +265,14 @@ void main() {
         boundaryTotal: 0.2,
       );
     await pumpBook(tester);
-    expect(find.text(banner), findsOne);
+    expect(find.text(question), findsNothing);
 
     // The book opens where it was left.
     await moveTo(tester, left);
-    expect(find.text(banner), findsOne);
-    await tester.tap(find.text('Go back'));
-    await tester.pumpAndSettle();
+    expect(find.text(question), findsNothing);
+
+    await tapBar(tester);
+    await answer(tester, 'Go back');
     expect(reader.sessions.single.goToPositionCalls, [
       const ReaderPosition(1, 0.5),
     ]);
@@ -255,7 +291,7 @@ void main() {
       0.4,
     ));
     await moveTo(tester, const ReaderPosition(4, 0.5));
-    expect(find.text(banner), findsNothing);
+    expect(find.text(question), findsNothing);
   });
 
   testWidgets('a store that can’t be opened never keeps the book from '
@@ -266,8 +302,127 @@ void main() {
     );
     await moveTo(tester, const ReaderPosition(5, 0.2));
     expect(find.text('Fake reader view'), findsOne);
-    expect(find.text(banner), findsNothing);
+    expect(find.text(question), findsNothing);
     expect(find.byType(BoundaryBar), findsNothing);
+  });
+
+  group('the Skipped ahead button', () {
+    const button = 'SKIPPED AHEAD';
+
+    testWidgets('isn’t there without a jump', (tester) async {
+      await pumpBook(tester);
+      await moveTo(tester, const ReaderPosition(1, 0.6));
+      expect(find.text(button), findsNothing);
+    });
+
+    testWidgets('shows after Keep reading and asks again', (tester) async {
+      await pumpBook(tester);
+      await moveTo(tester, const ReaderPosition(5, 0.2));
+      await answer(tester, 'Keep reading');
+      expect(find.text(button), findsOne);
+
+      await answer(tester, button);
+      expect(find.text(question), findsOne);
+      expect(find.text('Keep reading'), findsOne);
+      expect(find.text('Go back'), findsOne);
+      expect(find.text('Count as read'), findsOne);
+    });
+
+    testWidgets('sits by the bar, below the page, without moving it', (
+      tester,
+    ) async {
+      const label = ValueKey('progress-label');
+      await pumpBook(tester);
+      final labelBefore = tester.getRect(find.byKey(label));
+      await moveTo(tester, const ReaderPosition(5, 0.2, totalProgression: 0.6));
+      await answer(tester, 'Keep reading');
+
+      final pill = tester.getRect(find.byType(SkippedAheadButton));
+      final bar = tester.getRect(find.byType(BoundaryBar));
+      expect(pill.center.dy, bar.center.dy);
+      expect(pill.left, greaterThanOrEqualTo(bar.right));
+      expect(
+        pill.right,
+        lessThanOrEqualTo(tester.getRect(find.byKey(label)).left),
+      );
+      // The row of page buttons is no taller, so the page doesn't move.
+      expect(
+        tester.getRect(find.byKey(label)).center.dy,
+        labelBefore.center.dy,
+      );
+    });
+
+    testWidgets('fits beside the bar on a narrow phone', (tester) async {
+      // 360 is the narrowest common phone. The test font draws every letter
+      // as wide as it is tall, about a third wider than a real one.
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await pumpBook(tester);
+      await moveTo(tester, const ReaderPosition(5, 0.2, totalProgression: 0.6));
+      await answer(tester, 'Keep reading');
+      expect(tester.takeException(), isNull);
+      expect(tester.getSize(find.byType(BoundaryBar)).width, greaterThan(0));
+    });
+
+    testWidgets('a bar squeezed narrower than its marker still draws', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        const Directionality(
+          textDirection: TextDirection.ltr,
+          child: Center(
+            child: SizedBox(
+              width: 6,
+              child: BoundaryBar(boundary: 0.2, current: 0.6, ahead: true),
+            ),
+          ),
+        ),
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('goes on Count as read', (tester) async {
+      await pumpBook(tester);
+      await moveTo(tester, const ReaderPosition(5, 0.2));
+      await answer(tester, 'Keep reading');
+      await answer(tester, button);
+      await answer(tester, 'Count as read');
+      expect(find.text(button), findsNothing);
+      expect(store.progressSaves.last.$3, const TextPosition(5, 0.2));
+    });
+
+    testWidgets('goes on Go back once the reader is there', (tester) async {
+      await pumpBook(tester);
+      await moveTo(tester, const ReaderPosition(1, 0.5));
+      await moveTo(tester, const ReaderPosition(5, 0.2));
+      await answer(tester, 'Keep reading');
+      await answer(tester, button);
+      await answer(tester, 'Go back');
+      expect(reader.sessions.single.goToPositionCalls, [
+        const ReaderPosition(1, 0.5),
+      ]);
+
+      await moveTo(tester, const ReaderPosition(1, 0.5));
+      expect(find.text(button), findsNothing);
+    });
+
+    testWidgets('shows when the book opens past the boundary, without asking', (
+      tester,
+    ) async {
+      store =
+          FakeReadingPositionStore(
+              positions: {book.id: const ReaderPosition(5, 0.2)},
+            )
+            ..progress[book.id] = (
+              furthest: const TextPosition(5, 0.2),
+              boundary: read,
+              boundaryTotal: 0.2,
+            );
+      await pumpBook(tester);
+      expect(find.text(button), findsOne);
+      expect(find.text(question), findsNothing);
+    });
   });
 
   group('the bar by the page count', () {

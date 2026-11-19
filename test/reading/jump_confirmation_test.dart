@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loremark/reader/reader_position.dart';
 import 'package:loremark/reader/reading_position_store.dart';
@@ -76,6 +77,60 @@ void main() {
       expect(tracker.boundaryTotal, 0.2);
       // A jump not counted as read still waits on the next open.
       expect(tracker.pendingJump, const TextPosition(12, 0.4));
+    });
+  });
+
+  group('confirmSkippedChapters', () {
+    late JumpAnswer? answer;
+
+    Future<void> ask(WidgetTester tester) async {
+      answer = null;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => TextButton(
+              onPressed: () async =>
+                  answer = await confirmSkippedChapters(context),
+              child: const Text('Ask'),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Ask'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('says what it is asking', (tester) async {
+      await ask(tester);
+      expect(find.text('You skipped ahead'), findsOne);
+      expect(
+        find.text(
+          'Count what you skipped as read? Story Map and Ask only use what '
+          'you’ve read.',
+        ),
+        findsOne,
+      );
+    });
+
+    for (final (button, expected) in const [
+      ('Count as read', JumpAnswer.countAsRead),
+      ('Go back', JumpAnswer.goBack),
+      ('Keep reading', JumpAnswer.keepReading),
+    ]) {
+      testWidgets('is ${expected.name} for $button', (tester) async {
+        await ask(tester);
+        await tester.tap(find.text(button));
+        await tester.pumpAndSettle();
+        expect(answer, expected);
+      });
+    }
+
+    testWidgets('is keepReading when closed without an answer', (tester) async {
+      await ask(tester);
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pumpAndSettle();
+      expect(find.text('You skipped ahead'), findsNothing);
+      expect(answer, JumpAnswer.keepReading);
     });
   });
 }
