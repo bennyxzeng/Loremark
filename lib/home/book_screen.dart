@@ -7,7 +7,12 @@ import '../ask/ask_controller.dart';
 import '../library/book.dart';
 import '../notes/annotation_service.dart';
 import '../reader/epub_reader_service.dart';
+import '../reader/reader_position.dart';
+import '../reader/reading_position_store.dart';
 import '../reader/readium_reader_service.dart';
+import '../reading/jump_confirmation.dart';
+import '../reading/reading_progress_tracker.dart';
+import '../reading/text_position.dart';
 import '../recap/recap_backend.dart';
 import '../recap/recap_controller.dart';
 import '../recap/recap_stop.dart';
@@ -21,10 +26,12 @@ import '../story_map/story_map_tab.dart';
 import '../story_update/story_updater.dart';
 import '../theme/loremark_theme.dart';
 import 'ask_screen.dart';
+import 'boundary_bar.dart';
 import 'eased_keyboard.dart';
 import 'notes_screen.dart';
 import 'offline_banner.dart';
 import 'read_screen.dart';
+import 'skipped_ahead_button.dart';
 import 'reader_header.dart';
 import 'story_update_banner.dart';
 import 'swipe_hint.dart';
@@ -35,12 +42,22 @@ class BookScreen extends StatefulWidget {
   const BookScreen({
     super.key,
     required this.book,
+    this.readerService = const ReadiumReaderService(),
+    this.openPositionStore = ReadingPositionStore.open,
     this.storyMapBackend,
     this.askBackend,
     this.recapBackend,
+    this.now = DateTime.now,
   });
 
   final Book book;
+
+  /// Shows the book in the Read tab; tests replace the native reader.
+  final EpubReaderService readerService;
+
+  /// Opens where the reading position and how far the reader has read are
+  /// saved; tests replace the device's.
+  final Future<ReadingPositionStore> Function() openPositionStore;
 
   /// Where the Story Map tab gets its data; tests replace the device's.
   final StoryMapBackend? storyMapBackend;
@@ -51,6 +68,10 @@ class BookScreen extends StatefulWidget {
   /// Where the welcome back finds where the reader stopped; tests replace the
   /// device's.
   final RecapBackend? recapBackend;
+
+  /// When the reader turns a page, to tell reading from flipping through;
+  /// tests replace the clock.
+  final DateTime Function() now;
 
   @override
   State<BookScreen> createState() => _BookScreenState();
@@ -89,6 +110,7 @@ class _BookScreenState extends State<BookScreen> {
   @override
   void dispose() {
     _bannerTimer?.cancel();
+    _place.dispose();
     _storyMapStatus.dispose();
     _ask.dispose();
     _recap
@@ -135,6 +157,9 @@ class _BookScreenState extends State<BookScreen> {
   /// the reader's page.
   final _passageJumps = PassageJumpController();
 
+  /// Sends the Read tab back to where the reader was before a jump.
+  final _positionJumps = PositionJumpController();
+
   /// Where the reader stopped, for the welcome-back pop-up.
   late final RecapController _recap = RecapController(
     book: widget.book,
@@ -153,10 +178,161 @@ class _BookScreenState extends State<BookScreen> {
   /// It is offered once each time the book opens.
   bool _welcomeOffered = false;
 
+  /// How far the reader has read, so a jump ahead doesn't count as read until
+  /// they say so. Null until it loads, and for good if the store can't be
+  /// read.
+  ReadingProgressTracker? _progress;
+  late ReadingPositionStore _progressStore;
+
+  /// Where and when the reader moved before [_progress] loaded, checked once
+  /// it has.
+  ({ReaderPosition position, DateTime at})? _movedBeforeLoad;
+
+  /// What the bar by the page count shows: how far into the book the boundary
+  /// and the reader are, and whether the reader jumped past the boundary and
+  /// is still there, which also shows the Skipped ahead button. Only they
+  /// listen, so the reader isn't rebuilt on every page. Null until
+  /// [_progress] loads.
+  final _place =
+      ValueNotifier<({double? boundary, double? current, bool ahead})?>(null);
+
   @override
   void initState() {
     super.initState();
     _recap.addListener(_offerWelcomeBack);
+    unawaited(_loadProgress());
+  }
+
+  Future<void> _loadProgress() async {
+    final ReadingProgressTracker progress;
+    try {
+      _progressStore = await widget.openPositionStore();
+      progress = await loadTracker(_progressStore, widget.book.id);
+    } on Object catch (error) {
+      // The book still reads; the boundary just stays where it was saved.
+      debugPrint(
+        'Could not load how far ${widget.book.title} was read: $error',
+      );
+      return;
+    }
+    if (!mounted) return;
+    _progress = progress;
+    // A book left past the boundary shows that on the bar, without asking
+    // again.
+    _showPlace(progress);
+    final moved = _movedBeforeLoad;
+    _movedBeforeLoad = null;
+    if (moved != null) _trackProgress(progress, moved.position, moved.at);
+  }
+
+  void _readerMoved(ReaderPosition position) {
+    _storyMapStatus.readerMoved(position);
+    final at = widget.now();
+    final progress = _progress;
+    if (progress == null) {
+      _movedBeforeLoad = (position: position, at: at);
+    } else {
+      _trackProgress(progress, position, at);
+    }
+  }
+
+  /// Moves the boundary with the reader and saves it when it or the furthest
+  /// position changes. A jump too far ahead is asked about once, as it
+  /// happens; reading on past it only shows on the bar. So do pages flipped
+  /// through, since the reader knows they flipped.
+  void _trackProgress(
+    ReadingProgressTracker progress,
+    ReaderPosition position,
+    DateTime at,
+  ) {
+    final furthest = progress.furthest;
+    final boundary = progress.boundary;
+    final wasAhead = progress.pendingJump != null;
+    progress.updatePosition(
+      TextPosition(position.sectionIndex, position.progression),
+      sectionPages: position.sectionPages,
+      totalProgression: position.totalProgression,
+      at: at,
+    );
+    if (progress.furthest != furthest || progress.boundary != boundary) {
+      unawaited(_saveProgress(progress));
+    }
+    _showPlace(progress);
+    if (!wasAhead && progress.pendingJump != null && !progress.flippedAhead) {
+      unawaited(_confirmJump());
+    }
+  }
+
+  Future<void> _confirmJump() async {
+    final answer = await confirmSkippedChapters(context);
+    if (!mounted) return;
+    switch (answer) {
+      case JumpAnswer.countAsRead:
+        _countAsRead();
+      case JumpAnswer.goBack:
+        _goBack();
+      case JumpAnswer.keepReading:
+        break;
+    }
+  }
+
+  void _showPlace(ReadingProgressTracker progress) {
+    _place.value = (
+      boundary: progress.boundaryTotal,
+      current: progress.currentTotal,
+      ahead: progress.pendingJump != null,
+    );
+  }
+
+  /// The bar by the page count, and while the reader is ahead of the
+  /// boundary, the Skipped ahead button beside it. Both ask again about the
+  /// jump.
+  Widget _progressBar(({double? boundary, double? current, bool ahead}) place) {
+    final bar = BoundaryBar(
+      boundary: place.boundary,
+      current: place.current,
+      ahead: place.ahead,
+      onTap: place.ahead ? () => unawaited(_confirmJump()) : null,
+    );
+    if (!place.ahead) return bar;
+    return Row(
+      children: [
+        Expanded(child: bar),
+        const SizedBox(width: 8),
+        SkippedAheadButton(onPressed: () => unawaited(_confirmJump())),
+      ],
+    );
+  }
+
+  void _countAsRead() {
+    final progress = _progress!;
+    progress.confirmJump();
+    _showPlace(progress);
+    unawaited(_saveProgress(progress));
+  }
+
+  /// Once the reader is there, behind the boundary, the jump is dropped. If
+  /// going back fails, it still waits.
+  void _goBack() {
+    final from = _progress!.jumpedFrom;
+    unawaited(
+      _positionJumps.goTo(ReaderPosition(from.sectionIndex, from.progression)),
+    );
+  }
+
+  Future<void> _saveProgress(ReadingProgressTracker progress) async {
+    try {
+      await _progressStore.saveProgress(
+        widget.book.id,
+        furthest: progress.furthest,
+        boundary: progress.boundary,
+        boundaryTotal: progress.boundaryTotal,
+      );
+    } on Object catch (error) {
+      debugPrint(
+        'Could not save how far ${widget.book.title} was read: $error',
+      );
+    }
   }
 
   @override
@@ -247,7 +423,8 @@ class _BookScreenState extends State<BookScreen> {
                         SwipeHint(
                           child: ReadScreen(
                             book: widget.book,
-                            readerService: const ReadiumReaderService(),
+                            readerService: widget.readerService,
+                            openPositionStore: widget.openPositionStore,
                             openSearch: () => openPassageSearch(
                               bookId: widget.book.id,
                               epubPath: widget.book.epubPath,
@@ -255,7 +432,14 @@ class _BookScreenState extends State<BookScreen> {
                             notes: _notes,
                             noteJumps: _noteJumps,
                             passageJumps: _passageJumps,
-                            onPositionChanged: _storyMapStatus.readerMoved,
+                            positionJumps: _positionJumps,
+                            onPositionChanged: _readerMoved,
+                            progressBar: ValueListenableBuilder(
+                              valueListenable: _place,
+                              builder: (context, place, _) => place == null
+                                  ? const SizedBox.shrink()
+                                  : _progressBar(place),
+                            ),
                           ),
                         ),
                         AiLock(
