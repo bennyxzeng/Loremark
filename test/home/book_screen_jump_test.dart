@@ -58,8 +58,10 @@ void main() {
 
   late FakeEpubReaderService reader;
   late FakeReadingPositionStore store;
+  late DateTime clock;
 
   setUp(() {
+    clock = DateTime(2026, 11, 19, 20);
     reader = FakeEpubReaderService();
     store = FakeReadingPositionStore()
       ..progress[book.id] = (
@@ -88,6 +90,7 @@ void main() {
               readerService: reader,
               openPositionStore: openPositionStore ?? () async => store,
               storyMapBackend: _StoryMapBackend(),
+              now: () => clock,
             ),
           ),
         ),
@@ -96,7 +99,14 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  Future<void> moveTo(WidgetTester tester, ReaderPosition position) async {
+  /// Moves the reader [after] the last move, by default long enough to have
+  /// read the page.
+  Future<void> moveTo(
+    WidgetTester tester,
+    ReaderPosition position, {
+    Duration after = const Duration(seconds: 30),
+  }) async {
+    clock = clock.add(after);
     reader.sessions.single.emit(position);
     await tester.pumpAndSettle();
   }
@@ -422,6 +432,76 @@ void main() {
       await pumpBook(tester);
       expect(find.text(button), findsOne);
       expect(find.text(question), findsNothing);
+    });
+  });
+
+  group('flipping through pages', () {
+    const button = 'SKIPPED AHEAD';
+
+    // The book's boundary is page 10 of 20 in section 1.
+    ReaderPosition page(int index) => ReaderPosition(
+      1,
+      index / 20,
+      sectionPages: 20,
+      totalProgression: index / 50,
+    );
+
+    /// Reads page 10, then flips through pages 11 to 15 on to 16.
+    Future<void> flipToPage16(WidgetTester tester) async {
+      await moveTo(tester, page(11));
+      for (var index = 12; index <= 16; index++) {
+        await moveTo(tester, page(index), after: const Duration(seconds: 1));
+      }
+    }
+
+    testWidgets('shows the Skipped ahead button and the skipped stretch '
+        'without asking', (tester) async {
+      await pumpBook(tester);
+      await flipToPage16(tester);
+      expect(find.text(question), findsNothing);
+      expect(find.text(button), findsOne);
+      expect(find.byKey(const ValueKey('skipped')), findsOne);
+    });
+
+    testWidgets('saves the boundary where the flipping began', (tester) async {
+      await pumpBook(tester);
+      await flipToPage16(tester);
+      expect(store.progressSaves.last, (
+        book.id,
+        const TextPosition(1, 16 / 20),
+        const TextPosition(1, 11 / 20),
+        11 / 50,
+      ));
+    });
+
+    testWidgets('Go back goes to where the flipping began', (tester) async {
+      await pumpBook(tester);
+      await flipToPage16(tester);
+      await answer(tester, button);
+      await answer(tester, 'Go back');
+      expect(reader.sessions.single.goToPositionCalls, [
+        const ReaderPosition(1, 11 / 20),
+      ]);
+    });
+
+    testWidgets('Count as read counts the pages flipped through', (
+      tester,
+    ) async {
+      await pumpBook(tester);
+      await flipToPage16(tester);
+      await answer(tester, button);
+      await answer(tester, 'Count as read');
+      expect(find.text(button), findsNothing);
+      expect(store.progressSaves.last.$3, const TextPosition(1, 16 / 20));
+    });
+
+    testWidgets('reading page by page shows nothing', (tester) async {
+      await pumpBook(tester);
+      for (var index = 11; index <= 16; index++) {
+        await moveTo(tester, page(index));
+      }
+      expect(find.text(button), findsNothing);
+      expect(store.progressSaves.last.$3, const TextPosition(1, 16 / 20));
     });
   });
 

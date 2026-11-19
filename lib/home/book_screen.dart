@@ -47,6 +47,7 @@ class BookScreen extends StatefulWidget {
     this.storyMapBackend,
     this.askBackend,
     this.recapBackend,
+    this.now = DateTime.now,
   });
 
   final Book book;
@@ -67,6 +68,10 @@ class BookScreen extends StatefulWidget {
   /// Where the welcome back finds where the reader stopped; tests replace the
   /// device's.
   final RecapBackend? recapBackend;
+
+  /// When the reader turns a page, to tell reading from flipping through;
+  /// tests replace the clock.
+  final DateTime Function() now;
 
   @override
   State<BookScreen> createState() => _BookScreenState();
@@ -179,8 +184,9 @@ class _BookScreenState extends State<BookScreen> {
   ReadingProgressTracker? _progress;
   late ReadingPositionStore _progressStore;
 
-  /// Where the reader moved before [_progress] loaded, checked once it has.
-  ReaderPosition? _movedBeforeLoad;
+  /// Where and when the reader moved before [_progress] loaded, checked once
+  /// it has.
+  ({ReaderPosition position, DateTime at})? _movedBeforeLoad;
 
   /// What the bar by the page count shows: how far into the book the boundary
   /// and the reader are, and whether the reader jumped past the boundary and
@@ -216,25 +222,28 @@ class _BookScreenState extends State<BookScreen> {
     _showPlace(progress);
     final moved = _movedBeforeLoad;
     _movedBeforeLoad = null;
-    if (moved != null) _trackProgress(progress, moved);
+    if (moved != null) _trackProgress(progress, moved.position, moved.at);
   }
 
   void _readerMoved(ReaderPosition position) {
     _storyMapStatus.readerMoved(position);
+    final at = widget.now();
     final progress = _progress;
     if (progress == null) {
-      _movedBeforeLoad = position;
+      _movedBeforeLoad = (position: position, at: at);
     } else {
-      _trackProgress(progress, position);
+      _trackProgress(progress, position, at);
     }
   }
 
   /// Moves the boundary with the reader and saves it when it or the furthest
   /// position changes. A jump too far ahead is asked about once, as it
-  /// happens; reading on past it only shows on the bar.
+  /// happens; reading on past it only shows on the bar. So do pages flipped
+  /// through, since the reader knows they flipped.
   void _trackProgress(
     ReadingProgressTracker progress,
     ReaderPosition position,
+    DateTime at,
   ) {
     final furthest = progress.furthest;
     final boundary = progress.boundary;
@@ -243,12 +252,13 @@ class _BookScreenState extends State<BookScreen> {
       TextPosition(position.sectionIndex, position.progression),
       sectionPages: position.sectionPages,
       totalProgression: position.totalProgression,
+      at: at,
     );
     if (progress.furthest != furthest || progress.boundary != boundary) {
       unawaited(_saveProgress(progress));
     }
     _showPlace(progress);
-    if (!wasAhead && progress.pendingJump != null) {
+    if (!wasAhead && progress.pendingJump != null && !progress.flippedAhead) {
       unawaited(_confirmJump());
     }
   }

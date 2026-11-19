@@ -326,6 +326,196 @@ void main() {
     });
   });
 
+  group('flipping fast', () {
+    // Section 3 has 40 pages, the reader is on page 10 of it.
+    const pages = 40;
+    TextPosition page(int index) => TextPosition(3, index / pages);
+    const fast = Duration(seconds: 1);
+    const slow = Duration(seconds: 40);
+    late ReadingProgressTracker flipping;
+    late DateTime clock;
+
+    setUp(() {
+      flipping = ReadingProgressTracker.resume(
+        current: page(10),
+        furthest: page(10),
+        boundary: page(10),
+      );
+      clock = DateTime(2026, 11, 19, 20);
+    });
+
+    void turnTo(int index, {required Duration after}) {
+      clock = clock.add(after);
+      flipping.updatePosition(
+        page(index),
+        sectionPages: pages,
+        totalProgression: index / 100,
+        at: clock,
+      );
+    }
+
+    /// Reads page 10, then flips through pages 11 to 15 on to 16.
+    void flipToPage16() {
+      turnTo(11, after: slow);
+      for (var index = 12; index <= 16; index++) {
+        turnTo(index, after: fast);
+      }
+    }
+
+    test('five pages past the boundary are a jump from where it began', () {
+      flipToPage16();
+      expect(flipping.boundary, page(11));
+      expect(flipping.boundaryTotal, 0.11);
+      expect(flipping.pendingJump, page(16));
+      expect(flipping.jumpedFrom, page(11));
+      expect(flipping.flippedAhead, isTrue);
+    });
+
+    test('four pages, then one read, count as read, and the count starts '
+        'over', () {
+      turnTo(11, after: slow);
+      for (var index = 12; index <= 15; index++) {
+        turnTo(index, after: fast);
+      }
+      turnTo(16, after: slow);
+      expect(flipping.boundary, page(16));
+      expect(flipping.pendingJump, isNull);
+
+      for (var index = 17; index <= 20; index++) {
+        turnTo(index, after: fast);
+      }
+      expect(flipping.boundary, page(20));
+      expect(flipping.pendingJump, isNull);
+    });
+
+    test('a page every two seconds is reading', () {
+      for (var index = 11; index <= 30; index++) {
+        turnTo(index, after: const Duration(seconds: 2));
+      }
+      expect(flipping.boundary, page(30));
+      expect(flipping.pendingJump, isNull);
+    });
+
+    test('back and forth over read pages doesn’t count them', () {
+      turnTo(11, after: slow);
+      for (final index in const [12, 13, 12, 11, 12, 13, 14]) {
+        turnTo(index, after: fast);
+      }
+      // Only 12, 13 and 14 were new.
+      expect(flipping.boundary, page(14));
+      expect(flipping.pendingJump, isNull);
+    });
+
+    test('going back doesn’t end the flipping', () {
+      turnTo(11, after: slow);
+      for (final index in const [12, 13, 14, 13, 14, 15, 16]) {
+        turnTo(index, after: fast);
+      }
+      expect(flipping.boundary, page(11));
+      expect(flipping.pendingJump, page(16));
+    });
+
+    test('pages Readium didn’t report count too', () {
+      turnTo(11, after: slow);
+      turnTo(13, after: fast);
+      turnTo(15, after: fast);
+      expect(flipping.pendingJump, isNull);
+      turnTo(17, after: fast);
+      expect(flipping.boundary, page(11));
+      expect(flipping.pendingJump, page(17));
+    });
+
+    test('a step without a page count is one page', () {
+      flipping.updatePosition(const TextPosition(3, 0.26), at: clock);
+      for (final progression in const [0.27, 0.28, 0.29, 0.30]) {
+        clock = clock.add(fast);
+        flipping.updatePosition(TextPosition(3, progression), at: clock);
+      }
+      expect(flipping.pendingJump, isNull);
+      clock = clock.add(fast);
+      flipping.updatePosition(const TextPosition(3, 0.31), at: clock);
+      expect(flipping.boundary, const TextPosition(3, 0.26));
+      expect(flipping.pendingJump, const TextPosition(3, 0.31));
+    });
+
+    test('into the next section counts the pages left in this one', () {
+      flipping = ReadingProgressTracker.resume(
+        current: page(36),
+        furthest: page(36),
+        boundary: page(36),
+      );
+      // Read, so the boundary's page count is known.
+      turnTo(37, after: slow);
+      turnTo(38, after: fast);
+      turnTo(pages, after: fast);
+      for (final index in const [0, 1]) {
+        clock = clock.add(fast);
+        flipping.updatePosition(
+          TextPosition(4, index / 30),
+          sectionPages: 30,
+          at: clock,
+        );
+      }
+      expect(flipping.pendingJump, isNull);
+      clock = clock.add(fast);
+      flipping.updatePosition(
+        const TextPosition(4, 2 / 30),
+        sectionPages: 30,
+        at: clock,
+      );
+      expect(flipping.boundary, page(37));
+      expect(flipping.pendingJump, const TextPosition(4, 2 / 30));
+    });
+
+    test('reading a page back from where it got to still waits', () {
+      flipToPage16();
+      turnTo(15, after: slow);
+      expect(flipping.boundary, page(11));
+      expect(flipping.pendingJump, page(15));
+      expect(flipping.flippedAhead, isTrue);
+    });
+
+    test('going back to where it began drops the jump', () {
+      flipToPage16();
+      turnTo(11, after: fast);
+      expect(flipping.pendingJump, isNull);
+      expect(flipping.flippedAhead, isFalse);
+      expect(flipping.boundary, page(11));
+    });
+
+    test('after Count as read, counts from the reader', () {
+      flipToPage16();
+      flipping.confirmJump();
+      expect(flipping.boundary, page(16));
+      expect(flipping.flippedAhead, isFalse);
+
+      for (var index = 17; index <= 20; index++) {
+        turnTo(index, after: fast);
+      }
+      expect(flipping.pendingJump, isNull);
+      turnTo(21, after: fast);
+      expect(flipping.boundary, page(16));
+      expect(flipping.pendingJump, page(21));
+    });
+
+    test('a jump while flipping is asked about, not flipping', () {
+      turnTo(11, after: slow);
+      turnTo(12, after: fast);
+      turnTo(30, after: fast);
+      expect(flipping.boundary, page(12));
+      expect(flipping.pendingJump, page(30));
+      expect(flipping.flippedAhead, isFalse);
+    });
+
+    test('without the time nothing is flipping', () {
+      for (var index = 11; index <= 30; index++) {
+        flipping.updatePosition(page(index), sectionPages: pages);
+      }
+      expect(flipping.boundary, page(30));
+      expect(flipping.pendingJump, isNull);
+    });
+  });
+
   group('how far into the book', () {
     late ReadingProgressTracker totals;
 
