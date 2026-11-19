@@ -5,6 +5,7 @@ import 'package:loremark/home/read_screen.dart';
 import 'package:loremark/library/book.dart';
 import 'package:loremark/notes/annotation_service.dart';
 import 'package:loremark/notes/note.dart';
+import 'package:loremark/notes/theory.dart';
 import 'package:loremark/reader/epub_reader_service.dart';
 import 'package:loremark/theme/loremark_theme.dart';
 
@@ -124,6 +125,35 @@ void main() {
 
     expect(notes.notes.single.body, 'Whose cat?');
     expect(notes.notes.single.chapterLabel, 'Chapter Two');
+  });
+
+  testWidgets('Add note saves a theory that builds on an older one', (
+    tester,
+  ) async {
+    final session = await openBook(tester);
+    final older = await notes.addNote(
+      anchor: const NoteAnchor(1, 0.1),
+      chapterLabel: 'Chapter One',
+      selectedText: 'earlier',
+      body: 'The cat is a spy.',
+      kind: NoteKind.theory,
+    );
+
+    await select(tester, session, SelectionCommand.addNote);
+    await tester.tap(find.text('Theory'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('None'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('The cat is a spy.').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'The wall hides a door.');
+    await tester.tap(find.text('Save note'));
+    await tester.pumpAndSettle();
+
+    final saved = notes.notes.last;
+    expect(saved.kind, NoteKind.theory);
+    expect(saved.theory!.dependsOnId, older.id);
+    expect(notes.statusOf(saved.id), TheoryStatus.unconfirmed);
   });
 
   testWidgets('closing the note sheet saves nothing', (tester) async {

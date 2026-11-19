@@ -6,7 +6,7 @@ Every bug and failed check we know of, from the start of the project to 2026-11-
 the fix commit's message says what went wrong, why, and how it was fixed, and CI and the coding
 session notes kept the failures. That record stayed on each developer's branches instead of in a
 shared tracker. On 2026-11-02 we gathered it into this log and into GitHub Issues (#17 to #52),
-where the team tracks bugs from now on. Bugs found after that (BUG-20 to BUG-23, CI-07, CI-08, OPEN-06 to OPEN-08)
+where the team tracks bugs from now on. Bugs found after that (BUG-20 to BUG-23, CI-07, CI-08, OPEN-06 to OPEN-08, THY-01)
 were filed as they were found. The sources were:
 
 - **Git history:** every commit whose message starts with `fix`, plus commits that fixed problems
@@ -40,7 +40,7 @@ build settings, not app code) and one cosmetic text fix; each row says which.
 
 ## All bugs
 
-Each ID links to its GitHub issue (#17 to #77). Commit hashes link to
+Each ID links to its GitHub issue (#17 to #86). Commit hashes link to
 `https://github.com/bennyxzeng/Loremark/commit/<hash>`. CI runs link to
 `https://github.com/bennyxzeng/Loremark/actions/runs/<id>`.
 
@@ -94,6 +94,7 @@ Each ID links to its GitHub issue (#17 to #77). Commit hashes link to
 | [OPEN-06](https://github.com/bennyxzeng/Loremark/issues/71) | 2026-11-03 | P2 | usability | On Android, the reader's selection menu no longer has Share or Select All | Open | |
 | [OPEN-07](https://github.com/bennyxzeng/Loremark/issues/54) | 2026-11-03 | P2 | usability | Fixed-layout EPUBs (such as PDF conversions) keep the publisher's white pages; Readium ignores theme colours | Open | |
 | [OPEN-08](https://github.com/bennyxzeng/Loremark/issues/77) | 2026-11-04 | P2 | usability | On the iPhone simulator, the reader's progress percentage stays empty | Open, not confirmed on a real iPhone | |
+| [THY-01](https://github.com/bennyxzeng/Loremark/issues/86) | 2026-11-09 | P2 | usability | The Add note sheet jumps after choosing Theory, so taps on the text box miss | Fixed, with a regression test | [d4062ff](https://github.com/bennyxzeng/Loremark/commit/d4062ff) |
 
 ## Details
 

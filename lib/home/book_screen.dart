@@ -6,6 +6,7 @@ import '../ask/ask_backend.dart';
 import '../ask/ask_controller.dart';
 import '../library/book.dart';
 import '../notes/annotation_service.dart';
+import '../notes/note_list.dart';
 import '../reader/epub_reader_service.dart';
 import '../reader/readium_reader_service.dart';
 import '../recap/recap_backend.dart';
@@ -57,6 +58,7 @@ class BookScreen extends StatefulWidget {
 }
 
 class _BookScreenState extends State<BookScreen> {
+  static const _notesTab = 2;
   static const _readTab = 0;
   static const _askTab = 1;
   static const _storyMapTab = 3;
@@ -91,6 +93,7 @@ class _BookScreenState extends State<BookScreen> {
     _bannerTimer?.cancel();
     _storyMapStatus.dispose();
     _ask.dispose();
+    _noteFocus.dispose();
     _recap
       ..removeListener(_offerWelcomeBack)
       ..dispose();
@@ -130,6 +133,16 @@ class _BookScreenState extends State<BookScreen> {
 
   /// Sends the Read tab to a note tapped in the Notes tab.
   final _noteJumps = NoteJumpController();
+
+  /// Scrolls the Notes tab to one note. [showNoteInNotesTab] uses it.
+  final _noteFocus = NoteFocusController();
+
+  /// Opens the Notes tab with the note of the given id scrolled to and
+  /// briefly outlined. The theory banner uses this to show a theory.
+  void showNoteInNotesTab(String noteId) {
+    _selectTab(_notesTab);
+    _noteFocus.focus(noteId);
+  }
 
   /// Sends the Read tab to a passage an Ask answer cites, with a way back to
   /// the reader's page.
@@ -271,6 +284,7 @@ class _BookScreenState extends State<BookScreen> {
                         // Tapping a note goes back to the Read tab, at its passage.
                         NotesScreen(
                           notes: _notes,
+                          focusController: _noteFocus,
                           onOpenNote: (note) {
                             _selectTab(0);
                             unawaited(_noteJumps.show(note));
