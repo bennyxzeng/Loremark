@@ -44,7 +44,7 @@ These are our six use cases and where each one stands in this beta.
 | Use case | Status | What you can do today |
 | :--- | :--- | :--- |
 | **3 · Take notes and highlights** | **Operational** | Select text in the reader and choose **Highlight**, **Add note** or **Copy**. Highlights are drawn on the page and stay there as you turn pages. Tap a highlight to edit or remove it. The Notes tab lists every note, with search, a color filter and an **All / Notes / Highlights** toggle. Tap a note to jump back to its passage. |
-| **5 · Explore the Story Map** | **Operational** | A relationship graph of the characters, with a chapter slider. Move the slider back and facts from later chapters disappear. **Overview** lists what the reader learned in the chapter selected by the slider. |
+| **5 · Explore the Story Map** | **Operational** | A relationship graph of the characters, with a chapter slider. Move the slider back and facts from later chapters disappear. **Overview** lists what the reader learned in the chapter selected by the slider. Updates can take a few minutes per section. You can keep reading while they run. |
 | **4 · Look up a character** | **Operational** | A searchable character list, and a card for each character showing what is known as of the chosen chapter. Opening a card by tapping a name in the reader isn't in yet. |
 | **1 · Get a recap when you come back** | **Operational** | When you open a book, a pop-up offers a recap up to where you stopped. **Catch me up** opens Ask on a new conversation that starts with the recap: numbered moments with citations to the book. Ask follow-up questions right there. Needs a Story Map and an API key. See [docs/opening-recap.md](docs/opening-recap.md). |
 | **2 · Track a theory** | In progress | |
