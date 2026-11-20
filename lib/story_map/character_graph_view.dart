@@ -255,6 +255,8 @@ class GraphLine {
   final bool isNew;
 }
 
+typedef GraphFilters = ({bool showGroups, bool showPlaces});
+
 /// The Story Map's relationship graph as of [snapshot] (UC5).
 ///
 /// Node positions come from the whole model, not just the snapshot, so nodes
@@ -266,19 +268,25 @@ class CharacterGraphView extends StatefulWidget {
     required this.snapshot,
     required this.onEntityTap,
     required this.onGuideTap,
+    this.initialFilters = (showGroups: false, showPlaces: false),
+    this.isFullscreen = false,
+    this.onFullscreenToggle,
   });
 
   final StorySnapshot snapshot;
   final ValueChanged<String> onEntityTap;
   final VoidCallback onGuideTap;
+  final GraphFilters initialFilters;
+  final bool isFullscreen;
+  final ValueChanged<GraphFilters>? onFullscreenToggle;
 
   @override
   State<CharacterGraphView> createState() => _CharacterGraphViewState();
 }
 
 class _CharacterGraphViewState extends State<CharacterGraphView> {
-  bool _showGroups = false;
-  bool _showPlaces = false;
+  late bool _showGroups = widget.initialFilters.showGroups;
+  late bool _showPlaces = widget.initialFilters.showPlaces;
   final _layouts = <(bool, bool), GraphLayout>{};
   final _view = TransformationController();
   GraphLayout? _viewLayout;
@@ -378,6 +386,7 @@ class _CharacterGraphViewState extends State<CharacterGraphView> {
     };
     final edges = _edges(relationships, nodes);
     final theme = Theme.of(context);
+    final onFullscreenToggle = widget.onFullscreenToggle;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -410,6 +419,21 @@ class _CharacterGraphViewState extends State<CharacterGraphView> {
                 tooltip: 'Graph guide',
                 onPressed: widget.onGuideTap,
               ),
+              if (onFullscreenToggle != null)
+                IconButton(
+                  icon: Icon(
+                    widget.isFullscreen
+                        ? Icons.fullscreen_exit
+                        : Icons.fullscreen,
+                  ),
+                  tooltip: widget.isFullscreen
+                      ? 'Exit full screen'
+                      : 'View full screen',
+                  onPressed: () => onFullscreenToggle((
+                    showGroups: _showGroups,
+                    showPlaces: _showPlaces,
+                  )),
+                ),
             ],
           ),
         ),
