@@ -3,6 +3,8 @@
 The app builds a book's story model itself, one section at a time, with the reader's own API
 key. There is no backend. Pressing **Update** on the Story Map tab sends the next section and
 the model so far to the provider, checks the answer, and saves a new revision.
+Each section can take a few minutes depending on its length, the model and reasoning effort,
+and the provider's response time. You can keep reading while the update runs.
 
 The code in `lib/story_update/` is a port of the story model lab (`tools/story_model_lab/` on
 the `story-model` branch). It needs no Flutter, so `tool/story_update/run.dart` can run it from

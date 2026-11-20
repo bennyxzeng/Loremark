@@ -323,7 +323,7 @@ Options for letting the TA/professor install it easily:
 
 ## Scaling
 
-The living doc's scalability requirement: 500,000-word books, chapter processing under a minute, and nothing interrupting reading.
+The scalability goal is to handle 500,000-word books without interrupting reading.
 
 - **Rendering:** Readium renders one resource at a time in a WebView and preloads neighbors, so book length barely matters. Pride and Prejudice (24 MB EPUB with images) opened fine.
 - **Opening:** we parse only the OPF (spine + manifest), in an isolate, so the UI never stalls. That cost grows with chapter count, not words.
@@ -332,7 +332,10 @@ The living doc's scalability requirement: 500,000-word books, chapter processing
   - Add a `readSectionText(epubPath, index)` for one chapter if memory gets tight on low-end phones.
 - **Saving the position:** saves coalesce, so even fast page turning writes at most one file at a time per book. Each write is about 100 bytes.
 - **Many books:** each book is independent (its own EPUB, cover and position file), and `library.json` is small. Thousands of books would mean a lazy library list, not reader changes.
-- **The AI side:** because positions are per section and only finished sections count, chapter processing can run in the background, one section at a time, triggered by `onPositionChanged` crossing a section's 1.0, cached per section (living-doc Risk 4: never pay twice).
+- **Story Map updates.** The reader starts an update, and the app sends one section at a time
+  to the AI provider. Each section can take a few minutes depending on its length, the model and
+  reasoning effort, and the provider's response time. The reader can keep reading during the
+  update. [Story Map updates](story-update.md)
 
 ## Questions we might get
 
