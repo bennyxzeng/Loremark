@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../story_model/story_model.dart';
 import '../story_model/story_snapshot.dart';
 import 'story_facts.dart';
 
@@ -94,19 +93,20 @@ class CharacterCardView extends StatelessWidget {
         if (relationships.isNotEmpty) ...[
           const FactHeading('Relationships'),
           for (final record in relationships)
-            FactTile(
+            FactTile.rich(
               model: model,
-              text: snapshot.describe(record.payload),
+              textSpan: TextSpan(
+                children: [
+                  _nameSpan(context, record.payload.sourceId),
+                  TextSpan(text: ' ${readableLabel(record.payload.label)} '),
+                  _nameSpan(context, record.payload.targetId),
+                ],
+              ),
               detail: record.payload.description,
               tags: [
                 record.payload.temporalContext.name,
                 record.payload.assertion.name,
               ],
-              onTap: () => showCharacterCard(
-                context,
-                snapshot,
-                _otherEnd(record.payload),
-              ),
             ),
         ],
         if (events.isNotEmpty) ...[
@@ -135,9 +135,12 @@ class CharacterCardView extends StatelessWidget {
     );
   }
 
-  String _otherEnd(Relationship relationship) =>
-      snapshot.canonicalId(relationship.sourceId) ==
-          snapshot.canonicalId(entityId)
-      ? relationship.targetId
-      : relationship.sourceId;
+  /// [id]'s name in a relationship: a link to its card, or plain text when
+  /// it is this card's own entity, as that card is already open.
+  InlineSpan _nameSpan(BuildContext context, String id) {
+    final name = snapshot.displayName(id);
+    return snapshot.canonicalId(id) == snapshot.canonicalId(entityId)
+        ? TextSpan(text: name)
+        : factLinkSpan(name, () => showCharacterCard(context, snapshot, id));
+  }
 }
