@@ -284,7 +284,7 @@ class _StoryMapScreenState extends State<StoryMapScreen> {
                 ),
                 ButtonSegment(
                   value: _StoryMapTab.chapter,
-                  label: Text('Chapter'),
+                  label: Text('Overview'),
                 ),
               ],
               showSelectedIcon: false,
