@@ -42,6 +42,56 @@ class FactHeading extends StatelessWidget {
   }
 }
 
+/// A row of chips for picking which kind of fact shows, one kind at a time.
+class FactPageBar<T> extends StatelessWidget {
+  const FactPageBar({
+    super.key,
+    required this.pages,
+    required this.current,
+    required this.label,
+    required this.onSelected,
+    this.padding = EdgeInsets.zero,
+  });
+
+  final List<T> pages;
+  final T current;
+
+  /// A page's chip text, such as "Relationships 8".
+  final String Function(T page) label;
+  final ValueChanged<T> onSelected;
+  final EdgeInsetsGeometry padding;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: padding,
+      child: Row(
+        spacing: 8,
+        children: [
+          for (final page in pages)
+            ChoiceChip(
+              label: Text(label(page)),
+              selected: page == current,
+              showCheckmark: false,
+              // The app's chip theme looks the same selected or not.
+              selectedColor: colors.primary,
+              labelStyle: page == current
+                  ? theme.chipTheme.labelStyle?.copyWith(
+                      color: colors.onPrimary,
+                    )
+                  : null,
+              visualDensity: VisualDensity.compact,
+              onSelected: (_) => onSelected(page),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 /// One fact with optional detail, tags and the quotes that support it.
 class FactTile extends StatelessWidget {
   const FactTile({
