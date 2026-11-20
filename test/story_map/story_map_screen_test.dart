@@ -59,6 +59,8 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  final fullscreenButton = find.byTooltip('View full screen');
+
   testWidgets('starts at the latest chapter with the graph', (tester) async {
     await pumpStoryMap(tester);
 
@@ -684,16 +686,121 @@ void main() {
       expect(tester.widget<FilterChip>(chip).selected, isTrue);
     });
 
-    testWidgets('only the graph has the button', (tester) async {
+    testWidgets('only the graph has the graph controls', (tester) async {
       await pumpStoryMap(tester);
       expect(guideButton, findsOne);
+      expect(fullscreenButton, findsOne);
 
       await showTab(tester, 'Characters');
       expect(guideButton, findsNothing);
+      expect(fullscreenButton, findsNothing);
 
       await showTab(tester, 'Overview');
       expect(guideButton, findsNothing);
+      expect(fullscreenButton, findsNothing);
     });
+  });
+
+  testWidgets(
+    'full screen enlarges the current graph and keeps the inline view',
+    (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StoryMapScreen(
+              model: storyModelFixture(),
+              finishedSections: 1,
+              hiddenInNext: const {'f004', 'f012', 'f014'},
+            ),
+          ),
+        ),
+      );
+
+      final graph = find.byType(CharacterGraphView);
+      final viewer = find.byType(InteractiveViewer);
+      final groups = find.widgetWithText(FilterChip, 'organization');
+      final guide = find.byTooltip('Graph guide');
+      final exitFullscreen = find.byTooltip('Exit full screen');
+      TransformationController controller() =>
+          tester.widget<InteractiveViewer>(viewer).transformationController!;
+
+      await tester.tap(groups);
+      await tester.pumpAndSettle();
+      final inlineSnapshot = tester.widget<CharacterGraphView>(graph).snapshot;
+      final inlineHeight = tester.getSize(viewer).height;
+      final inlineController = controller();
+      inlineController.value = inlineController.value.clone()
+        ..scaleByDouble(1.25, 1.25, 1.25, 1);
+      await tester.pump();
+      final inlineTransform = inlineController.value.clone();
+      final buttonOffset =
+          tester.getCenter(fullscreenButton) - tester.getCenter(guide);
+      expect(buttonOffset.dx, greaterThan(0));
+      expect(buttonOffset.dy, 0);
+
+      await tester.tap(fullscreenButton);
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.fullscreen_exit), findsOne);
+      expect(
+        tester.getCenter(exitFullscreen) - tester.getCenter(guide),
+        buttonOffset,
+      );
+      expect(find.byType(Slider), findsNothing);
+      expect(fullscreenButton, findsNothing);
+      expect(tester.getSize(viewer).height, greaterThan(inlineHeight));
+      expect(
+        tester.widget<CharacterGraphView>(graph).snapshot,
+        same(inlineSnapshot),
+      );
+      expect(tester.widget<FilterChip>(groups).selected, isTrue);
+
+      final fullscreenController = controller();
+      final fittedScale = fullscreenController.value.getMaxScaleOnAxis();
+      final center = tester.getCenter(viewer);
+      final left = await tester.startGesture(center - const Offset(20, 0));
+      final right = await tester.startGesture(center + const Offset(20, 0));
+      await tester.pump();
+      await left.moveBy(const Offset(-60, 0));
+      await right.moveBy(const Offset(60, 0));
+      await tester.pump();
+      await left.up();
+      await right.up();
+      await tester.pumpAndSettle();
+      expect(
+        fullscreenController.value.getMaxScaleOnAxis(),
+        greaterThan(fittedScale),
+      );
+
+      final translation = fullscreenController.value.getTranslation();
+      await tester.drag(viewer, const Offset(35, 55));
+      await tester.pumpAndSettle();
+      expect(fullscreenController.value.getTranslation(), isNot(translation));
+
+      await tester.tap(groups);
+      await tester.pumpAndSettle();
+      expect(tester.widget<FilterChip>(groups).selected, isFalse);
+      await tester.tap(exitFullscreen);
+      await tester.pumpAndSettle();
+      expect(find.byType(Slider), findsOne);
+      expect(tester.widget<FilterChip>(groups).selected, isTrue);
+      expect(controller(), same(inlineController));
+      expect(controller().value.storage, inlineTransform.storage);
+    },
+  );
+
+  testWidgets('system back closes the full-screen graph', (tester) async {
+    await pumpStoryMap(tester);
+    await tester.tap(fullscreenButton);
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Exit full screen'), findsOne);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(fullscreenButton, findsOne);
+    expect(find.byTooltip('Exit full screen'), findsNothing);
   });
 
   test('graph layout is the same every time', () {
