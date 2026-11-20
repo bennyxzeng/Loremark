@@ -52,6 +52,16 @@ class BookScreen extends StatefulWidget {
   /// device's.
   final RecapBackend? recapBackend;
 
+  /// The books whose welcome back has popped up since the app started. Each
+  /// book offers it once a session: after that, a recap is a question away in
+  /// Ask.
+  static final _welcomed = <String>{};
+
+  /// Forgets which books have welcomed the reader back, as if the app had just
+  /// started.
+  @visibleForTesting
+  static void forgetWelcomes() => _welcomed.clear();
+
   @override
   State<BookScreen> createState() => _BookScreenState();
 }
@@ -150,7 +160,8 @@ class _BookScreenState extends State<BookScreen> {
   bool _recapLooked = false;
 
   /// Whether the welcome back was offered, or passed over, for this opening.
-  /// It is offered once each time the book opens.
+  /// It is offered at most once each time the book opens, and only if it
+  /// hasn't popped up for this book yet this session.
   bool _welcomeOffered = false;
 
   @override
@@ -198,6 +209,7 @@ class _BookScreenState extends State<BookScreen> {
     _welcomeOffered = true;
     final stop = _recap.stop;
     if (stop == null ||
+        BookScreen._welcomed.contains(widget.book.id) ||
         _selectedTab != _readTab ||
         !AiSettingsScope.of(context).hasKey ||
         !ConnectionScope.of(context).isOnline ||
@@ -208,6 +220,9 @@ class _BookScreenState extends State<BookScreen> {
   }
 
   Future<void> _welcomeBack(RecapStop stop) async {
+    // Counted only once it has really popped up: an opening that passed it
+    // over, offline say, leaves it for the next.
+    BookScreen._welcomed.add(widget.book.id);
     final catchUp = await showWelcomeBack(
       context,
       sectionTitle: stop.sectionTitle,
