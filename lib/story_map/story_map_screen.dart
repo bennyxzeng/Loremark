@@ -178,6 +178,35 @@ class _StoryMapScreenState extends State<StoryMapScreen> {
   void _openCard(String entityId) =>
       showCharacterCard(context, _snapshot!, entityId);
 
+  void _openFullscreenGraph(StorySnapshot snapshot, GraphFilters filters) {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (context) => Scaffold(
+          appBar: AppBar(
+            automaticallyImplyLeading: false,
+            title: Text(
+              snapshot.section.title,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          body: SafeArea(
+            top: false,
+            child: CharacterGraphView(
+              snapshot: snapshot,
+              initialFilters: filters,
+              isFullscreen: true,
+              onEntityTap: (id) => showCharacterCard(context, snapshot, id),
+              onGuideTap: () =>
+                  showGraphGuide(context, sectionLabel: snapshot.section.label),
+              onFullscreenToggle: (_) => Navigator.of(context).pop(),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final sections = widget.model.sections;
@@ -284,7 +313,7 @@ class _StoryMapScreenState extends State<StoryMapScreen> {
                 ),
                 ButtonSegment(
                   value: _StoryMapTab.chapter,
-                  label: Text('Chapter'),
+                  label: Text('Overview'),
                 ),
               ],
               showSelectedIcon: false,
@@ -302,6 +331,8 @@ class _StoryMapScreenState extends State<StoryMapScreen> {
                   context,
                   sectionLabel: snapshot.section.label,
                 ),
+                onFullscreenToggle: (filters) =>
+                    _openFullscreenGraph(snapshot, filters),
               ),
               _StoryMapTab.characters => CharacterListView(
                 snapshot: snapshot,

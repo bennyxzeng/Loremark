@@ -79,7 +79,7 @@ it, in `<book id>.runs/`. Both go when the book does.
   placed, only finished sections show.
 - **The quote check is a setting, off by default.** Off, a quote that isn't in its paragraph is
   only a warning, and `processed_sections[].quotes_checked` remembers that for the section. The
-  Chapter page says so. On, one bad quote rejects an update that has already been paid for.
+  Overview tab says so. On, one bad quote rejects an update that has already been paid for.
 - **Requests run in the foreground.** Leaving the book doesn't stop one, but the OS can suspend
   the app, which ends the request. Nothing is saved then, though the provider may still charge.
 - **Update turns into Cancel while an update runs.** It asks first, since pressing Update twice

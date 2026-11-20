@@ -59,6 +59,8 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  final fullscreenButton = find.byTooltip('View full screen');
+
   testWidgets('starts at the latest chapter with the graph', (tester) async {
     await pumpStoryMap(tester);
 
@@ -296,9 +298,11 @@ void main() {
     });
   });
 
-  testWidgets('chapter view lists what changed', (tester) async {
+  testWidgets('overview lists what changed in the selected chapter', (
+    tester,
+  ) async {
     await pumpStoryMap(tester);
-    await showTab(tester, 'Chapter');
+    await showTab(tester, 'Overview');
 
     expect(find.text('What’s new in Chapter 2: The Letter'), findsOne);
     expect(find.text('Mara → Mara Quinn'), findsOne);
@@ -306,13 +310,16 @@ void main() {
     await showPage(tester, 'Entities');
 
     expect(find.widgetWithText(ActionChip, 'Elian'), findsOne);
+
+    await slideToFirstChapter(tester);
+    expect(find.text('What’s new in Chapter 1: Arrival'), findsOne);
   });
 
   testWidgets('events show the temporal context as the model words it', (
     tester,
   ) async {
     await pumpStoryMap(tester);
-    await showTab(tester, 'Chapter');
+    await showTab(tester, 'Overview');
     await showPage(tester, 'Events');
 
     expect(tagsOf(tester, '1. Elian left home years ago.'), [
@@ -328,7 +335,7 @@ void main() {
     expect(find.widgetWithText(FilterChip, 'organization'), findsOne);
     expect(find.widgetWithText(FilterChip, 'location'), findsOne);
 
-    await showTab(tester, 'Chapter');
+    await showTab(tester, 'Overview');
     await slideToFirstChapter(tester);
 
     expect(find.text('New locations and organizations'), findsOne);
@@ -341,7 +348,7 @@ void main() {
 
   testWidgets('facts show their default labels too', (tester) async {
     await pumpStoryMap(tester);
-    await showTab(tester, 'Chapter');
+    await showTab(tester, 'Overview');
     await showPage(tester, 'Relationships');
 
     expect(tagsOf(tester, 'Elian sibling of Mara Quinn'), [
@@ -357,10 +364,10 @@ void main() {
     ]);
   });
 
-  group('chapter pages', () {
+  group('overview pages', () {
     testWidgets('list each kind of fact with its count', (tester) async {
       await pumpStoryMap(tester);
-      await showTab(tester, 'Chapter');
+      await showTab(tester, 'Overview');
 
       for (final label in [
         'Changes 3',
@@ -375,7 +382,7 @@ void main() {
 
     testWidgets('leave out kinds the chapter has none of', (tester) async {
       await pumpStoryMap(tester);
-      await showTab(tester, 'Chapter');
+      await showTab(tester, 'Overview');
       await slideToFirstChapter(tester);
 
       expect(find.textContaining('Changes'), findsNothing);
@@ -384,7 +391,7 @@ void main() {
 
     testWidgets('show one kind of fact at a time', (tester) async {
       await pumpStoryMap(tester);
-      await showTab(tester, 'Chapter');
+      await showTab(tester, 'Overview');
 
       expect(find.text('Mara → Mara Quinn'), findsOne);
       expect(find.text('2. Elian hands Mara a letter.'), findsNothing);
@@ -400,7 +407,7 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
       await pumpStoryMap(tester);
-      await showTab(tester, 'Chapter');
+      await showTab(tester, 'Overview');
       double top(String text) => tester.getTopLeft(find.text(text)).dy;
 
       expect(
@@ -427,7 +434,7 @@ void main() {
 
     testWidgets('mark the current one', (tester) async {
       await pumpStoryMap(tester);
-      await showTab(tester, 'Chapter');
+      await showTab(tester, 'Overview');
       bool isSelected(String label) => tester
           .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, label))
           .selected;
@@ -443,7 +450,7 @@ void main() {
 
     testWidgets('stay on the same kind across chapters', (tester) async {
       await pumpStoryMap(tester);
-      await showTab(tester, 'Chapter');
+      await showTab(tester, 'Overview');
       await showPage(tester, 'Events');
 
       await slideToFirstChapter(tester);
@@ -464,7 +471,7 @@ void main() {
           ),
         ),
       );
-      await showTab(tester, 'Chapter');
+      await showTab(tester, 'Overview');
       await showPage(tester, 'Events');
       expect(find.text('2. Elian hands Mara a letter.'), findsOne);
 
@@ -482,7 +489,7 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
       await pumpStoryMap(tester);
-      await showTab(tester, 'Chapter');
+      await showTab(tester, 'Overview');
       double scrolled() =>
           tester.state<ScrollableState>(factList).position.pixels;
 
@@ -509,7 +516,7 @@ void main() {
           ),
         ),
       );
-      await showTab(tester, 'Chapter');
+      await showTab(tester, 'Overview');
 
       expect(find.text('Nothing new in this chapter.'), findsOne);
       expect(find.byType(ChoiceChip), findsNothing);
@@ -536,7 +543,7 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
       await pumpStoryMap(tester);
-      await showTab(tester, 'Chapter');
+      await showTab(tester, 'Overview');
 
       await tester.tap(guideButton);
       await tester.pumpAndSettle();
@@ -563,7 +570,7 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
       await pumpStoryMap(tester);
-      await showTab(tester, 'Chapter');
+      await showTab(tester, 'Overview');
 
       await tester.tap(guideButton);
       await tester.pumpAndSettle();
@@ -592,7 +599,7 @@ void main() {
 
     testWidgets('stays reachable while the chapter scrolls', (tester) async {
       await pumpStoryMap(tester);
-      await showTab(tester, 'Chapter');
+      await showTab(tester, 'Overview');
 
       await tester.drag(factList, const Offset(0, -300));
       await tester.pumpAndSettle();
@@ -602,14 +609,14 @@ void main() {
       expect(find.byType(LabelGuideView), findsOne);
     });
 
-    testWidgets('only the Chapter tab has the button', (tester) async {
+    testWidgets('only the Overview tab has the button', (tester) async {
       await pumpStoryMap(tester);
       expect(guideButton, findsNothing);
 
       await showTab(tester, 'Characters');
       expect(guideButton, findsNothing);
 
-      await showTab(tester, 'Chapter');
+      await showTab(tester, 'Overview');
       expect(guideButton, findsOne);
     });
   });
@@ -679,16 +686,121 @@ void main() {
       expect(tester.widget<FilterChip>(chip).selected, isTrue);
     });
 
-    testWidgets('only the graph has the button', (tester) async {
+    testWidgets('only the graph has the graph controls', (tester) async {
       await pumpStoryMap(tester);
       expect(guideButton, findsOne);
+      expect(fullscreenButton, findsOne);
 
       await showTab(tester, 'Characters');
       expect(guideButton, findsNothing);
+      expect(fullscreenButton, findsNothing);
 
-      await showTab(tester, 'Chapter');
+      await showTab(tester, 'Overview');
       expect(guideButton, findsNothing);
+      expect(fullscreenButton, findsNothing);
     });
+  });
+
+  testWidgets(
+    'full screen enlarges the current graph and keeps the inline view',
+    (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StoryMapScreen(
+              model: storyModelFixture(),
+              finishedSections: 1,
+              hiddenInNext: const {'f004', 'f012', 'f014'},
+            ),
+          ),
+        ),
+      );
+
+      final graph = find.byType(CharacterGraphView);
+      final viewer = find.byType(InteractiveViewer);
+      final groups = find.widgetWithText(FilterChip, 'organization');
+      final guide = find.byTooltip('Graph guide');
+      final exitFullscreen = find.byTooltip('Exit full screen');
+      TransformationController controller() =>
+          tester.widget<InteractiveViewer>(viewer).transformationController!;
+
+      await tester.tap(groups);
+      await tester.pumpAndSettle();
+      final inlineSnapshot = tester.widget<CharacterGraphView>(graph).snapshot;
+      final inlineHeight = tester.getSize(viewer).height;
+      final inlineController = controller();
+      inlineController.value = inlineController.value.clone()
+        ..scaleByDouble(1.25, 1.25, 1.25, 1);
+      await tester.pump();
+      final inlineTransform = inlineController.value.clone();
+      final buttonOffset =
+          tester.getCenter(fullscreenButton) - tester.getCenter(guide);
+      expect(buttonOffset.dx, greaterThan(0));
+      expect(buttonOffset.dy, 0);
+
+      await tester.tap(fullscreenButton);
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.fullscreen_exit), findsOne);
+      expect(
+        tester.getCenter(exitFullscreen) - tester.getCenter(guide),
+        buttonOffset,
+      );
+      expect(find.byType(Slider), findsNothing);
+      expect(fullscreenButton, findsNothing);
+      expect(tester.getSize(viewer).height, greaterThan(inlineHeight));
+      expect(
+        tester.widget<CharacterGraphView>(graph).snapshot,
+        same(inlineSnapshot),
+      );
+      expect(tester.widget<FilterChip>(groups).selected, isTrue);
+
+      final fullscreenController = controller();
+      final fittedScale = fullscreenController.value.getMaxScaleOnAxis();
+      final center = tester.getCenter(viewer);
+      final left = await tester.startGesture(center - const Offset(20, 0));
+      final right = await tester.startGesture(center + const Offset(20, 0));
+      await tester.pump();
+      await left.moveBy(const Offset(-60, 0));
+      await right.moveBy(const Offset(60, 0));
+      await tester.pump();
+      await left.up();
+      await right.up();
+      await tester.pumpAndSettle();
+      expect(
+        fullscreenController.value.getMaxScaleOnAxis(),
+        greaterThan(fittedScale),
+      );
+
+      final translation = fullscreenController.value.getTranslation();
+      await tester.drag(viewer, const Offset(35, 55));
+      await tester.pumpAndSettle();
+      expect(fullscreenController.value.getTranslation(), isNot(translation));
+
+      await tester.tap(groups);
+      await tester.pumpAndSettle();
+      expect(tester.widget<FilterChip>(groups).selected, isFalse);
+      await tester.tap(exitFullscreen);
+      await tester.pumpAndSettle();
+      expect(find.byType(Slider), findsOne);
+      expect(tester.widget<FilterChip>(groups).selected, isTrue);
+      expect(controller(), same(inlineController));
+      expect(controller().value.storage, inlineTransform.storage);
+    },
+  );
+
+  testWidgets('system back closes the full-screen graph', (tester) async {
+    await pumpStoryMap(tester);
+    await tester.tap(fullscreenButton);
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Exit full screen'), findsOne);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(fullscreenButton, findsOne);
+    expect(find.byTooltip('Exit full screen'), findsNothing);
   });
 
   test('graph layout is the same every time', () {
