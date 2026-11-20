@@ -51,6 +51,9 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
 
+  # Lets tests compare file paths the same way on Windows and on Unix.
+  path: ^1.9.1
+
   # Runs the whole app on a device for the start-to-finish test in
   # integration_test/.
   integration_test:
