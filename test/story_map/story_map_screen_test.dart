@@ -296,9 +296,11 @@ void main() {
     });
   });
 
-  testWidgets('chapter view lists what changed', (tester) async {
+  testWidgets('overview lists what changed in the selected chapter', (
+    tester,
+  ) async {
     await pumpStoryMap(tester);
-    await showTab(tester, 'Chapter');
+    await showTab(tester, 'Overview');
 
     expect(find.text('What’s new in Chapter 2: The Letter'), findsOne);
     expect(find.text('Mara → Mara Quinn'), findsOne);
@@ -306,13 +308,16 @@ void main() {
     await showPage(tester, 'Entities');
 
     expect(find.widgetWithText(ActionChip, 'Elian'), findsOne);
+
+    await slideToFirstChapter(tester);
+    expect(find.text('What’s new in Chapter 1: Arrival'), findsOne);
   });
 
   testWidgets('events show the temporal context as the model words it', (
     tester,
   ) async {
     await pumpStoryMap(tester);
-    await showTab(tester, 'Chapter');
+    await showTab(tester, 'Overview');
     await showPage(tester, 'Events');
 
     expect(tagsOf(tester, '1. Elian left home years ago.'), [
@@ -328,7 +333,7 @@ void main() {
     expect(find.widgetWithText(FilterChip, 'organization'), findsOne);
     expect(find.widgetWithText(FilterChip, 'location'), findsOne);
 
-    await showTab(tester, 'Chapter');
+    await showTab(tester, 'Overview');
     await slideToFirstChapter(tester);
 
     expect(find.text('New locations and organizations'), findsOne);
@@ -341,7 +346,7 @@ void main() {
 
   testWidgets('facts show their default labels too', (tester) async {
     await pumpStoryMap(tester);
-    await showTab(tester, 'Chapter');
+    await showTab(tester, 'Overview');
     await showPage(tester, 'Relationships');
 
     expect(tagsOf(tester, 'Elian sibling of Mara Quinn'), [
@@ -357,10 +362,10 @@ void main() {
     ]);
   });
 
-  group('chapter pages', () {
+  group('overview pages', () {
     testWidgets('list each kind of fact with its count', (tester) async {
       await pumpStoryMap(tester);
-      await showTab(tester, 'Chapter');
+      await showTab(tester, 'Overview');
 
       for (final label in [
         'Changes 3',
@@ -375,7 +380,7 @@ void main() {
 
     testWidgets('leave out kinds the chapter has none of', (tester) async {
       await pumpStoryMap(tester);
-      await showTab(tester, 'Chapter');
+      await showTab(tester, 'Overview');
       await slideToFirstChapter(tester);
 
       expect(find.textContaining('Changes'), findsNothing);
@@ -384,7 +389,7 @@ void main() {
 
     testWidgets('show one kind of fact at a time', (tester) async {
       await pumpStoryMap(tester);
-      await showTab(tester, 'Chapter');
+      await showTab(tester, 'Overview');
 
       expect(find.text('Mara → Mara Quinn'), findsOne);
       expect(find.text('2. Elian hands Mara a letter.'), findsNothing);
@@ -400,7 +405,7 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
       await pumpStoryMap(tester);
-      await showTab(tester, 'Chapter');
+      await showTab(tester, 'Overview');
       double top(String text) => tester.getTopLeft(find.text(text)).dy;
 
       expect(
@@ -427,7 +432,7 @@ void main() {
 
     testWidgets('mark the current one', (tester) async {
       await pumpStoryMap(tester);
-      await showTab(tester, 'Chapter');
+      await showTab(tester, 'Overview');
       bool isSelected(String label) => tester
           .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, label))
           .selected;
@@ -443,7 +448,7 @@ void main() {
 
     testWidgets('stay on the same kind across chapters', (tester) async {
       await pumpStoryMap(tester);
-      await showTab(tester, 'Chapter');
+      await showTab(tester, 'Overview');
       await showPage(tester, 'Events');
 
       await slideToFirstChapter(tester);
@@ -464,7 +469,7 @@ void main() {
           ),
         ),
       );
-      await showTab(tester, 'Chapter');
+      await showTab(tester, 'Overview');
       await showPage(tester, 'Events');
       expect(find.text('2. Elian hands Mara a letter.'), findsOne);
 
@@ -482,7 +487,7 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
       await pumpStoryMap(tester);
-      await showTab(tester, 'Chapter');
+      await showTab(tester, 'Overview');
       double scrolled() =>
           tester.state<ScrollableState>(factList).position.pixels;
 
@@ -509,7 +514,7 @@ void main() {
           ),
         ),
       );
-      await showTab(tester, 'Chapter');
+      await showTab(tester, 'Overview');
 
       expect(find.text('Nothing new in this chapter.'), findsOne);
       expect(find.byType(ChoiceChip), findsNothing);
@@ -536,7 +541,7 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
       await pumpStoryMap(tester);
-      await showTab(tester, 'Chapter');
+      await showTab(tester, 'Overview');
 
       await tester.tap(guideButton);
       await tester.pumpAndSettle();
@@ -563,7 +568,7 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
       await pumpStoryMap(tester);
-      await showTab(tester, 'Chapter');
+      await showTab(tester, 'Overview');
 
       await tester.tap(guideButton);
       await tester.pumpAndSettle();
@@ -592,7 +597,7 @@ void main() {
 
     testWidgets('stays reachable while the chapter scrolls', (tester) async {
       await pumpStoryMap(tester);
-      await showTab(tester, 'Chapter');
+      await showTab(tester, 'Overview');
 
       await tester.drag(factList, const Offset(0, -300));
       await tester.pumpAndSettle();
@@ -602,14 +607,14 @@ void main() {
       expect(find.byType(LabelGuideView), findsOne);
     });
 
-    testWidgets('only the Chapter tab has the button', (tester) async {
+    testWidgets('only the Overview tab has the button', (tester) async {
       await pumpStoryMap(tester);
       expect(guideButton, findsNothing);
 
       await showTab(tester, 'Characters');
       expect(guideButton, findsNothing);
 
-      await showTab(tester, 'Chapter');
+      await showTab(tester, 'Overview');
       expect(guideButton, findsOne);
     });
   });
@@ -686,7 +691,7 @@ void main() {
       await showTab(tester, 'Characters');
       expect(guideButton, findsNothing);
 
-      await showTab(tester, 'Chapter');
+      await showTab(tester, 'Overview');
       expect(guideButton, findsNothing);
     });
   });
