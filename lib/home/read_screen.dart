@@ -3,6 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../insights/insights_sheet.dart';
+import '../insights/reading_insights.dart';
+import '../insights/reading_nudge.dart';
+import '../insights/reading_time_text.dart';
 import '../library/book.dart';
 import '../library/library_screen.dart';
 import '../notes/add_note_sheet.dart';
@@ -26,14 +30,20 @@ import 'table_of_contents_sheet.dart';
 /// controls around it.
 ///
 /// A broken position store never keeps the book closed. The reader just
-/// starts at the beginning and stops saving.
+/// starts at the beginning and stops saving. The same goes for reading
+/// insights: without them the bottom bar shows progress as a percentage.
 class ReadScreen extends StatefulWidget {
   const ReadScreen({
     super.key,
     required this.book,
     required this.readerService,
     this.openPositionStore = ReadingPositionStore.open,
+    this.openInsights,
+    this.isActive = true,
     this.onPositionChanged,
+    this.onOpenStoryMap,
+    this.onSearchChapter,
+    this.controller,
     this.openSearch,
     this.furthestPosition,
     this.searchController,
@@ -43,14 +53,31 @@ class ReadScreen extends StatefulWidget {
   });
 
   final Book book;
+
+  /// False when another tab covers the reader. Hidden pages are not reading.
+  final bool isActive;
   final EpubReaderService readerService;
 
   /// Opens where [book]'s position is saved and resumed from. If it fails,
   /// the book still opens, at the beginning.
   final Future<ReadingPositionStore> Function() openPositionStore;
 
+  /// Opens the reading statistics and confusion detection for [book]. If it
+  /// is null or fails, there is no time-left label, insights button or nudge.
+  final Future<ReadingInsights> Function()? openInsights;
+
   /// Called with every position the reader moves to, for reading progress.
   final ValueChanged<ReaderPosition>? onPositionChanged;
+
+  /// Shows the Story Map, for the reading nudge to offer.
+  final VoidCallback? onOpenStoryMap;
+
+  /// Opens a search of the current chapter, for the reading nudge to offer.
+  /// The nudge has no search button without it.
+  final VoidCallback? onSearchChapter;
+
+  /// Lets other features move the reader and say why.
+  final ReadScreenController? controller;
 
   /// Opens the search for [book], or null if the book can't be searched, which
   /// disables the Search button.
@@ -85,6 +112,21 @@ class ReadScreen extends StatefulWidget {
   @override
   State<ReadScreen> createState() => _ReadScreenState();
 }
+
+/// How the rest of the app moves the reader while saying why, so the reading
+/// log can tell a search jump from a swipe.
+class ReadScreenController {
+  Future<void> Function(ReaderPosition, NavigationCause)? _jump;
+
+  /// Moves the reader to [position]. Does nothing if no book is open.
+  Future<void> goToPosition(
+    ReaderPosition position, {
+    NavigationCause cause = NavigationCause.searchJump,
+  }) async => _jump?.call(position, cause);
+}
+
+/// What the progress label in the bottom bar shows. Tapping it cycles.
+enum _LabelMode { chapterLeft, bookLeft, percent }
 
 /// Lets other code send the Read tab to a saved note's passage, or to any
 /// passage, such as one an answer in Ask cites.
@@ -133,6 +175,9 @@ class PassageJumpController {
 }
 
 class _ReadScreenState extends State<ReadScreen> {
+  /// How long after asking to move a position still counts as the result.
+  static const _causeWindow = Duration(milliseconds: 1500);
+
   EpubReaderSession? _session;
 
   /// Built once per session: rebuilding it on a page turn would recreate the
@@ -169,12 +214,23 @@ class _ReadScreenState extends State<ReadScreen> {
   bool _jumping = false;
   Timer? _pickTimer;
   ReadingPositionStore? _store;
+  ReadingInsights? _insights;
+  late final AppLifecycleListener _lifecycle;
   ReaderPosition? _position;
 
   /// How far the text of the furthest page reached in this session goes, if
   /// the reader could measure it.
   TextPosition? _furthestPageText;
   Object? _error;
+  _LabelMode _labelMode = _LabelMode.chapterLeft;
+
+  /// Why the reader is about to move, set right before we ask it to. Cleared
+  /// by the position it causes, or by [_causeTimer] if none arrives.
+  NavigationCause? _pendingCause;
+  Timer? _causeTimer;
+
+  /// Whether the next position is the first since the book opened.
+  bool _firstPosition = true;
 
   /// The opened search of the current book, kept so the index is built once.
   Future<PassageSearch>? _searchFuture;
@@ -194,6 +250,9 @@ class _ReadScreenState extends State<ReadScreen> {
   /// Identifies the latest open, so a slow earlier one can tell it was
   /// replaced or the screen was disposed.
   int _generation = 0;
+  bool _appVisible = true;
+  bool _insightsVisible = true;
+  bool _modalVisible = false;
 
   /// How far from the saved progression still counts as having arrived there:
   /// about one page in a long chapter. A reopened page can land a fraction of
@@ -216,6 +275,17 @@ class _ReadScreenState extends State<ReadScreen> {
   @override
   void initState() {
     super.initState();
+    widget.controller?._jump = _jumpTo;
+    _lifecycle = AppLifecycleListener(
+      onHide: () {
+        _appVisible = false;
+        _updateVisibility();
+      },
+      onShow: () {
+        _appVisible = true;
+        _updateVisibility();
+      },
+    );
     widget.searchController?.attach(_openSearchSheet);
     widget.noteJumps?.attach(_showNote);
     widget.noteJumps?.attachPassages(_showPassage);
@@ -227,6 +297,11 @@ class _ReadScreenState extends State<ReadScreen> {
   @override
   void didUpdateWidget(ReadScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _updateVisibility();
+    if (!identical(oldWidget.controller, widget.controller)) {
+      oldWidget.controller?._jump = null;
+      widget.controller?._jump = _jumpTo;
+    }
     if (oldWidget.searchController != widget.searchController) {
       oldWidget.searchController?.detach(_openSearchSheet);
       widget.searchController?.attach(_openSearchSheet);
@@ -253,6 +328,8 @@ class _ReadScreenState extends State<ReadScreen> {
   @override
   void dispose() {
     _generation++;
+    widget.controller?._jump = null;
+    _lifecycle.dispose();
     _pickTimer?.cancel();
     widget.searchController?.detach(_openSearchSheet);
     widget.noteJumps?.detach(_showNote);
@@ -279,27 +356,34 @@ class _ReadScreenState extends State<ReadScreen> {
     _clearPick();
     _stopRestoring();
     _error = null;
+    _firstPosition = true;
     _searchFuture = null;
     _cutoff.value = searchCutoff();
 
     final book = widget.book;
     final sessionFuture = _openSession(book);
     final savedFuture = _loadSavedPosition(book);
+    // Counting the book and replaying its log can take seconds on a phone,
+    // and the text must not wait for statistics. They attach when ready.
+    final insightsFuture = _openInsights(book);
 
     final EpubReaderSession session;
     try {
       session = await sessionFuture;
     } on Object catch (error) {
       debugPrint('Could not open ${book.title}: $error');
+      unawaited(insightsFuture.then(_closeInsights));
       if (mounted && generation == _generation) {
         setState(() => _error = error);
       }
       return;
     }
-    // Never throws, so skipping it above can't leave an unhandled error.
+    // Neither of these throws, so skipping them above can't leave an
+    // unhandled error.
     final (:store, :position) = await savedFuture;
     if (!mounted || generation != _generation) {
       unawaited(_close(session));
+      unawaited(insightsFuture.then(_closeInsights));
       return;
     }
 
@@ -323,7 +407,37 @@ class _ReadScreenState extends State<ReadScreen> {
       );
       _view = session.buildView(initialPosition: position);
     });
+    unawaited(_attachInsights(generation, insightsFuture));
     _drawNoteHighlights();
+  }
+
+  /// Hands the opened insights to the reader, which is already on screen.
+  ///
+  /// Positions that came before are not in the log. The one the reader is on
+  /// is recorded as the open, unless none has arrived yet, in which case the
+  /// first one will be.
+  Future<void> _attachInsights(
+    int generation,
+    Future<ReadingInsights?> future,
+  ) async {
+    final insights = await future;
+    if (insights == null) return;
+    if (!mounted || generation != _generation) {
+      await _closeInsights(insights);
+      return;
+    }
+    setState(() {
+      _insights = insights;
+      _insightsVisible = true;
+      _updateVisibility();
+    });
+    final position = _position;
+    if (_insightsVisible && !_firstPosition && position != null) {
+      _tellInsights(
+        (insights) => insights.recordPosition(position, NavigationCause.open),
+      );
+    }
+    _updateCutoff();
   }
 
   /// Waits for the book's notes, then draws them and redraws them whenever
@@ -450,7 +564,10 @@ class _ReadScreenState extends State<ReadScreen> {
     if (session == null || !mounted) return;
     _stopRestoring();
     _highlightShown = true;
-    await _navigate(() => session.showPassage(target));
+    await _navigate(
+      NavigationCause.searchJump,
+      () => session.showPassage(target),
+    );
   }
 
   /// Shows [target], keeping the reader's place for **Back to your page**.
@@ -476,7 +593,10 @@ class _ReadScreenState extends State<ReadScreen> {
     if (session == null || returnTo == null) return;
     setState(() => _returnTo = null);
     if (_highlightShown) await _clearHighlight(session);
-    await _navigate(() => session.goToPosition(returnTo));
+    await _navigate(
+      NavigationCause.searchJump,
+      () => session.goToPosition(returnTo),
+    );
   }
 
   /// Wraps [EpubReaderService.open] so a synchronous throw is also a failed
@@ -497,9 +617,43 @@ class _ReadScreenState extends State<ReadScreen> {
     }
   }
 
+  Future<ReadingInsights?> _openInsights(Book book) async {
+    final open = widget.openInsights;
+    if (open == null) {
+      return null;
+    }
+    try {
+      return await open();
+    } on Object catch (error) {
+      debugPrint(
+        'Could not open the reading insights of ${book.title}: $error',
+      );
+      return null;
+    }
+  }
+
+  void _updateVisibility() {
+    final visible = _appVisible && widget.isActive && !_modalVisible;
+    if (_insights == null || visible == _insightsVisible) return;
+    _insightsVisible = visible;
+    _tellInsights((insights) {
+      if (visible) {
+        insights.recordShown();
+        final position = _position;
+        if (position != null) {
+          insights.recordPosition(position, NavigationCause.open);
+        }
+      } else {
+        insights.recordHidden();
+      }
+    });
+  }
+
   void _releaseSession() {
     unawaited(_positionSubscription?.cancel());
     _positionSubscription = null;
+    _causeTimer?.cancel();
+    _pendingCause = null;
     unawaited(_pageTextSubscription?.cancel());
     _pageTextSubscription = null;
     unawaited(_pageStartSubscription?.cancel());
@@ -519,6 +673,8 @@ class _ReadScreenState extends State<ReadScreen> {
       if (_highlightShown) unawaited(_clearHighlight(session));
       unawaited(_close(session));
     }
+    unawaited(_closeInsights(_insights));
+    _insights = null;
   }
 
   /// Takes the search highlight off the page. Best effort: the book is about
@@ -540,7 +696,50 @@ class _ReadScreenState extends State<ReadScreen> {
     }
   }
 
+  Future<void> _closeInsights(ReadingInsights? insights) async {
+    try {
+      await insights?.close();
+    } on Object catch (error) {
+      debugPrint('Could not close the reading insights: $error');
+    }
+  }
+
+  /// Runs [action] on the open insights, if any. A failure is only logged:
+  /// statistics never get in the way of reading.
+  void _tellInsights(void Function(ReadingInsights insights) action) {
+    final insights = _insights;
+    if (insights == null) {
+      return;
+    }
+    try {
+      action(insights);
+    } on Object catch (error) {
+      debugPrint('Reading insights failed: $error');
+    }
+  }
+
+  /// Works out why the reader moved. Our own requests are known; a position
+  /// nobody asked for came from a swipe.
+  NavigationCause _takeCause(ReaderPosition position) {
+    if (_firstPosition) {
+      _firstPosition = false;
+      return NavigationCause.open;
+    }
+    final cause = _pendingCause ?? NavigationCause.swipe;
+    // The reader reports a finished section at exactly 1.0, then the start of
+    // the next one, and both come from the same request.
+    if (position.progression < 1) {
+      _pendingCause = null;
+      _causeTimer?.cancel();
+    }
+    return cause;
+  }
+
   void _onPosition(ReaderPosition position) {
+    final cause = _takeCause(position);
+    if (_insightsVisible) {
+      _tellInsights((insights) => insights.recordPosition(position, cause));
+    }
     setState(() {
       _position = position;
       _trackPick(position);
@@ -721,6 +920,64 @@ class _ReadScreenState extends State<ReadScreen> {
     return current;
   }
 
+  /// The section where the next chapter starts, or null in the last one.
+  int? _chapterEndSection(List<TocEntry> entries) {
+    final position = _position;
+    if (position == null) {
+      return null;
+    }
+    int? end;
+    for (final entry in entries) {
+      final section = entry.sectionIndex!;
+      if (section > position.sectionIndex && (end == null || section < end)) {
+        end = section;
+      }
+    }
+    return end;
+  }
+
+  TimeLeft? _timeLeft(List<TocEntry> entries) {
+    final position = _position;
+    final insights = _insights;
+    if (position == null || insights == null) {
+      return null;
+    }
+    try {
+      return insights.timeLeft(
+        position,
+        chapterEndSection: _chapterEndSection(entries),
+      );
+    } on Object catch (error) {
+      debugPrint('Could not estimate the time left: $error');
+      return null;
+    }
+  }
+
+  Future<void> _openInsightsSheet(EpubReaderSession session) async {
+    final insights = _insights;
+    if (insights == null) {
+      return;
+    }
+    await _withReaderCovered(
+      () => showInsightsSheet(
+        context,
+        insights: insights,
+        timeLeft: _timeLeft(_usableEntries(session)),
+      ),
+    );
+  }
+
+  Future<T> _withReaderCovered<T>(Future<T> Function() show) async {
+    _modalVisible = true;
+    _updateVisibility();
+    try {
+      return await show();
+    } finally {
+      _modalVisible = false;
+      if (mounted) _updateVisibility();
+    }
+  }
+
   void _clearPick() {
     _picked = null;
     _pickedAt = null;
@@ -749,10 +1006,12 @@ class _ReadScreenState extends State<ReadScreen> {
 
   Future<void> _openContents(EpubReaderSession session) async {
     final entries = _usableEntries(session);
-    final chosen = await showTableOfContentsSheet(
-      context,
-      entries: entries,
-      current: _currentEntry(entries),
+    final chosen = await _withReaderCovered(
+      () => showTableOfContentsSheet(
+        context,
+        entries: entries,
+        current: _currentEntry(entries),
+      ),
     );
     if (chosen == null || !mounted || !identical(session, _session)) {
       return;
@@ -764,19 +1023,35 @@ class _ReadScreenState extends State<ReadScreen> {
       _picked = chosen;
       _jumping = true;
     });
-    await _navigate(() => session.goTo(chosen));
+    await _navigate(NavigationCause.tocJump, () => session.goTo(chosen));
     if (mounted && identical(chosen, _picked)) {
       _jumping = false;
       _waitForPick();
     }
   }
 
+  /// Moves the reader to [position] for the rest of the app, saying why.
+  Future<void> _jumpTo(ReaderPosition position, NavigationCause cause) {
+    final session = _session;
+    if (session == null) {
+      return Future.value();
+    }
+    _stopRestoring();
+    return _navigate(cause, () => session.goToPosition(position));
+  }
+
   /// Recomputes what search may look at, from the reader's position, the
-  /// furthest one they reached, and the furthest page start in the text.
+  /// furthest one they reached (from the reading record when the host gives
+  /// none), and the furthest page start in the text.
   void _updateCutoff() {
+    final hosted = widget.furthestPosition?.call();
+    final recorded = _insights?.furthest;
     _cutoff.value = pageCutoff(
-      current: _position,
-      furthest: widget.furthestPosition?.call(),
+      // With a reading record, the furthest page really read is known, and a
+      // jump ahead must not open the chapters it skipped, so where the reader
+      // is now only counts when nothing says how far they have read.
+      current: hosted == null && recorded != null ? null : _position,
+      furthest: hosted ?? recorded,
       furthestPageText: _furthestPageText,
     );
   }
@@ -804,33 +1079,55 @@ class _ReadScreenState extends State<ReadScreen> {
     final session = _session;
     if (session == null || widget.openSearch == null || !mounted) return;
     _updateCutoff();
-    final hit = await showSearchSheet(
-      context,
-      openSearch: _search,
-      cutoff: _cutoff,
-      entries: _usableEntries(session),
-      initialQuery: initialQuery,
+    final hit = await _withReaderCovered(
+      () => showSearchSheet(
+        context,
+        openSearch: _search,
+        cutoff: _cutoff,
+        entries: _usableEntries(session),
+        initialQuery: initialQuery,
+      ),
     );
     if (hit == null || !mounted || !identical(session, _session)) return;
     _stopRestoring();
     _highlightShown = true;
-    await _navigate(() => session.showPassage(hit.target));
+    await _navigate(
+      NavigationCause.searchJump,
+      () => session.showPassage(hit.target),
+    );
   }
 
   /// Turns the page. Like any move the reader starts, it ends the wait for
   /// the saved position.
-  Future<void> _turnPage(Future<void> Function() turn) {
+  Future<void> _turnPage(NavigationCause cause, Future<void> Function() turn) {
     _stopRestoring();
-    return _navigate(turn);
+    return _navigate(cause, turn);
   }
 
-  Future<void> _navigate(Future<void> Function() go) async {
+  /// Moves the reader, noting [cause] for the position that follows.
+  Future<void> _navigate(
+    NavigationCause cause,
+    Future<void> Function() go,
+  ) async {
+    _pendingCause = cause;
+    _causeTimer?.cancel();
+    _causeTimer = Timer(_causeWindow, () => _pendingCause = null);
     try {
       await go();
     } on Object catch (error) {
       debugPrint('Could not move in the book: $error');
+      _pendingCause = null;
+      _causeTimer?.cancel();
     }
   }
+
+  void _cycleLabel() => setState(() {
+    _labelMode = switch (_labelMode) {
+      _LabelMode.chapterLeft => _LabelMode.bookLeft,
+      _LabelMode.bookLeft => _LabelMode.percent,
+      _LabelMode.percent => _LabelMode.chapterLeft,
+    };
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -855,12 +1152,33 @@ class _ReadScreenState extends State<ReadScreen> {
   }
 
   Widget _buildReader(EpubReaderSession session, Widget view) {
+    final insights = _insights;
+    // Insights change on their own (a new estimate, a nudge), not only when
+    // the reader moves. The builder is there even before they attach, so
+    // that attaching doesn't rebuild the reader's platform view.
+    return ListenableBuilder(
+      listenable: insights ?? const _NeverChanges(),
+      builder: (context, _) => _buildReaderBody(session, view, insights),
+    );
+  }
+
+  Widget _buildReaderBody(
+    EpubReaderSession session,
+    Widget view,
+    ReadingInsights? insights,
+  ) {
     final entries = _usableEntries(session);
     final title = _currentEntry(entries)?.title ?? widget.book.title;
+    final nudge = insights != null && insights.hintsEnabled
+        ? insights.nudge
+        : null;
     return Column(
       children: [
         _ChapterBar(
           title: title,
+          onOpenInsights: insights == null
+              ? null
+              : () => unawaited(_openInsightsSheet(session)),
           onOpenContents: entries.isEmpty
               ? null
               : () => unawaited(_openContents(session)),
@@ -889,14 +1207,53 @@ class _ReadScreenState extends State<ReadScreen> {
             ],
           ),
         ),
+        // Always in the column, so the reader view keeps its place in it.
+        AnimatedSize(
+          duration: const Duration(milliseconds: 200),
+          alignment: Alignment.topCenter,
+          child: nudge == null
+              ? const SizedBox(width: double.infinity)
+              : ReadingNudge(
+                  key: ObjectKey(nudge),
+                  signal: nudge,
+                  onDismiss: () =>
+                      _tellInsights((insights) => insights.dismissNudge()),
+                  onAccept: () =>
+                      _tellInsights((insights) => insights.acceptNudge()),
+                  onOpenStoryMap: widget.onOpenStoryMap,
+                  onSearchChapter:
+                      widget.onSearchChapter ??
+                      (widget.openSearch == null
+                          ? null
+                          : () => unawaited(_openSearchSheet(''))),
+                ),
+        ),
         _PageControls(
           progress: _position?.totalProgression,
-          onPrevious: () => unawaited(_turnPage(session.goBackward)),
-          onNext: () => unawaited(_turnPage(session.goForward)),
+          timeLeft: _timeLeft(entries),
+          mode: _labelMode,
+          onCycleLabel: _cycleLabel,
+          onPrevious: () => unawaited(
+            _turnPage(NavigationCause.pageBackward, session.goBackward),
+          ),
+          onNext: () => unawaited(
+            _turnPage(NavigationCause.pageForward, session.goForward),
+          ),
         ),
       ],
     );
   }
+}
+
+/// Stands in for the insights while they are still opening.
+class _NeverChanges implements Listenable {
+  const _NeverChanges();
+
+  @override
+  void addListener(VoidCallback listener) {}
+
+  @override
+  void removeListener(VoidCallback listener) {}
 }
 
 /// After a jump to a passage, takes the reader back to their page, or lets
@@ -950,15 +1307,19 @@ class _BackToPage extends StatelessWidget {
   }
 }
 
-/// The chapter being read, with the button that opens the contents.
+/// The chapter being read, with the buttons for its insights and contents.
 class _ChapterBar extends StatelessWidget {
   const _ChapterBar({
     required this.title,
+    required this.onOpenInsights,
     required this.onOpenContents,
     required this.onOpenSearch,
   });
 
   final String title;
+
+  /// Null while there are no reading insights, which hides the button.
+  final VoidCallback? onOpenInsights;
   final VoidCallback? onOpenContents;
   final VoidCallback? onOpenSearch;
 
@@ -981,6 +1342,14 @@ class _ChapterBar extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
+            // More buttons, such as search, belong in this row too.
+            if (onOpenInsights != null)
+              IconButton(
+                icon: const Icon(Icons.insights),
+                tooltip: 'Reading insights',
+                color: LoremarkColors.muted,
+                onPressed: onOpenInsights,
+              ),
             IconButton(
               icon: const Icon(Icons.search),
               tooltip: 'Search',
@@ -1000,28 +1369,61 @@ class _ChapterBar extends StatelessWidget {
   }
 }
 
-/// Previous and next page around how far through the book the reader is.
+/// Previous and next page around how far through the chapter or book the
+/// reader is.
 class _PageControls extends StatelessWidget {
   const _PageControls({
     required this.progress,
+    required this.timeLeft,
+    required this.mode,
+    required this.onCycleLabel,
     required this.onPrevious,
     required this.onNext,
   });
 
   /// How far into the whole book, if the renderer knows.
   final double? progress;
+
+  /// Time left at the reader's pace, or null until it is known, when the
+  /// label falls back to [progress].
+  final TimeLeft? timeLeft;
+  final _LabelMode mode;
+  final VoidCallback onCycleLabel;
   final VoidCallback onPrevious;
   final VoidCallback onNext;
 
   /// Never shows 100% before the very end.
-  String _label(double fraction) {
+  String _percent(double fraction) {
     final percent = (fraction * 100).round();
     return '${fraction < 1 && percent == 100 ? 99 : percent}%';
   }
 
+  /// The label, and the same as a full sentence for screen readers.
+  (String, String) _label() {
+    final timeLeft = this.timeLeft;
+    if (timeLeft != null && mode != _LabelMode.percent) {
+      final inChapter = mode == _LabelMode.chapterLeft;
+      final time = inChapter ? timeLeft.chapter : timeLeft.book;
+      final where = inChapter ? 'chapter' : 'book';
+      final spoken = spokenReadingTime(time);
+      return (
+        time < const Duration(minutes: 1)
+            ? 'Less than a minute left'
+            : '${formatReadingTime(time)} left in $where',
+        '${spoken[0].toUpperCase()}${spoken.substring(1)} left in the $where',
+      );
+    }
+    final progress = this.progress;
+    if (progress == null) {
+      return ('', '');
+    }
+    final text = _percent(progress);
+    return (text, '$text through the book');
+  }
+
   @override
   Widget build(BuildContext context) {
-    final progress = this.progress;
+    final (text, spoken) = _label();
     return DecoratedBox(
       decoration: const BoxDecoration(
         border: Border(top: BorderSide(color: LoremarkColors.line)),
@@ -1035,11 +1437,24 @@ class _PageControls extends StatelessWidget {
             onPressed: onPrevious,
           ),
           Expanded(
-            child: Text(
-              progress == null ? '' : _label(progress),
-              key: const ValueKey('progress-label'),
-              textAlign: TextAlign.center,
-              style: kicker(color: LoremarkColors.muted),
+            child: Semantics(
+              label: spoken,
+              button: timeLeft != null,
+              excludeSemantics: true,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                // There is nothing to cycle through until minutes are known.
+                onTap: timeLeft == null ? null : onCycleLabel,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  child: Text(
+                    text,
+                    key: const ValueKey('progress-label'),
+                    textAlign: TextAlign.center,
+                    style: kicker(color: LoremarkColors.muted),
+                  ),
+                ),
+              ),
             ),
           ),
           IconButton(
