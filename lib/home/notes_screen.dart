@@ -8,13 +8,21 @@ import '../notes/note_list.dart';
 /// The same notes are shared with the Read tab, so a note made there shows up here right away.
 /// (See Use Case #3, step 6)
 class NotesScreen extends StatelessWidget {
-  const NotesScreen({super.key, required this.notes, this.onOpenNote});
+  const NotesScreen({
+    super.key,
+    required this.notes,
+    this.onOpenNote,
+    this.focusController,
+  });
 
   /// These are the loaded notes of the book. (See [AnnotationService.openForBook])
   final Future<AnnotationService> notes;
 
   /// This is called when the reader taps a note. (Optional)
   final ValueChanged<Note>? onOpenNote;
+
+  /// This lets other code scroll to one note. (Optional)
+  final NoteFocusController? focusController;
 
   @override
   Widget build(BuildContext context) {
@@ -30,7 +38,11 @@ class NotesScreen extends StatelessWidget {
         if (service == null) {
           return const Center(child: Text('Loading notes…'));
         }
-        return NoteList(service: service, onOpenNote: onOpenNote);
+        return NoteList(
+          service: service,
+          onOpenNote: onOpenNote,
+          focusController: focusController,
+        );
       },
     );
   }
