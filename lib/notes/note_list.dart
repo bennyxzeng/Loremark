@@ -159,35 +159,35 @@ class _NoteListState extends State<NoteList> {
                 setState(() => _type = selection.single),
           ),
           const SizedBox(height: 8),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                DropdownButton<String?>(
-                  value: _chapter,
-                  underline: const SizedBox.shrink(),
-                  items: [
-                    const DropdownMenuItem(child: Text('All chapters')),
-                    for (final chapter in chapters)
-                      DropdownMenuItem(value: chapter, child: Text(chapter)),
-                  ],
-                  onChanged: (chapter) => setState(() => _chapter = chapter),
+          // The chapter picker and the color chips wrap onto a second line
+          // instead of scrolling sideways. A sideways row hid the last chip
+          // (Pink) on a narrow phone with nothing to show it was there.
+          // (See issue #123)
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              DropdownButton<String?>(
+                value: _chapter,
+                underline: const SizedBox.shrink(),
+                items: [
+                  const DropdownMenuItem(child: Text('All chapters')),
+                  for (final chapter in chapters)
+                    DropdownMenuItem(value: chapter, child: Text(chapter)),
+                ],
+                onChanged: (chapter) => setState(() => _chapter = chapter),
+              ),
+              // Tapping a color chip again turns that color filter off.
+              for (final color in HighlightColor.values)
+                FilterChip(
+                  label: Text(color.label),
+                  avatar: CircleAvatar(backgroundColor: color.swatch),
+                  selected: _color == color,
+                  onSelected: (selected) =>
+                      setState(() => _color = selected ? color : null),
                 ),
-                const SizedBox(width: 8),
-                // Tapping a color chip again turns that color filter off.
-                for (final color in HighlightColor.values)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 6),
-                    child: FilterChip(
-                      label: Text(color.label),
-                      avatar: CircleAvatar(backgroundColor: color.swatch),
-                      selected: _color == color,
-                      onSelected: (selected) =>
-                          setState(() => _color = selected ? color : null),
-                    ),
-                  ),
-              ],
-            ),
+            ],
           ),
         ],
       ),
@@ -204,6 +204,8 @@ class _NoteListState extends State<NoteList> {
 ///   title and a "Remove highlight" button that removes it right away, since
 ///   nothing written is lost. A note with text gets a "Delete note" button
 ///   that asks the reader to confirm first.
+///   A highlight can also be saved with no text, which only changes its color.
+///   (See issue #135)
 Future<void> editNoteWithSheet(
   BuildContext context,
   AnnotationService service,
@@ -216,13 +218,18 @@ Future<void> editNoteWithSheet(
     initialColor: note.color,
     title: note.isHighlightOnly ? 'Add note' : 'Edit note',
     removeLabel: note.isHighlightOnly ? 'Remove highlight' : 'Delete note',
+    allowEmpty: note.isHighlightOnly,
   );
   if (result == null || !context.mounted) return;
   switch (result) {
     case AddNoteResult(:final body, :final color):
       await saveOrReport(
         context,
-        () => service.editNote(note.id, body: body, color: color),
+        // An empty body only comes from a highlight, so it stays a highlight
+        // and only its color is saved. editNote rejects an empty body.
+        () => body.isEmpty
+            ? service.editNote(note.id, color: color)
+            : service.editNote(note.id, body: body, color: color),
       );
     case RemoveNoteResult():
       if (!note.isHighlightOnly) {
@@ -308,6 +315,8 @@ class _NoteCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      _KindLabel(isNote: !note.isHighlightOnly),
+                      const SizedBox(height: 4),
                       Text(
                         '“${note.selectedText}”',
                         style: const TextStyle(fontStyle: FontStyle.italic),
@@ -336,6 +345,85 @@ class _NoteCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// This is the small "Note" or "Highlight" label at the top of a card, so the
+/// two are easy to tell apart in a long list. (See issue #124)
+/// The page marks notes the same way, with an underline under their highlight.
+class _KindLabel extends StatelessWidget {
+  /// This is true for a note with text, and false for a highlight.
+  final bool isNote;
+
+  const _KindLabel({required this.isNote});
+
+  @override
+  Widget build(BuildContext context) {
+    final style = Theme.of(context).textTheme.labelSmall;
+    return Row(
+      key: ValueKey(isNote ? 'note-kind-note' : 'note-kind-highlight'),
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          isNote ? Icons.sticky_note_2_outlined : Icons.border_color_outlined,
+          size: 14,
+          color: style?.color,
+        ),
+        const SizedBox(width: 4),
+        Text(isNote ? 'Note' : 'Highlight', style: style),
+      ],
+    );
+  }
+}
+
+/// This asks the reader which note to open when they tap words that have more
+/// than one note or highlight on them. The page only reports the one drawn on
+/// top, so without this the others could not be reached from the Read tab.
+/// (See issue #112)
+/// Parameters:
+/// - notes: The notes on the tapped words, in reading order.
+/// Returns: The note the reader picked, or null if they closed the list.
+Future<Note?> chooseOverlappingNote(BuildContext context, List<Note> notes) {
+  return showModalBottomSheet<Note>(
+    context: context,
+    showDragHandle: true,
+    builder: (context) => SafeArea(
+      child: ListView(
+        shrinkWrap: true,
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              '${notes.length} notes on these words',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+          ),
+          for (final note in notes)
+            Card(
+              clipBehavior: Clip.antiAlias,
+              child: ListTile(
+                leading: CircleAvatar(
+                  radius: 10,
+                  backgroundColor: note.color.swatch,
+                ),
+                title: Text(
+                  note.isHighlightOnly ? 'Highlight' : note.body,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                subtitle: Text(
+                  '“${note.selectedText}”',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontStyle: FontStyle.italic),
+                ),
+                onTap: () => Navigator.of(context).pop(note),
+              ),
+            ),
+        ],
+      ),
+    ),
+  );
 }
 
 /// This shows a short centered message, like when there are no notes yet.

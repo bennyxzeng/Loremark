@@ -237,6 +237,32 @@ class AnnotationService extends ChangeNotifier {
     await _save([..._notes]..removeAt(index));
   }
 
+  /// This finds every note drawn over the same words as the given note,
+  /// including the note itself, in reading order.
+  /// The reader view only reports the top highlight when two of them are drawn
+  /// on the same words, so the Read tab uses this to let the reader pick one.
+  /// (See issue #112)
+  /// Two notes overlap when they are in the same section and each one's
+  /// selected text is found in the other's passage (the selected text with the
+  /// text before and after it). Ex. 'the lamp' and 'She lit the' overlap when
+  /// both were selected in "She lit the lamp".
+  /// Parameters:
+  /// - note: The note the reader tapped.
+  /// Returns: The overlapping notes, or just [note] if nothing overlaps it.
+  List<Note> notesOverlapping(Note note) {
+    String passageOf(Note note) =>
+        '${note.textBefore}${note.selectedText}${note.textAfter}';
+    final passage = passageOf(note);
+    return [
+      for (final other in _notes)
+        if (other.id == note.id ||
+            (other.anchor.sectionIndex == note.anchor.sectionIndex &&
+                passage.contains(other.selectedText) &&
+                passageOf(other).contains(note.selectedText)))
+          other,
+    ];
+  }
+
   /// This groups the notes by chapter for the Notes tab, after applying the filter.
   /// Chapters are in reading order, and so are the notes inside each chapter.
   /// Parameters:
@@ -299,7 +325,15 @@ class AnnotationService extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Sorting is stable, so notes at the same spot stay in the order they were made.
-  static List<Note> _sorted(List<Note> notes) =>
-      [...notes]..sort((a, b) => a.anchor.compareTo(b.anchor));
+  // Notes at the same spot are ordered by when they were made, then by id.
+  // Dart's sort does not promise to keep equal items in order, so without this
+  // two notes on the same words could swap places in the Notes tab and in the
+  // order they are drawn on the page. (See issue #112)
+  static List<Note> _sorted(List<Note> notes) => [...notes]
+    ..sort((a, b) {
+      final byPlace = a.anchor.compareTo(b.anchor);
+      if (byPlace != 0) return byPlace;
+      final byTime = a.createdAt.compareTo(b.createdAt);
+      return byTime != 0 ? byTime : a.id.compareTo(b.id);
+    });
 }

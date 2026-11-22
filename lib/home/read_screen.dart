@@ -187,6 +187,16 @@ class _ReadScreenState extends State<ReadScreen> {
   /// there is one.
   bool _highlightShown = false;
 
+  /// The note the search highlight is showing, as it was when the reader
+  /// jumped to it from the Notes tab, or null if it shows something else.
+  ///
+  /// The search highlight stays until the next jump or until the book closes,
+  /// and it is drawn again on every page. So when this note is deleted or
+  /// changed, the highlight is cleared too. Otherwise a deleted note's passage
+  /// stayed highlighted, and tapping it did nothing, until the app restarted
+  /// (issue #115).
+  Note? _jumpedNote;
+
   /// Where the reader was before a [ReadScreen.passageJumps] jump, while
   /// **Back to your page** is offered. A second jump keeps the first place.
   ReaderPosition? _returnTo;
@@ -351,16 +361,21 @@ class _ReadScreenState extends State<ReadScreen> {
 
   /// Draws every saved note and highlight on the page, replacing the ones
   /// drawn before. Best effort: the book reads fine without them.
+  ///
+  /// A note with text also gets an underline, so it can be told apart from a
+  /// plain highlight (issue #124).
   void _drawNoteHighlights() {
     final session = _session;
     final notes = _notes;
     if (session == null || notes == null) return;
+    _clearJumpIfNoteChanged(session, notes);
     final highlights = [
       for (final note in notes.notes)
         NoteHighlight(
           id: note.id,
           target: _passageOf(note),
           color: note.color.pageTint,
+          markColor: note.isHighlightOnly ? null : note.color.markTint,
         ),
     ];
     unawaited(
@@ -368,6 +383,20 @@ class _ReadScreenState extends State<ReadScreen> {
         debugPrint('Could not draw the notes: $error');
       }),
     );
+  }
+
+  /// Clears the search highlight when it shows a note that was just deleted
+  /// or changed. See [_jumpedNote] (issue #115).
+  void _clearJumpIfNoteChanged(
+    EpubReaderSession session,
+    AnnotationService notes,
+  ) {
+    final jumped = _jumpedNote;
+    if (jumped == null) return;
+    final now = notes.notes.where((note) => note.id == jumped.id).firstOrNull;
+    if (now == jumped) return;
+    _jumpedNote = null;
+    if (_highlightShown) unawaited(_clearHighlight(session));
   }
 
   PassageTarget _passageOf(Note note) => PassageTarget(
@@ -433,23 +462,37 @@ class _ReadScreenState extends State<ReadScreen> {
 
   /// Opens the note behind the highlight the reader tapped, to edit or remove
   /// it. A removed note is taken off the page by [_drawNoteHighlights].
+  ///
+  /// The page only reports the highlight drawn on top, so when other notes
+  /// are on the same words the reader picks which one to open first
+  /// (issue #112).
   Future<void> _onHighlightTap(String id) async {
     final notes = _notes;
     if (notes == null || !mounted) return;
-    final note = notes.notes.where((note) => note.id == id).firstOrNull;
-    if (note == null) return;
+    final tapped = notes.notes.where((note) => note.id == id).firstOrNull;
+    if (tapped == null) return;
+    final overlapping = notes.notesOverlapping(tapped);
+    final note = overlapping.length > 1
+        ? await chooseOverlappingNote(context, overlapping)
+        : tapped;
+    if (note == null || !mounted) return;
     await editNoteWithSheet(context, notes, note);
   }
 
-  /// Jumps to [note]'s passage and highlights it, as a search hit is.
-  Future<void> _showNote(Note note) => _showPassage(_passageOf(note));
+  /// Jumps to [note]'s passage and highlights it, as a search hit is, and
+  /// remembers the note so the highlight goes if the note does (issue #115).
+  Future<void> _showNote(Note note) =>
+      _showPassage(_passageOf(note), note: note);
 
-  /// Jumps to [target] and highlights it.
-  Future<void> _showPassage(PassageTarget target) async {
+  /// Jumps to [target] and highlights it. [note] is the note it is the
+  /// passage of, if any (see [_jumpedNote]).
+  Future<void> _showPassage(PassageTarget target, {Note? note}) async {
     final session = _session;
     if (session == null || !mounted) return;
     _stopRestoring();
     _highlightShown = true;
+    // Replaces whatever was highlighted before.
+    _jumpedNote = note;
     await _navigate(() => session.showPassage(target));
   }
 
@@ -525,6 +568,7 @@ class _ReadScreenState extends State<ReadScreen> {
   /// to close anyway.
   Future<void> _clearHighlight(EpubReaderSession session) async {
     _highlightShown = false;
+    _jumpedNote = null;
     try {
       await session.clearPassageHighlight();
     } on Object catch (error) {
@@ -814,6 +858,8 @@ class _ReadScreenState extends State<ReadScreen> {
     if (hit == null || !mounted || !identical(session, _session)) return;
     _stopRestoring();
     _highlightShown = true;
+    // The search hit replaces a note's highlight (see [_jumpedNote]).
+    _jumpedNote = null;
     await _navigate(() => session.showPassage(hit.target));
   }
 

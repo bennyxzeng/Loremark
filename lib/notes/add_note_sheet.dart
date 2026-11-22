@@ -36,8 +36,12 @@ final class RemoveNoteResult extends NoteSheetResult {
 /// - removeLabel: The label of a button next to "Save note" that removes the
 ///   note being edited. No button is shown when it is null, as when adding a
 ///   new note. (Optional) (Ex. 'Remove highlight' or 'Delete note')
+/// - allowEmpty: Whether the sheet can be saved with no text. Only true when
+///   editing a highlight, so its color can be changed without writing a note.
+///   The button then says "Save" instead of "Save note". (Optional) (See issue #135)
 /// Returns: The typed note and color, a [RemoveNoteResult] if the reader tapped
-/// the remove button, or null if the reader closed the sheet.
+/// the remove button, or null if the reader closed the sheet. With
+/// [allowEmpty], the body of the [AddNoteResult] can be empty.
 Future<NoteSheetResult?> showAddNoteSheet(
   BuildContext context, {
   required String selectedText,
@@ -45,6 +49,7 @@ Future<NoteSheetResult?> showAddNoteSheet(
   HighlightColor initialColor = HighlightColor.yellow,
   String title = 'Add note',
   String? removeLabel,
+  bool allowEmpty = false,
 }) {
   return showModalBottomSheet<NoteSheetResult>(
     context: context,
@@ -56,6 +61,7 @@ Future<NoteSheetResult?> showAddNoteSheet(
       initialColor: initialColor,
       title: title,
       removeLabel: removeLabel,
+      allowEmpty: allowEmpty,
     ),
   );
 }
@@ -66,6 +72,7 @@ class _AddNoteSheet extends StatefulWidget {
   final HighlightColor initialColor;
   final String title;
   final String? removeLabel;
+  final bool allowEmpty;
 
   const _AddNoteSheet({
     required this.selectedText,
@@ -73,6 +80,7 @@ class _AddNoteSheet extends StatefulWidget {
     required this.initialColor,
     required this.title,
     required this.removeLabel,
+    required this.allowEmpty,
   });
 
   @override
@@ -93,12 +101,14 @@ class _AddNoteSheetState extends State<_AddNoteSheet> {
     super.dispose();
   }
 
-  // This is called when the reader taps "Save note".
+  // This is called when the reader taps "Save note" (or "Save" for a highlight).
   // If the note is empty, the sheet stays open and tells the reader to type something.
   // (See Use Case #3, exception 4a)
+  // A highlight being edited can be saved empty, which keeps it a highlight and
+  // only saves the color. (See issue #135)
   void _save() {
     final body = _bodyController.text.trim();
-    if (body.isEmpty) {
+    if (body.isEmpty && !widget.allowEmpty) {
       setState(() {
         _errorText = 'Your note is empty. Type something to save it.';
       });
@@ -112,9 +122,10 @@ class _AddNoteSheetState extends State<_AddNoteSheet> {
     final theme = Theme.of(context);
     final textTheme = theme.textTheme;
     final removeLabel = widget.removeLabel;
+    // "Save" when editing a highlight, since saving it may not make a note.
     final saveButton = FilledButton(
       onPressed: _save,
-      child: const Text('Save note'),
+      child: Text(widget.allowEmpty ? 'Save' : 'Save note'),
     );
 
     return Padding(

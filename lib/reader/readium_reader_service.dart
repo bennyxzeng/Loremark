@@ -65,10 +65,13 @@ class ReadiumReaderService implements EpubReaderService {
       await _current?._release();
       final readium = FlutterReadium();
       // Added to every chapter the book loads, so registered first. Without
-      // it search still works, one finished chapter file at a time.
+      // the page script search still works, one finished chapter file at a
+      // time. Without the selection script, the selection just stays until
+      // the reader taps the page.
       try {
         await readium.setJavaScriptInjections(const [
           InjectionAsset(assetPath: pageEndScriptAsset),
+          InjectionAsset(assetPath: noteSelectionScriptAsset),
         ]);
       } on Object catch (error) {
         debugPrint('Could not add the page script: $error');
@@ -105,7 +108,12 @@ class ReadiumReaderService implements EpubReaderService {
 /// The script that reports where each page ends: assets/reader/page_end.js.
 const pageEndScriptAsset = 'assets/reader/page_end.js';
 
-/// Makes the web view serve [pageEndScriptAsset].
+/// The script that clears the text selection once a note or highlight made
+/// from it is drawn, and when the reader leaves the page: issues #99 and #91,
+/// assets/reader/note_selection.js.
+const noteSelectionScriptAsset = 'assets/reader/note_selection.js';
+
+/// Makes the web view serve [pageEndScriptAsset] and [noteSelectionScriptAsset].
 ///
 /// The plugin only serves its own assets and the fonts an app declares, so
 /// without this the page asks for the script and gets an error page. The
@@ -115,6 +123,11 @@ final _servedScript = [
   ReaderFontFamily(
     name: 'loremark-page-script',
     faces: const [ReaderFontFace(asset: pageEndScriptAsset)],
+  ),
+  // Its own family, so the two "fonts" never share a name, weight and style.
+  ReaderFontFamily(
+    name: 'loremark-selection-script',
+    faces: const [ReaderFontFace(asset: noteSelectionScriptAsset)],
   ),
 ];
 
@@ -250,7 +263,8 @@ class _ReadiumSession implements EpubReaderSession {
 
   void _onDecorationInteraction(DecorationInteractionEvent event) {
     if (event.group != noteHighlightGroup || _closed) return;
-    _highlightTaps.add(event.decorationId);
+    // A tap on a note's underline opens the note, like a tap on its fill.
+    _highlightTaps.add(noteIdOfDecoration(event.decorationId));
   }
 
   int? _indexOf(String href) => spineIndexOf(_spine, href);
@@ -812,8 +826,24 @@ PassageSelection? passageSelectionFrom(
 /// [passageHighlightGroup] so search and notes never clear each other.
 const noteHighlightGroup = 'loremark-notes';
 
+/// Added to a note's id to name its underline decoration (issue #124).
+/// Decoration ids must be unique in a group, so the fill and the underline of
+/// one note can't share the note's id. See [noteIdOfDecoration].
+const noteMarkSuffix = '#mark';
+
+/// The note a decoration of [noteHighlightGroup] belongs to: [decorationId]
+/// itself for a fill, or without [noteMarkSuffix] for a note's underline.
+String noteIdOfDecoration(String decorationId) =>
+    decorationId.endsWith(noteMarkSuffix)
+    ? decorationId.substring(0, decorationId.length - noteMarkSuffix.length)
+    : decorationId;
+
 /// The decorations that draw [highlights], each at its text quote. A highlight
 /// whose section isn't in [readingOrder] is left out.
+///
+/// A highlight with a [NoteHighlight.markColor] also gets an underline in that
+/// color, on the same words, so a note with text stands out from a plain
+/// highlight (issue #124).
 ///
 /// Every style has a tint, which Android needs (see [passageHighlightStyle]).
 List<ReaderDecoration> noteDecorations(
@@ -823,7 +853,7 @@ List<ReaderDecoration> noteDecorations(
 ) => [
   for (final highlight in highlights)
     if (locatorForPassage(highlight.target, readingOrder, indexOf)
-        case final locator?)
+        case final locator?) ...[
       ReaderDecoration(
         id: highlight.id,
         locator: locator,
@@ -832,6 +862,16 @@ List<ReaderDecoration> noteDecorations(
           tint: highlight.color,
         ),
       ),
+      if (highlight.markColor case final mark?)
+        ReaderDecoration(
+          id: '${highlight.id}$noteMarkSuffix',
+          locator: locator,
+          style: ReaderDecorationStyle(
+            style: DecorationStyle.underline,
+            tint: mark,
+          ),
+        ),
+    ],
 ];
 
 /// The entry of [entries] the plugin's `tocHref` ("path#fragment") names, or

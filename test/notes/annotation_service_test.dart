@@ -358,4 +358,69 @@ void main() {
       );
     });
   });
+
+  // Issue #112: two notes on the same words are drawn on top of each other,
+  // so the reader can only tap one of them.
+  group('notes at the same spot', () {
+    Future<Note> highlightAt(
+      String selectedText, {
+      String before = '',
+      String after = '',
+      NoteAnchor anchor = const NoteAnchor(7, 0.25),
+    }) => service.addHighlight(
+      anchor: anchor,
+      chapterLabel: 'Chapter 8',
+      selectedText: selectedText,
+      textBefore: before,
+      textAfter: after,
+    );
+
+    test('keep the order they were made in, whatever is edited', () async {
+      final first = await highlightAt('the lamp');
+      now = now.add(const Duration(minutes: 1));
+      final second = await highlightAt('the lamp');
+
+      now = now.add(const Duration(minutes: 1));
+      await service.editNote(first.id, color: HighlightColor.blue);
+
+      expect(
+        [for (final note in service.notes) note.id],
+        [first.id, second.id],
+      );
+    });
+
+    test('the same words are found as overlapping', () async {
+      final first = await highlightAt('the lamp', before: 'She lit ');
+      final second = await highlightAt('the lamp', before: 'She lit ');
+
+      expect(service.notesOverlapping(first), [first, second]);
+      expect(service.notesOverlapping(second), [first, second]);
+    });
+
+    test('words that partly overlap are found too', () async {
+      final left = await highlightAt('She lit the', after: ' lamp and waited');
+      final right = await highlightAt(
+        'the lamp',
+        before: 'She lit ',
+        after: ' and waited',
+      );
+
+      expect(service.notesOverlapping(left), [left, right]);
+      expect(service.notesOverlapping(right), [left, right]);
+    });
+
+    test('the same words in another section are not', () async {
+      final here = await highlightAt('the lamp');
+      await highlightAt('the lamp', anchor: const NoteAnchor(9, 0.25));
+
+      expect(service.notesOverlapping(here), [here]);
+    });
+
+    test('different words in the same section are not', () async {
+      final lamp = await highlightAt('the lamp', after: ' and waited');
+      await highlightAt('the door', before: 'Then she opened ');
+
+      expect(service.notesOverlapping(lamp), [lamp]);
+    });
+  });
 }

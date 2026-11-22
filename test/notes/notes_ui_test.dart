@@ -148,6 +148,43 @@ void main() {
       expect(find.text('Delete note'), findsOneWidget);
       expect(find.text('Remove highlight'), findsNothing);
     });
+
+    // Issue #135: a highlight's color could only be changed by typing a note.
+    testWidgets('changes a highlight\'s color without any text', (
+      tester,
+    ) async {
+      final highlight = await service.addHighlight(
+        anchor: const NoteAnchor(7, 0.2),
+        chapterLabel: 'Chapter 8',
+        selectedText: 'A quiet harbor',
+      );
+
+      await openEditSheet(tester, highlight);
+      await tester.tap(find.byTooltip('Blue'));
+      await tester.pump();
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+
+      final saved = service.notes.single;
+      expect(saved.color, HighlightColor.blue);
+      expect(saved.isHighlightOnly, isTrue);
+      expect(find.textContaining('Your note is empty'), findsNothing);
+    });
+
+    testWidgets('a note can still not be emptied', (tester) async {
+      final note = await addNote('She knew.');
+
+      await openEditSheet(tester, note);
+      await tester.enterText(find.byType(TextField), '   ');
+      await tester.tap(find.text('Save note'));
+      await tester.pump();
+
+      expect(
+        find.text('Your note is empty. Type something to save it.'),
+        findsOneWidget,
+      );
+      expect(service.notes.single.body, 'She knew.');
+    });
   });
 
   group('Note list', () {
@@ -281,6 +318,39 @@ void main() {
           lessThanOrEqualTo(360),
         );
       });
+    });
+
+    // Issue #123: on a narrow phone the Pink filter was off screen, and nothing
+    // showed the row could be scrolled.
+    testWidgets('every color filter is on screen on a 360 dp wide phone', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await addNote('Mara hides the letter');
+      await tester.pumpWidget(app(NoteList(service: service)));
+
+      expect(tester.takeException(), isNull);
+      for (final color in ['Yellow', 'Green', 'Blue', 'Pink']) {
+        final chip = tester.getRect(find.widgetWithText(FilterChip, color));
+        expect(chip.left, greaterThanOrEqualTo(0), reason: color);
+        expect(chip.right, lessThanOrEqualTo(360), reason: color);
+      }
+    });
+
+    // Issue #124: notes and highlights looked the same.
+    testWidgets('labels each entry as a note or a highlight', (tester) async {
+      await addNote('Mara hides the letter');
+      await service.addHighlight(
+        anchor: const NoteAnchor(9, 0.1),
+        chapterLabel: 'Chapter 10',
+        selectedText: 'A quiet harbor',
+      );
+      await tester.pumpWidget(app(NoteList(service: service)));
+
+      expect(find.byKey(const ValueKey('note-kind-note')), findsOneWidget);
+      expect(find.byKey(const ValueKey('note-kind-highlight')), findsOneWidget);
     });
 
     testWidgets('delete asks for confirmation before deleting', (tester) async {

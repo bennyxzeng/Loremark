@@ -219,6 +219,7 @@ class NoteHighlight {
     required this.id,
     required this.target,
     required this.color,
+    this.markColor,
   });
 
   /// Reported on [EpubReaderSession.highlightTaps] when it is tapped.
@@ -228,6 +229,13 @@ class NoteHighlight {
 
   /// The fill, translucent so the text shows through.
   final Color color;
+
+  /// The color of an underline drawn under the fill, or null for none.
+  ///
+  /// Set for a note the reader wrote text in, so it can be told apart from a
+  /// plain highlight on the page (issue #124). Tapping the underline reports
+  /// [id], the same as tapping the fill.
+  final Color? markColor;
 }
 
 enum EpubOpenFailure {

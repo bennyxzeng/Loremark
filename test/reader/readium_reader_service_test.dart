@@ -613,6 +613,54 @@ void main() {
 
       expect(decorations, isEmpty);
     });
+
+    // Issue #124: a note with text gets an underline under its fill.
+    test('adds an underline under a note that has a mark color', () {
+      final decorations = noteDecorations(
+        const [
+          NoteHighlight(
+            id: 'note-1',
+            target: PassageTarget(
+              sectionIndex: 1,
+              progression: 0.4,
+              highlight: 'a grey cat',
+            ),
+            color: Color(0x6654D27A),
+            markColor: Color(0xFF2E6B3A),
+          ),
+          NoteHighlight(
+            id: 'highlight-1',
+            target: PassageTarget(
+              sectionIndex: 1,
+              progression: 0.6,
+              highlight: 'the moon',
+            ),
+            color: Color(0x6654D27A),
+          ),
+        ],
+        readingOrder,
+        _indexOf,
+      );
+
+      expect(
+        [for (final d in decorations) d.id],
+        ['note-1', 'note-1$noteMarkSuffix', 'highlight-1'],
+      );
+      final mark = decorations[1];
+      expect(mark.style.style, DecorationStyle.underline);
+      expect(mark.style.tint, const Color(0xFF2E6B3A));
+      expect(mark.locator.text?.highlight, 'a grey cat');
+    });
+  });
+
+  group('noteIdOfDecoration', () {
+    test('is the id itself for a fill', () {
+      expect(noteIdOfDecoration('note-1'), 'note-1');
+    });
+
+    test('drops the mark suffix for an underline', () {
+      expect(noteIdOfDecoration('note-1$noteMarkSuffix'), 'note-1');
+    });
   });
 
   group('passageHighlightStyle', () {

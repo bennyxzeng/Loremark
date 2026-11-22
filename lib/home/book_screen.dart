@@ -182,6 +182,11 @@ class _BookScreenState extends State<BookScreen> {
   void _selectTab(int index) {
     // The Story Map tab shows how the update went itself.
     if (index == _storyMapTab) _hideFinishedUpdate();
+    // Leaving a tab takes the focus with it. For the Read tab this tells the
+    // reader's page it lost focus, so assets/reader/note_selection.js clears
+    // a text selection that would otherwise stay on screen over the other
+    // tabs (issue #99).
+    if (index != _selectedTab) FocusManager.instance.primaryFocus?.unfocus();
     setState(() {
       _selectedTab = index;
     });

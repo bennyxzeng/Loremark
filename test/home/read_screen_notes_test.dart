@@ -250,4 +250,118 @@ void main() {
     expect(shown.before, 'There was ');
     expect(shown.sectionIndex, 4);
   });
+
+  // Issue #115: after jumping to a note from the Notes tab and deleting it,
+  // the jump's highlight stayed on the page until the app restarted.
+  testWidgets('deleting a note that was jumped to clears the jump highlight', (
+    tester,
+  ) async {
+    final note = await addSavedNote();
+    final session = await openBook(tester);
+    await jumps.show(note);
+    await tester.pump();
+    expect(session.clearHighlightCalls, 0);
+
+    await notes.deleteNote(note.id);
+    await tester.pump();
+
+    expect(session.clearHighlightCalls, 1);
+    expect(session.shownNoteHighlights.last, isEmpty);
+  });
+
+  testWidgets('changing the color of a note that was jumped to clears it too', (
+    tester,
+  ) async {
+    final note = await addSavedNote();
+    final session = await openBook(tester);
+    await jumps.show(note);
+    await tester.pump();
+
+    await notes.editNote(note.id, color: HighlightColor.pink);
+    await tester.pump();
+
+    expect(session.clearHighlightCalls, 1);
+  });
+
+  testWidgets('another note changing leaves the jump highlight alone', (
+    tester,
+  ) async {
+    final note = await addSavedNote();
+    final other = await notes.addHighlight(
+      anchor: const NoteAnchor(6, 0.5),
+      chapterLabel: 'Chapter Three',
+      selectedText: 'the moon',
+    );
+    final session = await openBook(tester);
+    await jumps.show(note);
+    await tester.pump();
+
+    await notes.deleteNote(other.id);
+    await tester.pump();
+
+    expect(session.clearHighlightCalls, 0);
+  });
+
+  // Issue #112: two notes on the same words could not both be opened.
+  testWidgets('tapping words with two notes asks which one to open', (
+    tester,
+  ) async {
+    final note = await addSavedNote();
+    final highlight = await notes.addHighlight(
+      anchor: const NoteAnchor(4, 0.3),
+      chapterLabel: 'Chapter Two',
+      selectedText: 'a grey cat',
+      textBefore: 'There was ',
+      color: HighlightColor.green,
+    );
+    final session = await openBook(tester);
+
+    session.tapHighlight(highlight.id);
+    await tester.idle();
+    await tester.pumpAndSettle();
+    expect(find.text('2 notes on these words'), findsOneWidget);
+
+    await tester.tap(find.text('Whose cat?'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Edit note'), findsOneWidget);
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller?.text,
+      note.body,
+    );
+  });
+
+  testWidgets('tapping words with one note opens it right away', (
+    tester,
+  ) async {
+    final note = await addSavedNote();
+    final session = await openBook(tester);
+
+    session.tapHighlight(note.id);
+    await tester.idle();
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('notes on these words'), findsNothing);
+    expect(find.text('Edit note'), findsOneWidget);
+  });
+
+  // Issue #124: a note looked the same as a highlight on the page.
+  testWidgets('notes are drawn with a mark and highlights without one', (
+    tester,
+  ) async {
+    final note = await addSavedNote();
+    final highlight = await notes.addHighlight(
+      anchor: const NoteAnchor(6, 0.5),
+      chapterLabel: 'Chapter Three',
+      selectedText: 'the moon',
+    );
+
+    final session = await openBook(tester);
+
+    final drawn = {
+      for (final shown in session.shownNoteHighlights.last) shown.id: shown,
+    };
+    expect(drawn[note.id]?.markColor, isNotNull);
+    expect(drawn[highlight.id]?.markColor, isNull);
+  });
 }

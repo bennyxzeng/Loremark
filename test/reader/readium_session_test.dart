@@ -245,7 +245,18 @@ void main() {
     test('is registered before the book opens', () async {
       await open(bookA);
 
-      expect(fake.injectedAtOpen['a.epub'], [pageEndScriptAsset]);
+      expect(fake.injectedAtOpen['a.epub'], [
+        pageEndScriptAsset,
+        noteSelectionScriptAsset,
+      ]);
+    });
+
+    // Issues #99 and #91: the selection stayed over a new highlight.
+    test('the selection script is bundled and watches the notes group', () {
+      final script = File(noteSelectionScriptAsset).readAsStringSync();
+
+      expect(script, contains("'$noteHighlightGroup'"));
+      expect(script, contains('removeAllRanges'));
     });
 
     test('is not needed for the book to open', () async {
