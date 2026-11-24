@@ -40,6 +40,7 @@ class ReadScreen extends StatefulWidget {
     this.notes,
     this.noteJumps,
     this.passageJumps,
+    this.selection,
   });
 
   final Book book;
@@ -82,8 +83,31 @@ class ReadScreen extends StatefulWidget {
   /// as **Read it in the book** in a recap.
   final PassageJumpController? passageJumps;
 
+  /// Lets other code clear the text the reader selected, such as when the
+  /// reader switches to another tab.
+  final ReaderSelectionController? selection;
+
   @override
   State<ReadScreen> createState() => _ReadScreenState();
+}
+
+/// Lets other code clear the reader's text selection and the menu over it.
+///
+/// The Read tab stays alive behind the other tabs, and on Android the
+/// selection menu is drawn above the whole app, so `BookScreen` clears it
+/// when the reader leaves the Read tab (issue #99).
+class ReaderSelectionController {
+  Future<void> Function()? _clearer;
+
+  /// Called by the screen that shows the book. [detach] undoes it.
+  void attach(Future<void> Function() clearer) => _clearer = clearer;
+
+  void detach(Future<void> Function() clearer) {
+    if (_clearer == clearer) _clearer = null;
+  }
+
+  /// Clears the selection, if a book is showing and something is selected.
+  Future<void> clear() async => _clearer?.call();
 }
 
 /// Lets other code send the Read tab to a saved note's passage, or to any
@@ -220,6 +244,7 @@ class _ReadScreenState extends State<ReadScreen> {
     widget.noteJumps?.attach(_showNote);
     widget.noteJumps?.attachPassages(_showPassage);
     widget.passageJumps?.attach(_visitPassage);
+    widget.selection?.attach(_clearSelection);
     unawaited(_open());
     unawaited(_openNotes());
   }
@@ -241,6 +266,10 @@ class _ReadScreenState extends State<ReadScreen> {
       oldWidget.passageJumps?.detach(_visitPassage);
       widget.passageJumps?.attach(_visitPassage);
     }
+    if (oldWidget.selection != widget.selection) {
+      oldWidget.selection?.detach(_clearSelection);
+      widget.selection?.attach(_clearSelection);
+    }
     if (oldWidget.book.id != widget.book.id) {
       unawaited(_open());
     }
@@ -258,6 +287,7 @@ class _ReadScreenState extends State<ReadScreen> {
     widget.noteJumps?.detach(_showNote);
     widget.noteJumps?.detachPassages(_showPassage);
     widget.passageJumps?.detach(_visitPassage);
+    widget.selection?.detach(_clearSelection);
     _notes?.removeListener(_drawNoteHighlights);
     _releaseSession();
     _cutoff.dispose();
@@ -351,6 +381,9 @@ class _ReadScreenState extends State<ReadScreen> {
 
   /// Draws every saved note and highlight on the page, replacing the ones
   /// drawn before. Best effort: the book reads fine without them.
+  ///
+  /// A note with text also gets an underline, so it can be told apart from a
+  /// plain highlight (issue #124).
   void _drawNoteHighlights() {
     final session = _session;
     final notes = _notes;
@@ -361,6 +394,7 @@ class _ReadScreenState extends State<ReadScreen> {
           id: note.id,
           target: _passageOf(note),
           color: note.color.pageTint,
+          markColor: note.isHighlightOnly ? null : note.color.markTint,
         ),
     ];
     unawaited(
@@ -433,16 +467,46 @@ class _ReadScreenState extends State<ReadScreen> {
 
   /// Opens the note behind the highlight the reader tapped, to edit or remove
   /// it. A removed note is taken off the page by [_drawNoteHighlights].
+  ///
+  /// The page only reports the highlight drawn on top, so when other notes
+  /// are on the same words the reader picks which one to open first
+  /// (issue #112).
   Future<void> _onHighlightTap(String id) async {
     final notes = _notes;
     if (notes == null || !mounted) return;
-    final note = notes.notes.where((note) => note.id == id).firstOrNull;
-    if (note == null) return;
+    final tapped = notes.notes.where((note) => note.id == id).firstOrNull;
+    if (tapped == null) return;
+    final overlapping = notes.notesOverlapping(tapped);
+    final note = overlapping.length > 1
+        ? await chooseOverlappingNote(context, overlapping)
+        : tapped;
+    if (note == null || !mounted) return;
     await editNoteWithSheet(context, notes, note);
   }
 
-  /// Jumps to [note]'s passage and highlights it, as a search hit is.
-  Future<void> _showNote(Note note) => _showPassage(_passageOf(note));
+  /// Jumps to [note]'s passage. The note is already drawn in its own color
+  /// with its underline, so no search highlight is added on top, and any old
+  /// one is taken off. That highlight used to cover the note's color and
+  /// underline, and stayed after the note was deleted (issue #115).
+  Future<void> _showNote(Note note) async {
+    final session = _session;
+    if (session == null || !mounted) return;
+    _stopRestoring();
+    _highlightShown = false;
+    await _navigate(() => session.goToPassage(_passageOf(note)));
+  }
+
+  /// Clears the reader's text selection and the menu over it (issue #99).
+  /// Best effort: if it fails, the reader can still tap the page.
+  Future<void> _clearSelection() async {
+    final session = _session;
+    if (session == null) return;
+    try {
+      await session.clearSelection();
+    } on Object catch (error) {
+      debugPrint('Could not clear the selection: $error');
+    }
+  }
 
   /// Jumps to [target] and highlights it.
   Future<void> _showPassage(PassageTarget target) async {

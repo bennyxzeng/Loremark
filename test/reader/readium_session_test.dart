@@ -245,7 +245,18 @@ void main() {
     test('is registered before the book opens', () async {
       await open(bookA);
 
-      expect(fake.injectedAtOpen['a.epub'], [pageEndScriptAsset]);
+      expect(fake.injectedAtOpen['a.epub'], [
+        pageEndScriptAsset,
+        noteSelectionScriptAsset,
+      ]);
+    });
+
+    // Issues #99 and #91: the selection stayed over a new highlight.
+    test('the selection script is bundled and watches the notes group', () {
+      final script = File(noteSelectionScriptAsset).readAsStringSync();
+
+      expect(script, contains("'$noteHighlightGroup'"));
+      expect(script, contains('removeAllRanges'));
     });
 
     test('is not needed for the book to open', () async {
@@ -709,6 +720,114 @@ void main() {
 
       expect(fake.decorations[noteHighlightGroup], isEmpty);
       expect(fake.decorations[passageHighlightGroup], hasLength(1));
+    });
+
+    // Issue #124: underlines are in their own group, drawn after the fills,
+    // so Readium layers them on top and a redrawn fill can't cover them.
+    test(
+      'note underlines are drawn after the fills, in their own group',
+      () async {
+        final session = await open(bookA);
+        fake.calls.clear();
+
+        await session.showNoteHighlights(const [
+          NoteHighlight(
+            id: 'note-1',
+            target: PassageTarget(
+              sectionIndex: 2,
+              progression: 0.4,
+              highlight: 'a grey cat',
+            ),
+            color: Color(0x6654D27A),
+            markColor: Color(0xFF2E6B3A),
+          ),
+        ]);
+
+        expect(fake.calls, [
+          'decorate $noteHighlightGroup 1',
+          'decorate $noteMarkGroup 1',
+        ]);
+        expect(
+          fake.decorations[noteMarkGroup]?.single.id,
+          'note-1$noteMarkSuffix',
+        );
+      },
+    );
+
+    // Issue #115, and the jump turning a blue note yellow.
+    test('going to a note\'s passage draws no search highlight', () async {
+      final session = await open(bookA);
+      await session.showPassage(
+        const PassageTarget(sectionIndex: 1, progression: 0, highlight: 'hit'),
+      );
+
+      await session.goToPassage(
+        const PassageTarget(
+          sectionIndex: 2,
+          progression: 0.4,
+          highlight: 'a grey cat',
+        ),
+      );
+
+      expect(fake.decorations[passageHighlightGroup], isEmpty);
+      expect(fake.goToLocators.last.text?.highlight, 'a grey cat');
+    });
+  });
+
+  // Issue #99: the menu over selected text stayed up over the other tabs.
+  group('clearing the selection', () {
+    test('signals the page script on the selected words', () async {
+      final session = await open(bookA);
+      final view = session.buildView() as ReadiumReaderWidget;
+      final selected = Locator(
+        href: 'OEBPS/ch2.xhtml',
+        type: 'application/xhtml+xml',
+        text: const LocatorText(highlight: 'a grey cat'),
+      );
+      view.onTextSelected!(TextSelectionEvent(locator: selected));
+      fake.calls.clear();
+
+      await session.clearSelection();
+
+      expect(fake.calls, [
+        'decorate $selectionClearGroup 1',
+        'decorate $selectionClearGroup 0',
+      ]);
+    });
+
+    test('does nothing when nothing was selected', () async {
+      final session = await open(bookA);
+      fake.calls.clear();
+
+      await session.clearSelection();
+
+      expect(fake.calls, isEmpty);
+    });
+
+    test('signals only once for one selection', () async {
+      final session = await open(bookA);
+      final view = session.buildView() as ReadiumReaderWidget;
+      view.onTextSelected!(
+        TextSelectionEvent(
+          locator: Locator(
+            href: 'OEBPS/ch2.xhtml',
+            type: 'application/xhtml+xml',
+            text: const LocatorText(highlight: 'cat'),
+          ),
+        ),
+      );
+      await session.clearSelection();
+      fake.calls.clear();
+
+      await session.clearSelection();
+
+      expect(fake.calls, isEmpty);
+    });
+
+    test('the page script listens for the signal group', () {
+      final script = File(noteSelectionScriptAsset).readAsStringSync();
+
+      expect(script, contains("'$selectionClearGroup'"));
     });
   });
 
