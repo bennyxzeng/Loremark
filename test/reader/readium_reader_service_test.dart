@@ -613,6 +613,64 @@ void main() {
 
       expect(decorations, isEmpty);
     });
+
+    // Issue #124: a note with text gets an underline, drawn in its own group
+    // above the fills.
+    const noteAndHighlight = [
+      NoteHighlight(
+        id: 'note-1',
+        target: PassageTarget(
+          sectionIndex: 1,
+          progression: 0.4,
+          highlight: 'a grey cat',
+        ),
+        color: Color(0x6654D27A),
+        markColor: Color(0xFF2E6B3A),
+      ),
+      NoteHighlight(
+        id: 'highlight-1',
+        target: PassageTarget(
+          sectionIndex: 1,
+          progression: 0.6,
+          highlight: 'the moon',
+        ),
+        color: Color(0x73F5D76E),
+      ),
+    ];
+
+    test('draws a fill for every note and highlight', () {
+      final fills = noteDecorations(noteAndHighlight, readingOrder, _indexOf);
+
+      expect([for (final d in fills) d.id], ['note-1', 'highlight-1']);
+      expect(
+        fills.every((d) => d.style.style == DecorationStyle.highlight),
+        isTrue,
+      );
+    });
+
+    test('draws an underline only under a note with a mark color', () {
+      final marks = noteMarkDecorations(
+        noteAndHighlight,
+        readingOrder,
+        _indexOf,
+      );
+
+      expect([for (final d in marks) d.id], ['note-1$noteMarkSuffix']);
+      final mark = marks.single;
+      expect(mark.style.style, DecorationStyle.underline);
+      expect(mark.style.tint, const Color(0xFF2E6B3A));
+      expect(mark.locator.text?.highlight, 'a grey cat');
+    });
+  });
+
+  group('noteIdOfDecoration', () {
+    test('is the id itself for a fill', () {
+      expect(noteIdOfDecoration('note-1'), 'note-1');
+    });
+
+    test('drops the mark suffix for an underline', () {
+      expect(noteIdOfDecoration('note-1$noteMarkSuffix'), 'note-1');
+    });
   });
 
   group('passageHighlightStyle', () {

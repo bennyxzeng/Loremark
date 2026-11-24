@@ -32,6 +32,9 @@ final class RemoveNoteResult extends NoteSheetResult {
 /// - selectedText: The passage the note is about, shown at the top of the sheet.
 /// - initialBody: The text already in the note when editing. (Optional)
 /// - initialColor: The color already picked when editing. (Optional)
+///   Only green, blue, and pink are offered, since yellow is kept for plain
+///   highlights. A yellow note from before that rule starts on green.
+///   (See [noteColors] and issue #124)
 /// - title: The title of the sheet. (Ex. 'Add note' or 'Edit note')
 /// - removeLabel: The label of a button next to "Save note" that removes the
 ///   note being edited. No button is shown when it is null, as when adding a
@@ -42,7 +45,7 @@ Future<NoteSheetResult?> showAddNoteSheet(
   BuildContext context, {
   required String selectedText,
   String initialBody = '',
-  HighlightColor initialColor = HighlightColor.yellow,
+  HighlightColor initialColor = defaultNoteColor,
   String title = 'Add note',
   String? removeLabel,
 }) {
@@ -82,8 +85,11 @@ class _AddNoteSheet extends StatefulWidget {
 class _AddNoteSheetState extends State<_AddNoteSheet> {
   // This controls the note text input.
   late final _bodyController = TextEditingController(text: widget.initialBody);
-  // This is the highlight color the reader currently has picked.
-  late HighlightColor _color = widget.initialColor;
+  // This is the color the reader currently has picked. A color a note can't
+  // have (yellow, from before notes stopped using it) starts on green.
+  late HighlightColor _color = noteColors.contains(widget.initialColor)
+      ? widget.initialColor
+      : defaultNoteColor;
   // This is the message shown under the text box when the reader tries to save an empty note.
   String? _errorText;
 
@@ -166,7 +172,8 @@ class _AddNoteSheetState extends State<_AddNoteSheet> {
           // This is the row of colors the reader can pick for the highlight.
           Row(
             children: [
-              for (final color in HighlightColor.values)
+              // Only note colors: yellow is kept for plain highlights.
+              for (final color in noteColors)
                 Padding(
                   padding: const EdgeInsets.only(right: 12),
                   child: _ColorDot(

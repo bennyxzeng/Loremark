@@ -238,16 +238,154 @@ void main() {
     expect(session.shownNoteHighlights.last, isEmpty);
   });
 
-  testWidgets('jumping to a note shows its passage', (tester) async {
+  // Issue #115, and the jump turning a blue note yellow: a note is already
+  // drawn in its own color with its underline, so opening it from the Notes
+  // tab goes to it without drawing the search highlight on top.
+  testWidgets('jumping to a note goes to its passage without a highlight', (
+    tester,
+  ) async {
     final note = await addSavedNote();
     final session = await openBook(tester);
 
     await jumps.show(note);
     await tester.pump();
 
-    final shown = session.shownPassages.single;
-    expect(shown.highlight, 'a grey cat');
-    expect(shown.before, 'There was ');
-    expect(shown.sectionIndex, 4);
+    final visited = session.visitedPassages.single;
+    expect(visited.highlight, 'a grey cat');
+    expect(visited.before, 'There was ');
+    expect(visited.sectionIndex, 4);
+    expect(session.shownPassages, isEmpty);
+  });
+
+  testWidgets('deleting a note after jumping to it leaves nothing drawn', (
+    tester,
+  ) async {
+    final note = await addSavedNote();
+    final session = await openBook(tester);
+    await jumps.show(note);
+    await tester.pump();
+
+    await notes.deleteNote(note.id);
+    await tester.pump();
+
+    expect(session.shownPassages, isEmpty);
+    expect(session.shownNoteHighlights.last, isEmpty);
+  });
+
+  // Issue #99: the menu over selected text stayed up over the other tabs.
+  testWidgets("the selection controller clears the reader's selection", (
+    tester,
+  ) async {
+    final selection = ReaderSelectionController();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildLoremarkTheme(),
+        home: Scaffold(
+          body: ReadScreen(
+            book: book,
+            readerService: readerService,
+            openPositionStore: () async => FakeReadingPositionStore(),
+            notes: Future.value(notes),
+            selection: selection,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final session = readerService.sessions.single;
+
+    await selection.clear();
+
+    expect(session.clearSelectionCalls, 1);
+  });
+
+  // Issue #112: two notes on the same words could not both be opened.
+  testWidgets('tapping words with two notes asks which one to open', (
+    tester,
+  ) async {
+    final note = await addSavedNote();
+    final highlight = await notes.addHighlight(
+      anchor: const NoteAnchor(4, 0.3),
+      chapterLabel: 'Chapter Two',
+      selectedText: 'a grey cat',
+      textBefore: 'There was ',
+    );
+    final session = await openBook(tester);
+
+    session.tapHighlight(highlight.id);
+    await tester.idle();
+    await tester.pumpAndSettle();
+    expect(find.text('2 notes on these words'), findsOneWidget);
+
+    await tester.tap(find.text('Whose cat?'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Edit note'), findsOneWidget);
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller?.text,
+      note.body,
+    );
+  });
+
+  testWidgets('tapping words with one note opens it right away', (
+    tester,
+  ) async {
+    final note = await addSavedNote();
+    final session = await openBook(tester);
+
+    session.tapHighlight(note.id);
+    await tester.idle();
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('notes on these words'), findsNothing);
+    expect(find.text('Edit note'), findsOneWidget);
+  });
+
+  testWidgets('notes on different words nearby open right away', (
+    tester,
+  ) async {
+    final cat = await notes.addNote(
+      anchor: const NoteAnchor(4, 0.3),
+      chapterLabel: 'Chapter Two',
+      selectedText: 'a grey cat',
+      textBefore: 'There was ',
+      textAfter: ' on the wall by the gate.',
+      body: 'Whose cat?',
+    );
+    await notes.addHighlight(
+      anchor: const NoteAnchor(4, 0.31),
+      chapterLabel: 'Chapter Two',
+      selectedText: 'the gate',
+      textBefore: 'There was a grey cat on the wall by ',
+      textAfter: '.',
+    );
+    final session = await openBook(tester);
+
+    session.tapHighlight(cat.id);
+    await tester.idle();
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('notes on these words'), findsNothing);
+    expect(find.text('Edit note'), findsOneWidget);
+  });
+
+  // Issue #124: a note looked the same as a highlight on the page.
+  testWidgets('notes are drawn with a mark and highlights without one', (
+    tester,
+  ) async {
+    final note = await addSavedNote();
+    final highlight = await notes.addHighlight(
+      anchor: const NoteAnchor(6, 0.5),
+      chapterLabel: 'Chapter Three',
+      selectedText: 'the moon',
+    );
+
+    final session = await openBook(tester);
+
+    final drawn = {
+      for (final shown in session.shownNoteHighlights.last) shown.id: shown,
+    };
+    expect(drawn[note.id]?.markColor, isNotNull);
+    expect(drawn[highlight.id]?.markColor, isNull);
   });
 }

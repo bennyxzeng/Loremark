@@ -52,6 +52,16 @@ class BookScreen extends StatefulWidget {
   /// device's.
   final RecapBackend? recapBackend;
 
+  /// The books whose welcome back has popped up since the app started. Each
+  /// book offers it once a session: after that, a recap is a question away in
+  /// Ask.
+  static final _welcomed = <String>{};
+
+  /// Forgets which books have welcomed the reader back, as if the app had just
+  /// started.
+  @visibleForTesting
+  static void forgetWelcomes() => _welcomed.clear();
+
   @override
   State<BookScreen> createState() => _BookScreenState();
 }
@@ -130,6 +140,7 @@ class _BookScreenState extends State<BookScreen> {
 
   /// Sends the Read tab to a note tapped in the Notes tab.
   final _noteJumps = NoteJumpController();
+  final _readerSelection = ReaderSelectionController();
 
   /// Sends the Read tab to a passage an Ask answer cites, with a way back to
   /// the reader's page.
@@ -150,7 +161,8 @@ class _BookScreenState extends State<BookScreen> {
   bool _recapLooked = false;
 
   /// Whether the welcome back was offered, or passed over, for this opening.
-  /// It is offered once each time the book opens.
+  /// It is offered at most once each time the book opens, and only if it
+  /// hasn't popped up for this book yet this session.
   bool _welcomeOffered = false;
 
   @override
@@ -171,6 +183,12 @@ class _BookScreenState extends State<BookScreen> {
   void _selectTab(int index) {
     // The Story Map tab shows how the update went itself.
     if (index == _storyMapTab) _hideFinishedUpdate();
+    // The Read tab stays alive behind the others, and on Android the menu over
+    // selected text is drawn above the whole app. So leaving the Read tab
+    // clears the selection, which closes the menu (issue #99).
+    if (_selectedTab == _readTab && index != _readTab) {
+      unawaited(_readerSelection.clear());
+    }
     setState(() {
       _selectedTab = index;
     });
@@ -198,6 +216,7 @@ class _BookScreenState extends State<BookScreen> {
     _welcomeOffered = true;
     final stop = _recap.stop;
     if (stop == null ||
+        BookScreen._welcomed.contains(widget.book.id) ||
         _selectedTab != _readTab ||
         !AiSettingsScope.of(context).hasKey ||
         !ConnectionScope.of(context).isOnline ||
@@ -208,6 +227,9 @@ class _BookScreenState extends State<BookScreen> {
   }
 
   Future<void> _welcomeBack(RecapStop stop) async {
+    // Counted only once it has really popped up: an opening that passed it
+    // over, offline say, leaves it for the next.
+    BookScreen._welcomed.add(widget.book.id);
     final catchUp = await showWelcomeBack(
       context,
       sectionTitle: stop.sectionTitle,
@@ -254,6 +276,7 @@ class _BookScreenState extends State<BookScreen> {
                             ),
                             notes: _notes,
                             noteJumps: _noteJumps,
+                            selection: _readerSelection,
                             passageJumps: _passageJumps,
                             onPositionChanged: _storyMapStatus.readerMoved,
                           ),

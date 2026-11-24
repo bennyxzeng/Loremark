@@ -186,6 +186,19 @@ class FakeEpubReaderSession implements EpubReaderSession {
   @override
   Future<void> clearPassageHighlight() async => clearHighlightCalls++;
 
+  /// Every passage [goToPassage] went to, without highlighting it.
+  final List<PassageTarget> visitedPassages = [];
+
+  @override
+  Future<void> goToPassage(PassageTarget target) async =>
+      visitedPassages.add(target);
+
+  /// How often [clearSelection] was called.
+  int clearSelectionCalls = 0;
+
+  @override
+  Future<void> clearSelection() async => clearSelectionCalls++;
+
   @override
   Stream<PassageSelection> get selections => _selections.stream;
 
