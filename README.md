@@ -108,13 +108,11 @@ flowchart LR
 - **Reading works offline.** The book, your place in it and your notes are all on the device.
 - **Your books stay on the phone.** Requests go only to your AI provider: the API key check, Story Map updates you start, and questions you ask in Ask, which carry the page you are on, the conversation so far, and the parts of the Story Map the AI looks up. [docs/acceptance.md](docs/acceptance.md) describes the privacy audit.
 
-## What's next
+## Future Plans
 
-**For the final release:**
-
-- Character cards opened by tapping a name in the reader.
-
-**Stretch goals:** a theory tracker that checks your guesses as the story reveals more, confusion detection that notices rereading and stalls and offers a nudge (in progress), an AI-generated map of the story's world, and, if time allows, training our own model.
+- A Theory tracker that checks your guesses as the story reveals more. 
+- Confusion detection that notices rereading and stalls and offers a nudge (in progress)
+- An AI-generated map of the story's world, and, if time allows, training our own model.
 
 ## Testing
 
@@ -279,12 +277,12 @@ Built as a **CSE 403** team project.
 
 | Team member | Role |
 | :--- | :--- |
-| **Boheng (Frank) Hao** | Full-stack development |
-| **Vitalii Khlivetskyy** | Product management, system design, backend development |
-| **Mark Kolivoshka** | Full-stack development, testing |
-| **Khanh (Kevin) Pham** | Full-stack development, infrastructure |
-| **Gregory Romashchenko** | Backend development, system design |
-| **Benjamin Zeng** | Project management, backend development |
+| **Boheng (Frank) Hao** | Full-stack Development |
+| **Vitalii Khlivetskyy** | Product Management, System Design, Backend Development |
+| **Mark Kolivoshka** | Full-stack Development|
+| **Khanh (Kevin) Pham** | Full-stack Development, Infrastructure |
+| **Gregory Romashchenko** | Backend Development, System Design |
+| **Benjamin Zeng** | Project Management, Backend Development |
 
 ---
 
