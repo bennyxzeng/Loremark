@@ -7,9 +7,25 @@ library;
 /// but for now every note is created as a personal note.
 enum NoteKind { personalNote, theory }
 
-/// This enum lists the highlight colors a reader can pick for a note.
+/// This enum lists the highlight colors of notes and highlights.
 /// The reader can also filter the Notes tab by these colors.
+/// Yellow is only for plain highlights, and notes are green, blue, or pink,
+/// so the two can be told apart on the page. (See issue #124)
 enum HighlightColor { yellow, green, blue, pink }
+
+/// This is the color of every plain highlight (a note with no text).
+const highlightColor = HighlightColor.yellow;
+
+/// These are the colors a reader can pick for a note with text.
+/// Notes saved before this rule may still be yellow until they are edited.
+const noteColors = [
+  HighlightColor.green,
+  HighlightColor.blue,
+  HighlightColor.pink,
+];
+
+/// This is the color a note gets when the reader doesn't pick one.
+const defaultNoteColor = HighlightColor.green;
 
 /// This class marks the spot in the book that a note is attached to.
 /// It uses the same JSON keys as `TextPosition` so that, once the reading

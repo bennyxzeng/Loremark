@@ -204,8 +204,8 @@ class _NoteListState extends State<NoteList> {
 ///   title and a "Remove highlight" button that removes it right away, since
 ///   nothing written is lost. A note with text gets a "Delete note" button
 ///   that asks the reader to confirm first.
-///   A highlight can also be saved with no text, which only changes its color.
-///   (See issue #135)
+///   A highlight is always yellow, so its sheet's colors are for the note it
+///   becomes once the reader writes something. (See issue #124)
 Future<void> editNoteWithSheet(
   BuildContext context,
   AnnotationService service,
@@ -215,21 +215,16 @@ Future<void> editNoteWithSheet(
     context,
     selectedText: note.selectedText,
     initialBody: note.body,
-    initialColor: note.color,
+    initialColor: note.isHighlightOnly ? defaultNoteColor : note.color,
     title: note.isHighlightOnly ? 'Add note' : 'Edit note',
     removeLabel: note.isHighlightOnly ? 'Remove highlight' : 'Delete note',
-    allowEmpty: note.isHighlightOnly,
   );
   if (result == null || !context.mounted) return;
   switch (result) {
     case AddNoteResult(:final body, :final color):
       await saveOrReport(
         context,
-        // An empty body only comes from a highlight, so it stays a highlight
-        // and only its color is saved. editNote rejects an empty body.
-        () => body.isEmpty
-            ? service.editNote(note.id, color: color)
-            : service.editNote(note.id, body: body, color: color),
+        () => service.editNote(note.id, body: body, color: color),
       );
     case RemoveNoteResult():
       if (!note.isHighlightOnly) {

@@ -1,7 +1,8 @@
 // Added to every chapter by the reader (see readium_reader_service.dart).
 //
-// Clears the reader's text selection once a note or highlight made from it
-// is drawn, and when the reader leaves the page (issues #99 and #91).
+// Clears the reader's text selection, and the menu over it, once a note or
+// highlight made from it is drawn, and when the app asks because the reader
+// switched to another tab (issues #99 and #91).
 //
 // On Android, Loremark's Highlight / Add note / Copy menu replaces the system
 // one, and flutter_readium 0.8.0 closes the menu after an action without
@@ -20,6 +21,12 @@
 // resized (requestLayout), but those items keep their ids, so a resize alone
 // never clears anything.
 //
+// The app has no way to run script in the page either, so to ask for the
+// selection to be cleared, it draws an invisible decoration on the selected
+// words in its own group (CLEAR_GROUP) and takes it away again
+// (ReadiumReaderService clearSelection). Anything appearing in that group
+// clears the selection.
+//
 // Copy draws nothing, so the selection stays after Copy, as it does in most
 // apps.
 //
@@ -30,6 +37,11 @@
 
   // Must match noteHighlightGroup in lib/reader/readium_reader_service.dart.
   var GROUP = 'loremark-notes';
+
+  // Must match selectionClearGroup in lib/reader/readium_reader_service.dart.
+  // The app draws an invisible decoration here only to ask for the selection
+  // to be cleared, as when the reader switches to another tab (issue #99).
+  var CLEAR_GROUP = 'loremark-clear-selection';
 
   // The ids of the decorations already drawn, so only new ones count.
   var seen = {};
@@ -66,9 +78,19 @@
     return found;
   }
 
-  // Whether [node], just added to the page, is or holds a new notes decoration.
+  // Whether [node] belongs to the clear-selection signal group.
+  function isClearSignal(node) {
+    for (var n = node; n && n.nodeType === 1; n = n.parentNode) {
+      if (n.getAttribute('data-group') === CLEAR_GROUP) return true;
+    }
+    return false;
+  }
+
+  // Whether [node], just added to the page, is or holds a new notes decoration,
+  // or is the app's signal to clear the selection.
   function addsNewNote(node) {
     if (!node || node.nodeType !== 1) return false;
+    if (isClearSignal(node)) return true;
     // The whole group, as on the first note or after a resize.
     if (isNotesGroup(node)) return recordItems(node);
     // One decoration added to a group that was already there.
@@ -104,8 +126,8 @@
     document.addEventListener('DOMContentLoaded', start);
   }
 
-  // The page loses focus when the reader switches to another tab (BookScreen
-  // takes the focus away from the reader view then), so the selection and its
-  // handles don't stay on screen over the other tabs.
+  // Also clear it if the page itself loses focus. Switching tabs doesn't do
+  // that on Android, which is why the app sends CLEAR_GROUP instead, but this
+  // costs nothing when it does happen.
   window.addEventListener('blur', clearSelection);
 })();

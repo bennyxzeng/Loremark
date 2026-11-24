@@ -238,68 +238,65 @@ void main() {
     expect(session.shownNoteHighlights.last, isEmpty);
   });
 
-  testWidgets('jumping to a note shows its passage', (tester) async {
+  // Issue #115, and the jump turning a blue note yellow: a note is already
+  // drawn in its own color with its underline, so opening it from the Notes
+  // tab goes to it without drawing the search highlight on top.
+  testWidgets('jumping to a note goes to its passage without a highlight', (
+    tester,
+  ) async {
     final note = await addSavedNote();
     final session = await openBook(tester);
 
     await jumps.show(note);
     await tester.pump();
 
-    final shown = session.shownPassages.single;
-    expect(shown.highlight, 'a grey cat');
-    expect(shown.before, 'There was ');
-    expect(shown.sectionIndex, 4);
+    final visited = session.visitedPassages.single;
+    expect(visited.highlight, 'a grey cat');
+    expect(visited.before, 'There was ');
+    expect(visited.sectionIndex, 4);
+    expect(session.shownPassages, isEmpty);
   });
 
-  // Issue #115: after jumping to a note from the Notes tab and deleting it,
-  // the jump's highlight stayed on the page until the app restarted.
-  testWidgets('deleting a note that was jumped to clears the jump highlight', (
+  testWidgets('deleting a note after jumping to it leaves nothing drawn', (
     tester,
   ) async {
     final note = await addSavedNote();
     final session = await openBook(tester);
     await jumps.show(note);
     await tester.pump();
-    expect(session.clearHighlightCalls, 0);
 
     await notes.deleteNote(note.id);
     await tester.pump();
 
-    expect(session.clearHighlightCalls, 1);
+    expect(session.shownPassages, isEmpty);
     expect(session.shownNoteHighlights.last, isEmpty);
   });
 
-  testWidgets('changing the color of a note that was jumped to clears it too', (
+  // Issue #99: the menu over selected text stayed up over the other tabs.
+  testWidgets("the selection controller clears the reader's selection", (
     tester,
   ) async {
-    final note = await addSavedNote();
-    final session = await openBook(tester);
-    await jumps.show(note);
-    await tester.pump();
-
-    await notes.editNote(note.id, color: HighlightColor.pink);
-    await tester.pump();
-
-    expect(session.clearHighlightCalls, 1);
-  });
-
-  testWidgets('another note changing leaves the jump highlight alone', (
-    tester,
-  ) async {
-    final note = await addSavedNote();
-    final other = await notes.addHighlight(
-      anchor: const NoteAnchor(6, 0.5),
-      chapterLabel: 'Chapter Three',
-      selectedText: 'the moon',
+    final selection = ReaderSelectionController();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildLoremarkTheme(),
+        home: Scaffold(
+          body: ReadScreen(
+            book: book,
+            readerService: readerService,
+            openPositionStore: () async => FakeReadingPositionStore(),
+            notes: Future.value(notes),
+            selection: selection,
+          ),
+        ),
+      ),
     );
-    final session = await openBook(tester);
-    await jumps.show(note);
-    await tester.pump();
+    await tester.pumpAndSettle();
+    final session = readerService.sessions.single;
 
-    await notes.deleteNote(other.id);
-    await tester.pump();
+    await selection.clear();
 
-    expect(session.clearHighlightCalls, 0);
+    expect(session.clearSelectionCalls, 1);
   });
 
   // Issue #112: two notes on the same words could not both be opened.
@@ -312,7 +309,6 @@ void main() {
       chapterLabel: 'Chapter Two',
       selectedText: 'a grey cat',
       textBefore: 'There was ',
-      color: HighlightColor.green,
     );
     final session = await openBook(tester);
 
@@ -338,6 +334,34 @@ void main() {
     final session = await openBook(tester);
 
     session.tapHighlight(note.id);
+    await tester.idle();
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('notes on these words'), findsNothing);
+    expect(find.text('Edit note'), findsOneWidget);
+  });
+
+  testWidgets('notes on different words nearby open right away', (
+    tester,
+  ) async {
+    final cat = await notes.addNote(
+      anchor: const NoteAnchor(4, 0.3),
+      chapterLabel: 'Chapter Two',
+      selectedText: 'a grey cat',
+      textBefore: 'There was ',
+      textAfter: ' on the wall by the gate.',
+      body: 'Whose cat?',
+    );
+    await notes.addHighlight(
+      anchor: const NoteAnchor(4, 0.31),
+      chapterLabel: 'Chapter Two',
+      selectedText: 'the gate',
+      textBefore: 'There was a grey cat on the wall by ',
+      textAfter: '.',
+    );
+    final session = await openBook(tester);
+
+    session.tapHighlight(cat.id);
     await tester.idle();
     await tester.pumpAndSettle();
 

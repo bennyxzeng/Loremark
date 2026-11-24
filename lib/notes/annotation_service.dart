@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/foundation.dart';
 
 import 'note.dart';
@@ -166,8 +168,11 @@ class AnnotationService extends ChangeNotifier {
   /// - selectedText: The passage the reader selected.
   /// - textBefore, textAfter: The text just around the passage. (Optional)
   /// - body: What the reader wrote. (Required, cannot be blank)
-  /// - color: The highlight color of the passage.
+  /// - color: The highlight color of the passage. Green, blue, or pink, since
+  ///   yellow is kept for plain highlights. (Optional, green by default)
+  ///   (See [noteColors] and issue #124)
   /// Returns: The saved note, or throws an [EmptyNoteException] if the body is blank.
+  /// Throws an [ArgumentError] if the color is yellow.
   Future<Note> addNote({
     required NoteAnchor anchor,
     required String chapterLabel,
@@ -175,9 +180,10 @@ class AnnotationService extends ChangeNotifier {
     String textBefore = '',
     String textAfter = '',
     required String body,
-    HighlightColor color = HighlightColor.yellow,
+    HighlightColor color = defaultNoteColor,
   }) async {
     if (body.trim().isEmpty) throw const EmptyNoteException();
+    _checkNoteColor(color);
     return _add(
       anchor: anchor,
       chapterLabel: chapterLabel,
@@ -189,15 +195,15 @@ class AnnotationService extends ChangeNotifier {
     );
   }
 
-  /// This saves a colored highlight on a passage without any written text.
-  /// (See Use Case #3, extension 3a)
+  /// This saves a highlight on a passage without any written text.
+  /// A highlight is always yellow, so the reader can tell it from a note at a
+  /// glance. (See Use Case #3, extension 3a, and issue #124)
   Future<Note> addHighlight({
     required NoteAnchor anchor,
     required String chapterLabel,
     required String selectedText,
     String textBefore = '',
     String textAfter = '',
-    HighlightColor color = HighlightColor.yellow,
   }) => _add(
     anchor: anchor,
     chapterLabel: chapterLabel,
@@ -205,15 +211,20 @@ class AnnotationService extends ChangeNotifier {
     textBefore: textBefore,
     textAfter: textAfter,
     body: '',
-    color: color,
+    color: highlightColor,
   );
 
   /// This changes the text and/or color of a saved note.
+  /// Adding text to a highlight turns it into a note, which takes the given
+  /// color, or green if none is given, since a note is never yellow.
+  /// A highlight's own color cannot change: it is always yellow. (See issue #124)
   /// Parameters:
   /// - id: The id of the note to edit.
   /// - body: The new text. (Optional, cannot be blank if given)
-  /// - color: The new highlight color. (Optional)
+  /// - color: The new color, green, blue, or pink. (Optional)
   /// Returns: The edited note.
+  /// Throws an [ArgumentError] if the color is yellow, or if a color is given
+  /// for a highlight that stays without text.
   Future<Note> editNote(
     String id, {
     String? body,
@@ -221,13 +232,37 @@ class AnnotationService extends ChangeNotifier {
   }) async {
     if (body != null && body.trim().isEmpty) throw const EmptyNoteException();
     final index = _indexOf(id);
-    final edited = _notes[index].copyWith(
+    final note = _notes[index];
+    final becomesNote = body != null && note.isHighlightOnly;
+    final staysHighlight = body == null && note.isHighlightOnly;
+    if (color != null) {
+      if (staysHighlight) {
+        throw ArgumentError.value(
+          color,
+          'color',
+          'A highlight is always ${highlightColor.name}',
+        );
+      }
+      _checkNoteColor(color);
+    }
+    final edited = note.copyWith(
       body: body?.trim(),
-      color: color,
+      color: color ?? (becomesNote ? defaultNoteColor : null),
       updatedAt: _clock(),
     );
     await _save([..._notes]..[index] = edited);
     return edited;
+  }
+
+  /// This rejects a color that a note cannot have. (See [noteColors])
+  static void _checkNoteColor(HighlightColor color) {
+    if (!noteColors.contains(color)) {
+      throw ArgumentError.value(
+        color,
+        'color',
+        'A note is ${noteColors.map((c) => c.name).join(', ')}',
+      );
+    }
   }
 
   /// This deletes a note. The app asks the reader to confirm first, except for a
@@ -242,25 +277,56 @@ class AnnotationService extends ChangeNotifier {
   /// The reader view only reports the top highlight when two of them are drawn
   /// on the same words, so the Read tab uses this to let the reader pick one.
   /// (See issue #112)
-  /// Two notes overlap when they are in the same section and each one's
-  /// selected text is found in the other's passage (the selected text with the
-  /// text before and after it). Ex. 'the lamp' and 'She lit the' overlap when
-  /// both were selected in "She lit the lamp".
+  /// Two notes overlap only when they share words on the page: they are in
+  /// the same section, and the other note's words sit on some of this note's
+  /// words. Ex. 'the lamp' and 'She lit the' overlap when both were selected
+  /// in "She lit the lamp", but 'the lamp' and 'the door' a sentence later do
+  /// not, even though each is in the other's surrounding text.
   /// Parameters:
   /// - note: The note the reader tapped.
   /// Returns: The overlapping notes, or just [note] if nothing overlaps it.
-  List<Note> notesOverlapping(Note note) {
-    String passageOf(Note note) =>
-        '${note.textBefore}${note.selectedText}${note.textAfter}';
-    final passage = passageOf(note);
-    return [
-      for (final other in _notes)
-        if (other.id == note.id ||
-            (other.anchor.sectionIndex == note.anchor.sectionIndex &&
-                passage.contains(other.selectedText) &&
-                passageOf(other).contains(note.selectedText)))
-          other,
-    ];
+  List<Note> notesOverlapping(Note note) => [
+    for (final other in _notes)
+      if (other.id == note.id ||
+          (other.anchor.sectionIndex == note.anchor.sectionIndex &&
+              _sharesWords(note, other)))
+        other,
+  ];
+
+  /// This checks if [other]'s words sit on some of [note]'s words.
+  /// Each note keeps its words with the text around them, so [other] is
+  /// placed inside [note]'s passage where its own surrounding text agrees
+  /// with what is there, and the two spans are compared.
+  /// Only the surrounding text both notes have is compared, so a note saved
+  /// without any (from before it was kept) matches its words anywhere.
+  static bool _sharesWords(Note note, Note other) {
+    final passage = '${note.textBefore}${note.selectedText}${note.textAfter}';
+    final start = note.textBefore.length;
+    final end = start + note.selectedText.length;
+    final words = other.selectedText;
+    if (words.isEmpty) return false;
+    for (
+      var at = passage.indexOf(words);
+      at != -1;
+      at = passage.indexOf(words, at + 1)
+    ) {
+      final after = at + words.length;
+      // The other note's span must cover part of this note's span.
+      if (at >= end || after <= start) continue;
+      // And the text around it must match what the other note saved there.
+      final before = min(at, other.textBefore.length);
+      final behind = min(passage.length - after, other.textAfter.length);
+      final beforeMatches = passage
+          .substring(at - before, at)
+          .endsWith(
+            other.textBefore.substring(other.textBefore.length - before),
+          );
+      final afterMatches = passage
+          .substring(after, after + behind)
+          .startsWith(other.textAfter.substring(0, behind));
+      if (beforeMatches && afterMatches) return true;
+    }
+    return false;
   }
 
   /// This groups the notes by chapter for the Notes tab, after applying the filter.

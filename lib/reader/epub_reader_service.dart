@@ -70,6 +70,21 @@ abstract interface class EpubReaderSession {
   /// Removes the highlight [showPassage] drew, if any.
   Future<void> clearPassageHighlight();
 
+  /// Jumps to [target] without highlighting it, and removes any highlight
+  /// [showPassage] drew.
+  ///
+  /// Used to open a saved note, which is already drawn on the page in its
+  /// own color. The search highlight drawn on top of it hid its color and
+  /// underline, and stayed after the note was deleted (issue #115).
+  Future<void> goToPassage(PassageTarget target);
+
+  /// Clears the text the reader has selected, and with it the menu over it.
+  ///
+  /// Called when the reader leaves the Read tab, so the menu doesn't stay on
+  /// screen over the other tabs (issue #99). Does nothing if nothing is
+  /// selected.
+  Future<void> clearSelection();
+
   /// Text the reader selected, each time they pick an action from the menu
   /// over it.
   Stream<PassageSelection> get selections;

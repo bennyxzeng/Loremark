@@ -70,10 +70,10 @@ Each ID links to its GitHub issue (#17 to #77). Commit hashes link to
 | [BUG-22](https://github.com/bennyxzeng/Loremark/issues/69) | 2026-11-03 | P1 | bug | Selecting text in the reader only showed Android's menu, so notes could not be made | Fixed | `8bee95f` (PR #64) |
 | [BUG-23](https://github.com/bennyxzeng/Loremark/issues/70) | 2026-11-01 | P2 | usability | Tapping a note in the Notes tab did not go to its passage | Fixed | `8bee95f` (PR #64) |
 | [BUG-24](https://github.com/bennyxzeng/Loremark/issues/91) | 2026-11-10 | P1 | bug | The first note on a passage seemed not to be highlighted (physical Android, user study) | Fix in review, to confirm on a device | `fix/notes-highlights-issues` |
-| [BUG-25](https://github.com/bennyxzeng/Loremark/issues/99) | 2026-11-10 | P1 | usability | The text selection stayed on screen after Highlight, and over other tabs (user study) | Fix in review, to confirm on a device | `fix/notes-highlights-issues` |
+| [BUG-25](https://github.com/bennyxzeng/Loremark/issues/99) | 2026-11-10 | P1 | usability | The text selection and its menu stayed on screen after Highlight, and over other tabs (user study) | Fix in review, to confirm on a device | `fix/notes-highlights-issues` |
 | [BUG-26](https://github.com/bennyxzeng/Loremark/issues/115) | 2026-11-17 | P2 | bug | A deleted note's passage stayed highlighted until the app restarted (peer review) | Fix in review | `fix/notes-highlights-issues` |
 | [BUG-27](https://github.com/bennyxzeng/Loremark/issues/112) | 2026-11-17 | P2 | usability | Two notes on the same words: tapping only ever opened the one drawn on top (peer review) | Fix in review | `fix/notes-highlights-issues` |
-| [BUG-28](https://github.com/bennyxzeng/Loremark/issues/135) | 2026-11-18 | P2 | usability | A highlight's color could not be changed without typing a note (peer review) | Fix in review | `fix/notes-highlights-issues` |
+| [BUG-28](https://github.com/bennyxzeng/Loremark/issues/135) | 2026-11-18 | P2 | usability | A highlight's color could not be changed without typing a note (peer review) | By design now: highlights are always yellow (see BUG-30) | `fix/notes-highlights-issues` |
 | [BUG-29](https://github.com/bennyxzeng/Loremark/issues/123) | 2026-11-18 | P2 | usability | The Pink color filter was off screen on a narrow phone, with no sign the row scrolled (peer review) | Fix in review | `fix/notes-highlights-issues` |
 | [BUG-30](https://github.com/bennyxzeng/Loremark/issues/124) | 2026-11-18 | P2 | usability | Notes and plain highlights looked the same on the page (peer review) | Fix in review, to confirm on a device | `fix/notes-highlights-issues` |
 | [INS-01](https://github.com/bennyxzeng/Loremark/issues/35) | 2026-11-01 | P0 | spoiler | Jumping ahead and back made search open every chapter | Fixed, PR #13 | `ce58ab6` |
@@ -222,16 +222,23 @@ the system menu, which causes OPEN-06.
 `NoteJumpController` now sends the reader to the passage and highlights it (`8bee95f`, PR #64), with the same tests.
 
 BUG-24 to BUG-30 came from the user study (#91, #99) and the peer review (#112, #115, #123, #124,
-#135). They are fixed on `fix/notes-highlights-issues`, and [docs/notes.md](notes.md) lists them
-with the rest of the notes feature. BUG-24, BUG-25 and BUG-30 still need a check on a phone.
+#135). They are fixed on `fix/notes-highlights-issues` (PR #147), and [docs/notes.md](notes.md)
+lists them with the rest of the notes feature. BUG-24, BUG-25 and BUG-30 still need a check on a
+phone. A first round of these fixes was revised on 2026-11-24 after testing on a phone found the
+jump still covering notes, the menu staying up over other tabs, and the picker opening for notes
+that were only near each other; the write-ups below describe the fixes as they are now.
 
-**BUG-25: The selection stayed on screen after Highlight.** On Android our Highlight / Add note /
-Copy menu replaces the system one, and flutter_readium 0.8.0 closes the menu after an action
-without clearing the selection (`EpubReaderFragment.onActionItemClicked` calls `mode.finish()` but
-never `clearSelection()`). The plugin has no way for the app to clear it either. So the selection
-sat on top of the new highlight, and stayed over the other tabs. A script added to every chapter,
-`assets/reader/note_selection.js`, now clears the selection when a new note or highlight is drawn,
-and when the page loses focus. `BookScreen` takes the focus away when the reader switches tabs.
+**BUG-25: The selection stayed on screen after Highlight, and over other tabs.** On Android our
+Highlight / Add note / Copy menu replaces the system one, and flutter_readium 0.8.0 closes the menu
+after an action without clearing the selection (`EpubReaderFragment.onActionItemClicked` calls
+`mode.finish()` but never `clearSelection()`). The plugin has no way for the app to clear it, or to
+run script in the page. So the selection sat on top of the new highlight, and the selection and its
+menu stayed over the other tabs. A script added to every chapter, `assets/reader/note_selection.js`,
+now clears the selection when a new note or highlight is drawn. For a tab switch, the app signals
+the script: it draws an invisible decoration on the selected words in the `loremark-clear-selection`
+group and removes it again (`ReaderSelectionController`, `clearSelection`), and the script clears
+the selection when that group appears. Making the page lose focus, tried first, did not reach the
+reader on Android.
 
 **BUG-24: The first note seemed not to be highlighted.** The emulator draws the first note's
 highlight (checked on 2026-11-10), so the likely cause is BUG-25: the participant's selection was
@@ -239,29 +246,42 @@ still on top of the new highlight, and they had not yet learned to tap the page 
 same fix covers it. If it still happens on a phone, the highlight itself was not drawn and this
 needs a new look.
 
-**BUG-26: A deleted note's passage stayed highlighted.** Tapping a note in the Notes tab jumps to
-it and draws a jump highlight (amber, in the search highlight's group) over the note. That
-highlight stays until the next jump or until the book closes, and is drawn again on every page.
-Deleting the note removed only the note's own highlight, so the amber one stayed, and tapping it
-did nothing because it is not a note. The Read tab now remembers which note it jumped to, and clears
-the jump highlight when that note is deleted or changed (`ReadScreen._jumpedNote`).
+**BUG-26: A deleted note's passage stayed highlighted.** Tapping a note in the Notes tab jumped to
+it and drew the search highlight (amber) over the note. That highlight stays until the next search
+or until the book closes, and is drawn again on every page. Deleting the note removed only the
+note's own highlight, so the amber one stayed, and tapping it did nothing because it is not a note.
+It also covered the note's own color and underline, so a blue note looked yellow after the jump.
+Opening a note now goes to its passage without any search highlight (`goToPassage`), since the
+note is already drawn in its own color. A first fix that cleared the amber highlight when the note
+was deleted was replaced by this one.
 
 **BUG-27: Only the top note on the same words could be opened.** The reader reports a tap on the
 highlight drawn on top, so a second note on the same words could not be reached from the Read tab.
 Tapping words with more than one note now lists them to pick from
-(`AnnotationService.notesOverlapping`, `chooseOverlappingNote`). Notes on the same spot are also
-sorted by when they were made, since Dart's sort does not keep equal items in order.
+(`AnnotationService.notesOverlapping`, `chooseOverlappingNote`). Two notes count as on the same
+words only when their selections share words: each note's words are placed in the other's saved
+passage where the text around them agrees, and the two spans must overlap. A first version that
+only checked whether each note's words appeared somewhere in the other's surrounding text also
+listed notes that were merely near each other, since Readium keeps a long stretch of text around
+each selection. Notes on the same spot are also sorted by when they were made, since Dart's sort
+does not keep equal items in order.
 
 **BUG-28: A highlight's color needed a note to change.** The edit sheet refused to save with no
-text. When editing a highlight, it now saves with no text and keeps it a highlight in the new color.
-A note with text still cannot be emptied.
+text. This is now by design: a highlight is always yellow and notes are green, blue or pink
+(BUG-30), so picking a color means writing a note. Tapping a highlight opens the sheet with the
+note colors, starting on green. (A first fix let a highlight be saved in another color with no
+text; it was removed with the new color rules.)
 
 **BUG-29: The Pink filter was hidden on a narrow phone.** The chapter picker and color chips were
 one row that scrolled sideways. They now wrap onto a second line, so every chip is on screen.
 
-**BUG-30: Notes and highlights looked the same.** A note with text is now drawn with an underline
-in a darker shade of its color under the fill, and each card in the Notes tab says "Note" or
-"Highlight".
+**BUG-30: Notes and highlights looked the same.** Highlights are now always yellow, and notes are
+green, blue or pink (`highlightColor`, `noteColors`; the service rejects a yellow note). A note also
+gets an underline in a darker shade of its color, which also shows the words can be tapped, and
+each card in the Notes tab says "Note" or "Highlight". The underlines are in their own decoration
+group, `loremark-note-marks`, drawn after the fills: in one group, a fill drawn again after an edit
+landed on top of its underline, and the jump highlight of BUG-26 covered it too. Notes saved yellow
+before these rules keep their color until edited.
 
 ### Reading insights (PR #13, merging after the beta)
 

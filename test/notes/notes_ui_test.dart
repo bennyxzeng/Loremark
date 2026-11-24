@@ -24,7 +24,7 @@ void main() {
     String body, {
     NoteAnchor anchor = const NoteAnchor(7, 0.2),
     String chapter = 'Chapter 8',
-    HighlightColor color = HighlightColor.yellow,
+    HighlightColor color = HighlightColor.green,
   }) => service.addNote(
     anchor: anchor,
     chapterLabel: chapter,
@@ -149,8 +149,56 @@ void main() {
       expect(find.text('Remove highlight'), findsNothing);
     });
 
-    // Issue #135: a highlight's color could only be changed by typing a note.
-    testWidgets('changes a highlight\'s color without any text', (
+    // Issue #124: yellow is kept for plain highlights, so a note's colors are
+    // green, blue, and pink. A highlight is always yellow, so picking a color
+    // means writing a note. (This replaces the color-only change first made
+    // for #135.)
+    testWidgets('offers only green, blue, and pink, starting on green', (
+      tester,
+    ) async {
+      final highlight = await service.addHighlight(
+        anchor: const NoteAnchor(7, 0.2),
+        chapterLabel: 'Chapter 8',
+        selectedText: 'A quiet harbor',
+      );
+
+      await openEditSheet(tester, highlight);
+
+      expect(find.byTooltip('Yellow'), findsNothing);
+      for (final color in ['Green', 'Blue', 'Pink']) {
+        expect(find.byTooltip(color), findsOneWidget, reason: color);
+      }
+      expect(
+        find.descendant(
+          of: find.byTooltip('Green'),
+          matching: find.byIcon(Icons.check),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('writing in a highlight saves a note in the picked color', (
+      tester,
+    ) async {
+      final highlight = await service.addHighlight(
+        anchor: const NoteAnchor(7, 0.2),
+        chapterLabel: 'Chapter 8',
+        selectedText: 'A quiet harbor',
+      );
+
+      await openEditSheet(tester, highlight);
+      await tester.enterText(find.byType(TextField), 'Too quiet.');
+      await tester.tap(find.byTooltip('Blue'));
+      await tester.pump();
+      await tester.tap(find.text('Save note'));
+      await tester.pumpAndSettle();
+
+      final saved = service.notes.single;
+      expect(saved.body, 'Too quiet.');
+      expect(saved.color, HighlightColor.blue);
+    });
+
+    testWidgets('a highlight still cannot be saved without writing', (
       tester,
     ) async {
       final highlight = await service.addHighlight(
@@ -162,13 +210,11 @@ void main() {
       await openEditSheet(tester, highlight);
       await tester.tap(find.byTooltip('Blue'));
       await tester.pump();
-      await tester.tap(find.text('Save'));
-      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save note'));
+      await tester.pump();
 
-      final saved = service.notes.single;
-      expect(saved.color, HighlightColor.blue);
-      expect(saved.isHighlightOnly, isTrue);
-      expect(find.textContaining('Your note is empty'), findsNothing);
+      expect(find.textContaining('Your note is empty'), findsOneWidget);
+      expect(service.notes.single.color, HighlightColor.yellow);
     });
 
     testWidgets('a note can still not be emptied', (tester) async {
@@ -226,7 +272,7 @@ void main() {
     });
 
     testWidgets('color filter shows only notes of that color', (tester) async {
-      await addNote('Yellow note');
+      await addNote('Green note');
       await addNote('Pink note', color: HighlightColor.pink);
       await tester.pumpWidget(app(NoteList(service: service)));
 
@@ -234,7 +280,7 @@ void main() {
       await tester.pump();
 
       expect(find.text('Pink note'), findsOneWidget);
-      expect(find.text('Yellow note'), findsNothing);
+      expect(find.text('Green note'), findsNothing);
     });
 
     group('type toggle', () {
