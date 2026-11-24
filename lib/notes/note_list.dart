@@ -159,25 +159,34 @@ class _NoteListState extends State<NoteList> {
                 setState(() => _type = selection.single),
           ),
           const SizedBox(height: 8),
-          // The chapter picker and the color chips wrap onto a second line
-          // instead of scrolling sideways. A sideways row hid the last chip
-          // (Pink) on a narrow phone with nothing to show it was there.
-          // (See issue #123)
+          // The chapter picker has a line of its own as wide as the screen,
+          // and a long chapter title is cut short with "…". In the row with
+          // the chips, a long title ran off the right edge.
+          DropdownButton<String?>(
+            value: _chapter,
+            isExpanded: true,
+            underline: const SizedBox.shrink(),
+            items: [
+              const DropdownMenuItem(child: Text('All chapters')),
+              for (final chapter in chapters)
+                DropdownMenuItem(
+                  value: chapter,
+                  child: Text(
+                    chapter,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+            ],
+            onChanged: (chapter) => setState(() => _chapter = chapter),
+          ),
+          // The color chips wrap onto a second line instead of scrolling
+          // sideways. A sideways row hid the last chip (Pink) on a narrow
+          // phone with nothing to show it was there. (See issue #123)
           Wrap(
             spacing: 6,
             runSpacing: 4,
-            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              DropdownButton<String?>(
-                value: _chapter,
-                underline: const SizedBox.shrink(),
-                items: [
-                  const DropdownMenuItem(child: Text('All chapters')),
-                  for (final chapter in chapters)
-                    DropdownMenuItem(value: chapter, child: Text(chapter)),
-                ],
-                onChanged: (chapter) => setState(() => _chapter = chapter),
-              ),
               // Tapping a color chip again turns that color filter off.
               for (final color in HighlightColor.values)
                 FilterChip(

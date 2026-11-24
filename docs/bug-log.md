@@ -273,7 +273,9 @@ note colors, starting on green. (A first fix let a highlight be saved in another
 text; it was removed with the new color rules.)
 
 **BUG-29: The Pink filter was hidden on a narrow phone.** The chapter picker and color chips were
-one row that scrolled sideways. They now wrap onto a second line, so every chip is on screen.
+one row that scrolled sideways. The color chips now wrap onto a second line, so every chip is on
+screen. The chapter picker has a line of its own and cuts a long title short with "…": in the
+wrapping row, a long chapter title ran off the right edge (seen on a phone on 2026-11-24).
 
 **BUG-30: Notes and highlights looked the same.** Highlights are now always yellow, and notes are
 green, blue or pink (`highlightColor`, `noteColors`; the service rejects a yellow note). A note also

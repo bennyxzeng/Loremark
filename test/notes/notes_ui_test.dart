@@ -385,6 +385,31 @@ void main() {
       }
     });
 
+    // Seen on a phone with 86's "Coquelicots Blooming Across the Battlefield":
+    // a long chapter title in the picker ran off the right edge.
+    testWidgets('a long chapter title fits on a 360 dp wide phone', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      const title = 'Coquelicots Blooming Across the Battlefield, and Beyond';
+      await addNote('always', chapter: title);
+      await tester.pumpWidget(app(NoteList(service: service)));
+
+      // Picks the long chapter, so the picker shows its title.
+      await tester.tap(find.byType(DropdownButton<String?>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(title).last);
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(
+        tester.getRect(find.byType(DropdownButton<String?>)).right,
+        lessThanOrEqualTo(360),
+      );
+    });
+
     // Issue #124: notes and highlights looked the same.
     testWidgets('labels each entry as a note or a highlight', (tester) async {
       await addNote('Mara hides the letter');
