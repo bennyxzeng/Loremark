@@ -110,10 +110,6 @@ flowchart LR
 
 ## What's next
 
-**For the final release:**
-
-- Character cards opened by tapping a name in the reader.
-
 **Stretch goals:** a theory tracker that checks your guesses as the story reveals more, confusion detection that notices rereading and stalls and offers a nudge (in progress), an AI-generated map of the story's world, and, if time allows, training our own model.
 
 ## Testing
