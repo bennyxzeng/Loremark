@@ -1,0 +1,8 @@
+# Text files the app bundles or the tests compare byte for byte keep LF line
+# endings on every OS. Without this, a Windows checkout with core.autocrlf=true
+# turns them into CRLF: the prompts sent to the AI provider change, and the
+# tests that hash them fail.
+assets/**/*.txt  text eol=lf
+assets/**/*.json text eol=lf
+assets/**/*.js   text eol=lf
+test/fixtures/**/*.json text eol=lf

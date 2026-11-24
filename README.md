@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="#what-works-in-the-beta"><strong>What works in the beta</strong></a>
+  <a href="#what-works-in-the-gamma"><strong>What works in the gamma</strong></a>
   &nbsp; · &nbsp;
   <a href="#getting-started">Getting started</a>
   &nbsp; · &nbsp;
@@ -23,7 +23,7 @@
   <a href="#the-team">Team</a>
 </p>
 
-<p align="center"><sub>CSE 403 · Flutter app for Android and iOS · Beta release</sub></p>
+<p align="center"><sub>CSE 403 · Flutter app for Android and iOS · Gamma release</sub></p>
 
 ---
 
@@ -37,20 +37,19 @@ Its central idea is a **versioned story model**: a record of what was known at e
 
 > **Your bookmark is a knowledge boundary.** A question at chapter 7 should be answered with information available through chapter 7.
 
-## What works in the beta
+## What works in the gamma
 
-These are our six use cases and where each one stands in this beta.
+These are our five use cases and where each one stands in this gamma.
 
 | Use case | Status | What you can do today |
 | :--- | :--- | :--- |
-| **3 · Take notes and highlights** | **Operational** | Select text in the reader and choose **Highlight**, **Add note** or **Copy**. Highlights are drawn on the page and stay there as you turn pages. Tap a highlight to edit or remove it. The Notes tab lists every note, with search, a color filter and an **All / Notes / Highlights** toggle. Tap a note to jump back to its passage. |
-| **5 · Explore the Story Map** | **Operational** | A relationship graph of the characters, with a chapter slider. Move the slider back and facts from later chapters disappear. **Overview** lists what the reader learned in the chapter selected by the slider. Updates can take a few minutes per section. You can keep reading while they run. |
-| **4 · Look up a character** | **Operational** | A searchable character list, and a card for each character showing what is known as of the chosen chapter. Opening a card by tapping a name in the reader isn't in yet. |
-| **1 · Get a recap when you come back** | **Operational** | When you open a book, a pop-up offers a recap up to where you stopped. **Catch me up** opens Ask on a new conversation that starts with the recap: numbered moments with citations to the book. Ask follow-up questions right there. Needs a Story Map and an API key. See [docs/opening-recap.md](docs/opening-recap.md). |
-| **2 · Track a theory** | In progress | |
-| **6 · Ask about the story** | **Operational** | Ask a question in the Ask tab. The AI sees the page you are on and the few before it, and looks the rest up in the Story Map, up to the end of that page and no further. Answers stream in and cite the paragraphs they come from: tap a number to read it, then **Open in book** to go there. Pick Ask's model and effort in Settings, apart from Story Map updates. See [docs/ask.md](docs/ask.md). |
+| **Take notes and highlights** | **Operational** | Select text in the reader and choose **Highlight**, **Add note** or **Copy**. Highlights are drawn on the page and stay there as you turn pages. Tap a highlight to edit or remove it. The Notes tab lists every note, with search, a color filter and an **All / Notes / Highlights** toggle. Tap a note to jump back to its passage. |
+| **Explore the Story Map** | **Operational** | A relationship graph of the characters, with a chapter slider. Move the slider back and facts from later chapters disappear. **Overview** lists what the reader learned in the chapter selected by the slider. Updates can take a few minutes per section. You can keep reading while they run. |
+| **Look up a character** | **Operational** | A searchable character list, and a card for each character showing what is known as of the chosen chapter. Opening a card by tapping a name in the reader isn't in yet. |
+| **Get a recap when you come back** | **Operational** | When you open a book, a pop-up offers a recap up to where you stopped. **Catch me up** opens Ask on a new conversation that starts with the recap: numbered moments with citations to the book. Ask follow-up questions right there. Needs a Story Map and an API key. See [docs/opening-recap.md](docs/opening-recap.md). |
+| **Ask about the story** | **Operational** | Ask a question in the Ask tab. The AI sees the page you are on and the few before it, and looks the rest up in the Story Map, up to the end of that page and no further. Answers stream in and cite the paragraphs they come from: tap a number to read it, then **Open in book** to go there. Pick Ask's model and effort in Settings, apart from Story Map updates. See [docs/ask.md](docs/ask.md). |
 
-These features support the use cases above, and all of them work in the beta:
+These features support the use cases above, and all of them work in the gamma:
 
 - **Library and reader.** Import DRM-free EPUBs, read them with [Readium](https://readium.org/), jump to a chapter from the contents, and reopen each book on the page where you left off.
 - **Spoiler-safe search.** Search a book, limited to the part you have already read, and jump to a match with the passage highlighted.
@@ -59,7 +58,7 @@ These features support the use cases above, and all of them work in the beta:
 
 ### Walkthrough: one use case through every part of Loremark
 
-Use case 3, with the setup it needs, runs through every major part of the app: the AI provider connection, the library, the Readium reader, on-device storage and the Notes tab. Follow these steps on a fresh install:
+Taking notes and highlights, with the setup it needs, runs through every major part of the app: the AI provider connection, the library, the Readium reader, on-device storage and the Notes tab. Follow these steps on a fresh install:
 
 1. **Connect an AI provider.** Enter an OpenAI or DeepSeek API key. Loremark calls the provider to check it, rejects a key that doesn't work, and saves one that does.
 2. **Import a book.** In the library, tap **Import EPUB** and pick a DRM-free EPUB. Loremark copies it into the app's storage and adds it to your library.
@@ -113,10 +112,9 @@ flowchart LR
 
 **For the final release:**
 
-- A theory tracker that checks your guesses as the story reveals more (use case 2).
 - Character cards opened by tapping a name in the reader.
 
-**Stretch goals:** confusion detection that notices rereading and stalls and offers a nudge (in progress), an AI-generated map of the story's world, and, if time allows, training our own model.
+**Stretch goals:** a theory tracker that checks your guesses as the story reveals more, confusion detection that notices rereading and stalls and offers a nudge (in progress), an AI-generated map of the story's world, and, if time allows, training our own model.
 
 ## Testing
 
@@ -157,6 +155,48 @@ flutter run
 ```
 
 Then follow the [walkthrough](#walkthrough-one-use-case-through-every-part-of-loremark). Any DRM-free EPUB works for reading and notes, for example one from [Project Gutenberg](https://www.gutenberg.org/). iOS builds from the same code and needs iOS 15 or later; so far we have tested on Android. See [docs/epub-reader.md](docs/epub-reader.md) for how the reader works and for Mac and iOS steps.
+
+### Repository structure
+
+```text
+Loremark/
+├── lib/                    App code, one folder per feature. main.dart starts the app.
+│   ├── home/               Book screen with the Read, Notes and Ask tabs
+│   ├── library/            Library screen, EPUB import, book metadata
+│   ├── reader/             Readium reader, table of contents, saved reading position
+│   ├── reading/            How far you have read, pulling passages out of the book
+│   ├── notes/              Notes and highlights: data, storage, the note list
+│   ├── search/             Spoiler-safe search index and the search sheet
+│   ├── story_model/        Versioned story model and chapter snapshots
+│   ├── story_update/       Building and updating the Story Map with the AI provider
+│   ├── story_map/          Story Map tab: graph, character cards, chapter overview
+│   ├── ask/                Ask: the AI chat, its reading boundary and citations
+│   ├── recap/              The opening recap offered when you return to a book
+│   ├── companion/          The animated reading companion shown in Ask
+│   ├── settings/           Settings, API keys, the AI activity lock
+│   └── theme/              Colors, text styles, decoration
+├── test/                   Unit and widget tests, mirroring lib/ (see docs/testing.md)
+│   ├── acceptance/         Acceptance tool tests and the story model spoiler test
+│   ├── corpus/             Tests against real books
+│   ├── fixtures/           Sample Story Map data used by tests
+│   └── support/            A synthetic book shared by tests
+├── integration_test/       Start-to-finish test that runs the real app on a device
+├── assets/
+│   ├── story_update/       Prompt and schema for Story Map updates
+│   ├── chat/               Prompts for Ask and the recap
+│   ├── app/                Companion illustrations used in the app
+│   ├── companion/          Animated companion sprites
+│   ├── reader/             The reader's page script
+│   ├── images/             Full-size source art
+│   └── ai_chat_illust/     Source layers for the companion sprites
+├── tool/                   Scripts outside the app: acceptance trials, benchmarks, coverage
+├── docs/                   Feature guides, test reports, the bug log
+├── third_party/
+│   └── flutter_readium/    flutter_readium 0.8.0 with our iOS fix (see LOREMARK.md)
+└── android/, ios/          Platform projects generated by Flutter
+```
+
+A new feature gets its own folder under `lib/`, with its tests in the matching folder under `test/`. Its tab or screen goes in `home/` if it belongs to the book screen.
 
 Have feedback? [Open an issue](https://github.com/bennyxzeng/Loremark/issues) with the reading scenario, the chapter you were on, and what you expected Loremark to do. Clearly label any spoilers in examples.
 
