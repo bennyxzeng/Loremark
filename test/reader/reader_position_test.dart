@@ -4,6 +4,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:loremark/reader/reader_position.dart';
 
 void main() {
+  test('the page count is neither saved nor compared', () {
+    const position = ReaderPosition(3, 0.25, sectionPages: 12);
+
+    expect(position.toJson(), {'sectionIndex': 3, 'progression': 0.25});
+    expect(position, const ReaderPosition(3, 0.25));
+  });
+
   group('JSON', () {
     test('round trips a position with a total', () {
       const position = ReaderPosition(3, 0.25, totalProgression: 0.4);

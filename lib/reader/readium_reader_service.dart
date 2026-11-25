@@ -284,11 +284,19 @@ class _ReadiumSession implements EpubReaderSession {
   ReaderPosition? _lastRaw;
   bool _lastHadPageInfo = false;
 
+  /// The page count of each section, from the last full locator in it. A
+  /// page's position comes from its bare locator, which has none.
+  final _sectionPages = <int, int>{};
+
   void _onLocator(Locator locator) {
     // Tracked before the checks below, so a dropped duplicate still counts.
     final previousHadPageInfo = _lastHadPageInfo;
     _lastHadPageInfo = _hasPageInfo(locator.locations);
     final raw = positionFromLocator(locator, _indexOf);
+    final pages = locator.locations?.additionalProperties['totalPages'];
+    if (raw != null && pages is int && pages > 0) {
+      _sectionPages[raw.sectionIndex] = pages;
+    }
     // Debug and profile builds only; tool/acceptance reads it from logcat.
     if (kDebugMode || kProfileMode) {
       final line = positionLogLine(locator, raw?.sectionIndex);
@@ -410,7 +418,14 @@ class _ReadiumSession implements EpubReaderSession {
   void _emit(List<ReaderPosition> positions) {
     if (_closed) return;
     for (final position in positions) {
-      _positions.add(position);
+      _positions.add(
+        ReaderPosition(
+          position.sectionIndex,
+          position.progression,
+          totalProgression: position.totalProgression,
+          sectionPages: _sectionPages[position.sectionIndex],
+        ),
+      );
     }
   }
 

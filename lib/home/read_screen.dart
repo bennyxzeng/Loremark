@@ -40,6 +40,8 @@ class ReadScreen extends StatefulWidget {
     this.notes,
     this.noteJumps,
     this.passageJumps,
+    this.positionJumps,
+    this.progressBar,
     this.selection,
   });
 
@@ -82,6 +84,14 @@ class ReadScreen extends StatefulWidget {
   /// Lets other code send the reader to a passage and offer a way back, such
   /// as **Read it in the book** in a recap.
   final PassageJumpController? passageJumps;
+
+  /// Lets other code send the reader to a position, such as back to where
+  /// they were before a jump.
+  final PositionJumpController? positionJumps;
+
+  /// Shown at the bottom, left of how far through the book the reader is,
+  /// such as a bar of how much of the book counts as read.
+  final Widget? progressBar;
 
   /// Lets other code clear the text the reader selected, such as when the
   /// reader switches to another tab.
@@ -154,6 +164,22 @@ class PassageJumpController {
 
   /// Jumps to [target] and highlights it, if a book is showing.
   Future<void> show(PassageTarget target) async => _jumper?.call(target);
+}
+
+/// Lets other code send the Read tab to a position, with nothing highlighted.
+class PositionJumpController {
+  Future<void> Function(ReaderPosition position)? _jumper;
+
+  /// Called by the screen that shows the book. [detach] undoes it.
+  void attach(Future<void> Function(ReaderPosition position) jumper) =>
+      _jumper = jumper;
+
+  void detach(Future<void> Function(ReaderPosition position) jumper) {
+    if (_jumper == jumper) _jumper = null;
+  }
+
+  /// Jumps to [position], if a book is showing.
+  Future<void> goTo(ReaderPosition position) async => _jumper?.call(position);
 }
 
 class _ReadScreenState extends State<ReadScreen> {
@@ -244,6 +270,7 @@ class _ReadScreenState extends State<ReadScreen> {
     widget.noteJumps?.attach(_showNote);
     widget.noteJumps?.attachPassages(_showPassage);
     widget.passageJumps?.attach(_visitPassage);
+    widget.positionJumps?.attach(_goToPosition);
     widget.selection?.attach(_clearSelection);
     unawaited(_open());
     unawaited(_openNotes());
@@ -266,6 +293,10 @@ class _ReadScreenState extends State<ReadScreen> {
       oldWidget.passageJumps?.detach(_visitPassage);
       widget.passageJumps?.attach(_visitPassage);
     }
+    if (oldWidget.positionJumps != widget.positionJumps) {
+      oldWidget.positionJumps?.detach(_goToPosition);
+      widget.positionJumps?.attach(_goToPosition);
+    }
     if (oldWidget.selection != widget.selection) {
       oldWidget.selection?.detach(_clearSelection);
       widget.selection?.attach(_clearSelection);
@@ -287,6 +318,7 @@ class _ReadScreenState extends State<ReadScreen> {
     widget.noteJumps?.detach(_showNote);
     widget.noteJumps?.detachPassages(_showPassage);
     widget.passageJumps?.detach(_visitPassage);
+    widget.positionJumps?.detach(_goToPosition);
     widget.selection?.detach(_clearSelection);
     _notes?.removeListener(_drawNoteHighlights);
     _releaseSession();
@@ -515,6 +547,18 @@ class _ReadScreenState extends State<ReadScreen> {
     _stopRestoring();
     _highlightShown = true;
     await _navigate(() => session.showPassage(target));
+  }
+
+  /// Sends the reader to [position]. Best effort: if it fails, the reader
+  /// just stays where they are.
+  Future<void> _goToPosition(ReaderPosition position) async {
+    final session = _session;
+    if (session == null) return;
+    try {
+      await session.goToPosition(position);
+    } on Object catch (error) {
+      debugPrint('Could not go to $position: $error');
+    }
   }
 
   /// Shows [target], keeping the reader's place for **Back to your page**.
@@ -955,6 +999,7 @@ class _ReadScreenState extends State<ReadScreen> {
         ),
         _PageControls(
           progress: _position?.totalProgression,
+          progressBar: widget.progressBar,
           onPrevious: () => unawaited(_turnPage(session.goBackward)),
           onNext: () => unawaited(_turnPage(session.goForward)),
         ),
@@ -1068,12 +1113,16 @@ class _ChapterBar extends StatelessWidget {
 class _PageControls extends StatelessWidget {
   const _PageControls({
     required this.progress,
+    required this.progressBar,
     required this.onPrevious,
     required this.onNext,
   });
 
   /// How far into the whole book, if the renderer knows.
   final double? progress;
+
+  /// Goes left of [progress], if set.
+  final Widget? progressBar;
   final VoidCallback onPrevious;
   final VoidCallback onNext;
 
@@ -1086,6 +1135,13 @@ class _PageControls extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final progress = this.progress;
+    final bar = progressBar;
+    final label = Text(
+      progress == null ? '' : _label(progress),
+      key: const ValueKey('progress-label'),
+      textAlign: TextAlign.center,
+      style: kicker(color: LoremarkColors.muted),
+    );
     return DecoratedBox(
       decoration: const BoxDecoration(
         border: Border(top: BorderSide(color: LoremarkColors.line)),
@@ -1099,12 +1155,15 @@ class _PageControls extends StatelessWidget {
             onPressed: onPrevious,
           ),
           Expanded(
-            child: Text(
-              progress == null ? '' : _label(progress),
-              key: const ValueKey('progress-label'),
-              textAlign: TextAlign.center,
-              style: kicker(color: LoremarkColors.muted),
-            ),
+            child: bar == null
+                ? label
+                : Row(
+                    children: [
+                      Expanded(child: bar),
+                      const SizedBox(width: 10),
+                      label,
+                    ],
+                  ),
           ),
           IconButton(
             icon: const Icon(Icons.chevron_right),
