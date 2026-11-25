@@ -52,6 +52,7 @@ These are our five use cases and where each one stands in this gamma.
 These features support the use cases above, and all of them work in the gamma:
 
 - **Library and reader.** Import DRM-free EPUBs, read them with [Readium](https://readium.org/), jump to a chapter from the contents, and reopen each book on the page where you left off.
+- **Reading progress and skip-ahead protection.** A bar next to the page percent shows how far you have read and where you are now. If you jump well ahead, for example to a later chapter from the contents or more than 10 pages at once, Loremark asks whether the skipped part counts as read: **Count as read**, **Go back** to where you were, or **Keep reading** and decide later with the **Skipped ahead** button. Flipping quickly through pages doesn't count as reading them.
 - **Spoiler-safe search.** Search a book, limited to the part you have already read, and jump to a match with the passage highlighted.
 - **Your own AI key.** On first launch, connect an OpenAI or DeepSeek API key. Loremark checks the key with the provider and keeps it in the phone's secure storage. In Settings you can save up to five keys, name them, and switch between them; the key in use can't be switched or removed while a Story Map update or an Ask answer is running on it. You can skip this step and still read, take notes, and look at a Story Map loaded from a file.
 - **Offline mode.** Reading, notes and search work without a connection. An offline banner appears, and features that need the network stay locked until you are back online.
@@ -62,7 +63,7 @@ Taking notes and highlights, with the setup it needs, runs through every major p
 
 1. **Connect an AI provider.** Enter an OpenAI or DeepSeek API key. Loremark calls the provider to check it, rejects a key that doesn't work, and saves one that does.
 2. **Import a book.** In the library, tap **Import EPUB** and pick a DRM-free EPUB. Loremark copies it into the app's storage and adds it to your library.
-3. **Read.** Open the book. Turn pages by swiping or with the arrows, and use the contents button to jump to a chapter.
+3. **Read.** Open the book. Turn pages by swiping or with the arrows; the bar at the bottom fills as you read. Use the contents button to jump a few chapters ahead, and Loremark asks whether to count what you skipped as read. Tap **Go back** to return to your page.
 4. **Highlight and add a note.** Long-press to select a sentence and tap **Highlight**. Select another passage, tap **Add note**, type a thought and save it.
 5. **Check that it stays.** Turn the page and come back, then close and reopen the app. The book opens on the same page with your highlight still drawn.
 6. **Find it again.** Open the **Notes** tab. Switch between **All**, **Notes** and **Highlights**, then tap your note to jump back to the passage in the Read tab.
@@ -162,7 +163,7 @@ Loremark/
 │   ├── home/               Book screen with the Read, Notes and Ask tabs
 │   ├── library/            Library screen, EPUB import, book metadata
 │   ├── reader/             Readium reader, table of contents, saved reading position
-│   ├── reading/            How far you have read, pulling passages out of the book
+│   ├── reading/            How far you have read, the skip-ahead check, pulling passages out of the book
 │   ├── notes/              Notes and highlights: data, storage, the note list
 │   ├── search/             Spoiler-safe search index and the search sheet
 │   ├── story_model/        Versioned story model and chapter snapshots
