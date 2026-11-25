@@ -201,6 +201,27 @@ class _SelectorParser {
     return true;
   }
 
+  /// The quoted string here, without its quotes and with any CSS escapes
+  /// undone, or null if it doesn't end. Readium escapes an attribute's value
+  /// the way `CSS.escape` does, as in `[src='images\/010\.jpg']` for a page
+  /// that starts with a picture.
+  String? _string() {
+    final quote = _here;
+    _at++;
+    final out = StringBuffer();
+    while (!_atEnd && _here != quote) {
+      if (_here != r'\') {
+        out.write(_here);
+        _at++;
+      } else if (!_escape(out)) {
+        return null;
+      }
+    }
+    if (_atEnd) return null;
+    _at++;
+    return out.toString();
+  }
+
   bool _attribute(_Step step) {
     _at++;
     // A prefix joins the name with an escaped colon, as in `epub\:type`.
@@ -210,12 +231,8 @@ class _SelectorParser {
     if (_here == '=') {
       _at++;
       if (_atEnd || (_here != '"' && _here != "'")) return false;
-      final quote = _here;
-      _at++;
-      final end = text.indexOf(quote, _at);
-      if (end < 0) return false;
-      value = text.substring(_at, end);
-      _at = end + 1;
+      value = _string();
+      if (value == null) return false;
     }
     if (_atEnd || _here != ']') return false;
     _at++;

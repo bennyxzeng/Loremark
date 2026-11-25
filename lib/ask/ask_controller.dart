@@ -5,6 +5,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter/widgets.dart' show TextEditingController;
 
 import '../library/book.dart';
+import '../settings/ai_activity.dart';
 import '../settings/ai_settings.dart';
 import '../story_update/story_model_choice.dart';
 import 'ask_backend.dart';
@@ -79,7 +80,9 @@ class AskController extends ChangeNotifier {
     Future<String> Function()? loadPrompt,
     Future<String> Function()? loadRecapPrompt,
     DateTime Function()? now,
-  }) : _openHistory = openHistory ?? AskHistoryStore.open,
+    AiActivity? activity,
+  }) : activity = activity ?? AiActivity.instance,
+       _openHistory = openHistory ?? AskHistoryStore.open,
        _loadPrompt =
            loadPrompt ??
            (() => rootBundle.loadString('assets/chat/$askPromptName')),
@@ -90,6 +93,10 @@ class AskController extends ChangeNotifier {
 
   final Book book;
   final AskBackend backend;
+
+  /// Where questions under way are counted, so the key in use can't change
+  /// under them.
+  final AiActivity activity;
 
   /// How requests reach the provider; tests replace the network.
   final AskHttpPost post;
@@ -214,6 +221,28 @@ class AskController extends ChangeNotifier {
   }) async {
     final text = question.trim();
     if (text.isEmpty || busy) return;
+    // Before the first await: the key is held from here.
+    final end = activity.begin();
+    try {
+      await _askCounted(
+        text,
+        recap: recap,
+        credentials: credentials,
+        model: model,
+        effort: effort,
+      );
+    } finally {
+      end();
+    }
+  }
+
+  Future<void> _askCounted(
+    String text, {
+    required bool recap,
+    required AiCredentials credentials,
+    required StoryModelChoice model,
+    required StoryEffort effort,
+  }) async {
     final pending = _pending = AskPending(text, recap: recap);
     _notify();
 

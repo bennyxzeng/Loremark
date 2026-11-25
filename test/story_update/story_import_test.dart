@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
 import 'package:loremark/story_update/story_api_client.dart';
 import 'package:loremark/story_update/story_archive.dart';
 import 'package:loremark/story_update/story_book.dart';
@@ -89,14 +90,16 @@ void main() {
     expect(outcome.status, 'committed', reason: '${outcome.issues}');
   }
 
+  /// [file]'s path under [root], with `/` on every platform, as in a zip.
+  String nameIn(String root, File file) =>
+      p.split(p.relative(file.path, from: root)).join('/');
+
   Map<String, String> treeOf(String path) {
     final folder = Directory(path);
     if (!folder.existsSync()) return const {};
     return {
       for (final file in folder.listSync(recursive: true).whereType<File>())
-        file.path.substring(path.length + 1): sha256OfBytes(
-          file.readAsBytesSync(),
-        ),
+        nameIn(path, file): sha256OfBytes(file.readAsBytesSync()),
     };
   }
 
@@ -110,8 +113,7 @@ void main() {
     for (final file in Directory(
       storePath,
     ).listSync(recursive: true).whereType<File>())
-      '$prefix${file.path.substring(storePath.length + 1)}': file
-          .readAsBytesSync(),
+      '$prefix${nameIn(storePath, file)}': file.readAsBytesSync(),
   };
 
   Uint8List zipOf(Map<String, List<int>> entries) {

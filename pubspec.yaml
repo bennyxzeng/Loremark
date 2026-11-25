@@ -51,6 +51,9 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
 
+  # Lets tests compare file paths the same way on Windows and on Unix.
+  path: ^1.9.1
+
   # Runs the whole app on a device for the start-to-finish test in
   # integration_test/.
   integration_test:
@@ -88,6 +91,8 @@ flutter:
     # tool/companion/build_companion.py.
     - assets/companion/
     - assets/reader/page_end.js
+    # Clears the selection once a note is drawn (issues #99 and #91).
+    - assets/reader/note_selection.js
 
   # To add assets to your application, add an assets section, like this:
   # assets:

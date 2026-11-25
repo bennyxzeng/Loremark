@@ -24,4 +24,9 @@ extension HighlightColorDisplay on HighlightColor {
   /// This is the see-through version of [swatch] drawn over the text in the
   /// book, so the words under it stay readable.
   Color get pageTint => swatch.withValues(alpha: 0.45);
+
+  /// This is a darker shade of [swatch], used for the underline that marks a
+  /// note with text on the page, so notes stand out from plain highlights.
+  /// (See issue #124)
+  Color get markTint => Color.lerp(swatch, const Color(0xFF000000), 0.45)!;
 }

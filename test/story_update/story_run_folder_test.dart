@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
 import 'package:loremark/story_update/story_api_client.dart';
 import 'package:loremark/story_update/story_book.dart';
 import 'package:loremark/story_update/story_model_choice.dart';
@@ -80,9 +81,10 @@ void main() {
   List<Directory> runs() =>
       Directory(runsPath).listSync().whereType<Directory>().toList();
 
+  /// The files under [folder], named with `/` on every platform.
   Set<String> filesIn(Directory folder) => {
     for (final file in folder.listSync(recursive: true).whereType<File>())
-      file.path.substring(folder.path.length + 1),
+      p.split(p.relative(file.path, from: folder.path)).join('/'),
   };
 
   JsonMap readJson(Directory folder, String name) =>
@@ -272,7 +274,7 @@ void main() {
         'warning',
       );
 
-      final runId = run.path.split('/').last;
+      final runId = p.basename(run.path);
       final commit = jsonDecode(
         File('$storePath/provenance/$runId/commit.json').readAsStringSync(),
       ) as JsonMap;
@@ -553,7 +555,8 @@ void main() {
     final prepared = prepareStoryUpdate(request())!;
     prepared.run!.finish('dry_run');
     final run = runs().single;
-    expect(run.path, prepared.run!.path);
+    // The same folder, whichever separator each path was written with.
+    expect(p.normalize(run.path), p.normalize(prepared.run!.path));
     final record = readJson(run, 'run.json');
     expect(record['status'], 'dry_run');
     expect((record['request'] as JsonMap)['dry_run'], isTrue);

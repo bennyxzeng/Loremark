@@ -6,8 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../tool/benchmark/benchmark.dart';
 
-// Scalability targets from the spec: a 500,000-word book, chapter processing
-// under 60 s, and 28 of 30 character cards opening in under a second.
+// Measures local operations on a 500,000-word book and checks that at least
+// 28 of 30 character cards open in under a second.
 //
 // Runs the same code as `dart run tool/benchmark/run.dart`, but under
 // `flutter test`: JIT, assertions on, so slower than the AOT numbers in
@@ -24,7 +24,7 @@ void main() {
     expect(report.facts['chapters'], 100);
   });
 
-  test('extracts the text of the whole book well inside 60 s', () {
+  test('extracts the text of the whole book in under 20 s', () {
     final row = report.rows.first;
     expect(row.max, lessThan(20 * 1000));
   });

@@ -178,6 +178,35 @@ class _StoryMapScreenState extends State<StoryMapScreen> {
   void _openCard(String entityId) =>
       showCharacterCard(context, _snapshot!, entityId);
 
+  void _openFullscreenGraph(StorySnapshot snapshot, GraphFilters filters) {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (context) => Scaffold(
+          appBar: AppBar(
+            automaticallyImplyLeading: false,
+            title: Text(
+              snapshot.section.title,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          body: SafeArea(
+            top: false,
+            child: CharacterGraphView(
+              snapshot: snapshot,
+              initialFilters: filters,
+              isFullscreen: true,
+              onEntityTap: (id) => showCharacterCard(context, snapshot, id),
+              onGuideTap: () =>
+                  showGraphGuide(context, sectionLabel: snapshot.section.label),
+              onFullscreenToggle: (_) => Navigator.of(context).pop(),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final sections = widget.model.sections;
@@ -227,24 +256,21 @@ class _StoryMapScreenState extends State<StoryMapScreen> {
           ),
         ),
         if (sections.length > 1)
+          // No names at the ends: a section without a number goes by its
+          // whole title, which could leave the slider no room. Dragging shows
+          // the section's name above the thumb.
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                Text(sections.first.label, style: theme.textTheme.labelSmall),
-                Expanded(
-                  child: Slider(
-                    value: sliderIndex.toDouble(),
-                    max: (sections.length - 1).toDouble(),
-                    divisions: sections.length - 1,
-                    label: sections[sliderIndex].label,
-                    onChangeStart: (_) => _dragStartIndex = _sectionIndex,
-                    onChanged: (value) => _slideTo(value.round()),
-                    onChangeEnd: (value) => _slideEnded(value.round()),
-                  ),
-                ),
-                Text(sections.last.label, style: theme.textTheme.labelSmall),
-              ],
+            child: Slider(
+              value: sliderIndex.toDouble(),
+              max: (sections.length - 1).toDouble(),
+              divisions: sections.length - 1,
+              label: sections[sliderIndex].label,
+              semanticFormatterCallback: (value) =>
+                  '${value.round() + 1} of ${sections.length}',
+              onChangeStart: (_) => _dragStartIndex = _sectionIndex,
+              onChanged: (value) => _slideTo(value.round()),
+              onChangeEnd: (value) => _slideEnded(value.round()),
             ),
           )
         else
@@ -252,12 +278,26 @@ class _StoryMapScreenState extends State<StoryMapScreen> {
         if (snapshot == null)
           Expanded(
             child: Center(
-              child: FilledButton.tonal(
-                onPressed: () {
-                  _dragStartIndex = _sectionIndex;
-                  _confirmShowing(0);
-                },
-                child: Text('Show ${sections.first.label} anyway'),
+              // A long title wraps, so it needs room at the sides and between
+              // the lines and the button's edges.
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: FilledButton.tonal(
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 10,
+                    ),
+                  ),
+                  onPressed: () {
+                    _dragStartIndex = _sectionIndex;
+                    _confirmShowing(0);
+                  },
+                  child: Text(
+                    'Show ${sections.first.label} anyway',
+                    textAlign: TextAlign.center,
+                  ),
+                ),
               ),
             ),
           )
@@ -273,7 +313,7 @@ class _StoryMapScreenState extends State<StoryMapScreen> {
                 ),
                 ButtonSegment(
                   value: _StoryMapTab.chapter,
-                  label: Text('Chapter'),
+                  label: Text('Overview'),
                 ),
               ],
               showSelectedIcon: false,
@@ -291,6 +331,8 @@ class _StoryMapScreenState extends State<StoryMapScreen> {
                   context,
                   sectionLabel: snapshot.section.label,
                 ),
+                onFullscreenToggle: (filters) =>
+                    _openFullscreenGraph(snapshot, filters),
               ),
               _StoryMapTab.characters => CharacterListView(
                 snapshot: snapshot,

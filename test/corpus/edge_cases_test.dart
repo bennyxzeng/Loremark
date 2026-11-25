@@ -131,7 +131,9 @@ void main() {
       final xhtml = page('<P>one</P><P>two</P>');
 
       expect(textProgressionOfBlock(xhtml, 1), isNotNull);
-      expect(textProgressionOfBlock(xhtml, 2), isNull);
+      // One past the last block ends the page with it; past that is nothing.
+      expect(textProgressionOfBlock(xhtml, 2), 1);
+      expect(textProgressionOfBlock(xhtml, 3), isNull);
     });
 
     test('are none in a chapter with text only in the body', () {
@@ -150,7 +152,9 @@ void main() {
       final xhtml = page('<p>&nbsp;</p><p>real</p>');
 
       expect(textProgressionOfBlock(xhtml, 0), isNotNull);
-      expect(textProgressionOfBlock(xhtml, 1), isNull);
+      // One block, "real": block 1 is one past it.
+      expect(textProgressionOfBlock(xhtml, 1), 1);
+      expect(textProgressionOfBlock(xhtml, 2), isNull);
     });
 
     test('use the innermost block of nested ones', () {
@@ -161,7 +165,8 @@ void main() {
       final after = textProgressionOfBlock(xhtml, 1)!;
 
       expect(inner, lessThan(after));
-      expect(textProgressionOfBlock(xhtml, 2), isNull);
+      expect(textProgressionOfBlock(xhtml, 2), 1);
+      expect(textProgressionOfBlock(xhtml, 3), isNull);
     });
 
     test('never point past the end of the block they name', () {

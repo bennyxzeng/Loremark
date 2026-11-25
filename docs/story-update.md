@@ -3,6 +3,8 @@
 The app builds a book's story model itself, one section at a time, with the reader's own API
 key. There is no backend. Pressing **Update** on the Story Map tab sends the next section and
 the model so far to the provider, checks the answer, and saves a new revision.
+Each section can take a few minutes depending on its length, the model and reasoning effort,
+and the provider's response time. You can keep reading while the update runs.
 
 The code in `lib/story_update/` is a port of the story model lab (`tools/story_model_lab/` on
 the `story-model` branch). It needs no Flutter, so `tool/story_update/run.dart` can run it from
@@ -77,7 +79,7 @@ it, in `<book id>.runs/`. Both go when the book does.
   placed, only finished sections show.
 - **The quote check is a setting, off by default.** Off, a quote that isn't in its paragraph is
   only a warning, and `processed_sections[].quotes_checked` remembers that for the section. The
-  Chapter page says so. On, one bad quote rejects an update that has already been paid for.
+  Overview tab says so. On, one bad quote rejects an update that has already been paid for.
 - **Requests run in the foreground.** Leaving the book doesn't stop one, but the OS can suspend
   the app, which ends the request. Nothing is saved then, though the provider may still charge.
 - **Update turns into Cancel while an update runs.** It asks first, since pressing Update twice

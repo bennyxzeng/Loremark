@@ -9,9 +9,8 @@ import 'package:loremark/story_model/story_snapshot.dart';
 import '../../test/acceptance/synthetic_story_model.dart';
 import '../../test/support/synthetic_book.dart';
 
-/// Scalability benchmark for the spec's targets: a 500,000-word book,
-/// chapter processing under 60 s, and 28 of 30 character cards opening in
-/// under a second.
+/// Measures local work for a 500,000-word book, with a target of at least
+/// 28 of 30 character cards opening in under a second.
 ///
 /// Pure Dart (no Flutter), so `tool/benchmark/run.dart` can be compiled
 /// ahead of time and the same code runs inside `flutter test --tags
@@ -79,7 +78,7 @@ class BenchmarkRow {
   };
 }
 
-/// What a run measured, plus the pass/fail figures the spec asks for.
+/// What a run measured, plus the character-card timing results.
 class BenchmarkReport {
   BenchmarkReport({
     required this.config,
@@ -121,7 +120,6 @@ class BenchmarkReport {
       'cards_under_1s': cardsUnderOneSecond,
       'cards_total': config.cutoffs,
       'cards_required': 28,
-      'chapter_processing_budget_ms': 60000,
     },
     'rows': [for (final row in rows) row.toJson()],
   };
@@ -231,8 +229,8 @@ int sink = 0;
 
 int countWords(String text) => RegExp(r'\S+').allMatches(text).length;
 
-/// Chapter processing, the text-extraction part: the whole book, and one
-/// chapter's EPUB at a time (what the app does as each chapter is opened).
+/// Measures local text extraction for the whole book and for individual
+/// chapters.
 List<BenchmarkRow> textExtractionCases(BenchmarkContext context) {
   final config = context.config;
   final bytes = context.bookBytes;

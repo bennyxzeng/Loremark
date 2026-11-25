@@ -65,10 +65,13 @@ class ReadiumReaderService implements EpubReaderService {
       await _current?._release();
       final readium = FlutterReadium();
       // Added to every chapter the book loads, so registered first. Without
-      // it search still works, one finished chapter file at a time.
+      // the page script search still works, one finished chapter file at a
+      // time. Without the selection script, the selection just stays until
+      // the reader taps the page.
       try {
         await readium.setJavaScriptInjections(const [
           InjectionAsset(assetPath: pageEndScriptAsset),
+          InjectionAsset(assetPath: noteSelectionScriptAsset),
         ]);
       } on Object catch (error) {
         debugPrint('Could not add the page script: $error');
@@ -105,7 +108,12 @@ class ReadiumReaderService implements EpubReaderService {
 /// The script that reports where each page ends: assets/reader/page_end.js.
 const pageEndScriptAsset = 'assets/reader/page_end.js';
 
-/// Makes the web view serve [pageEndScriptAsset].
+/// The script that clears the text selection once a note or highlight made
+/// from it is drawn, and when the reader leaves the page: issues #99 and #91,
+/// assets/reader/note_selection.js.
+const noteSelectionScriptAsset = 'assets/reader/note_selection.js';
+
+/// Makes the web view serve [pageEndScriptAsset] and [noteSelectionScriptAsset].
 ///
 /// The plugin only serves its own assets and the fonts an app declares, so
 /// without this the page asks for the script and gets an error page. The
@@ -116,13 +124,19 @@ final _servedScript = [
     name: 'loremark-page-script',
     faces: const [ReaderFontFace(asset: pageEndScriptAsset)],
   ),
+  // Its own family, so the two "fonts" never share a name, weight and style.
+  ReaderFontFamily(
+    name: 'loremark-selection-script',
+    faces: const [ReaderFontFace(asset: noteSelectionScriptAsset)],
+  ),
 ];
 
 /// The prefix of the `physicalPage` marker the script sets on a page.
 const _pageEndMarker = 'loremark-end:';
 
 /// Where the page [locator] is ends, as reported by the page script: the
-/// number of the first text block that doesn't fit on it, how many of that
+/// number of the first text block that doesn't fit on it (the number of
+/// blocks if they all do, so it ends with the last one), how many of that
 /// block's characters, not counting whitespace, do, and the last few
 /// characters before the end to check the count against. Null if the script
 /// reported none.
@@ -242,14 +256,27 @@ class _ReadiumSession implements EpubReaderSession {
   @override
   Stream<String> get highlightTaps => _highlightTaps.stream;
 
+  /// Where the reader's current selection is, from the last time the plugin
+  /// reported one, or null when nothing is known to be selected. Used by
+  /// [clearSelection].
+  Locator? _selected;
+
+  void _onTextSelected(TextSelectionEvent event) {
+    if (!_closed) _selected = event.locator;
+  }
+
   void _onSelectionAction(SelectionActionEvent event) {
     final selection = passageSelectionFrom(event, _indexOf);
     if (selection != null && !_closed) _selections.add(selection);
   }
 
   void _onDecorationInteraction(DecorationInteractionEvent event) {
-    if (event.group != noteHighlightGroup || _closed) return;
-    _highlightTaps.add(event.decorationId);
+    final group = event.group;
+    if ((group != noteHighlightGroup && group != noteMarkGroup) || _closed) {
+      return;
+    }
+    // A tap on a note's underline opens the note, like a tap on its fill.
+    _highlightTaps.add(noteIdOfDecoration(event.decorationId));
   }
 
   int? _indexOf(String href) => spineIndexOf(_spine, href);
@@ -414,6 +441,7 @@ class _ReadiumSession implements EpubReaderSession {
       publication: _publication,
       fontFamilyDeclarations: _servedScript,
       selectionActions: selectionMenu,
+      onTextSelected: _onTextSelected,
       onSelectionAction: _onSelectionAction,
       onDecorationInteraction: _onDecorationInteraction,
       initialLocator: initialPosition == null
@@ -540,10 +568,64 @@ class _ReadiumSession implements EpubReaderSession {
       _decorate(passageHighlightGroup, const []);
 
   @override
-  Future<void> showNoteHighlights(List<NoteHighlight> highlights) => _decorate(
-    noteHighlightGroup,
-    noteDecorations(highlights, _publication.readingOrder, _indexOf),
-  );
+  Future<void> goToPassage(PassageTarget target) async {
+    final locator = locatorForPassage(
+      target,
+      _publication.readingOrder,
+      _indexOf,
+    );
+    if (locator == null) return;
+    // No highlight of its own: the note is already drawn. An old search
+    // highlight is taken off too, so it can't cover the note's color.
+    await _decorate(passageHighlightGroup, const []);
+    await _go(locator);
+  }
+
+  /// How many selection-clearing signals were sent, so each gets a new id.
+  int _clearSignals = 0;
+
+  /// Clears the selection by signalling the page script.
+  ///
+  /// flutter_readium 0.8.0 has no call to clear a selection, so this draws an
+  /// invisible decoration on the selected words in [selectionClearGroup] and
+  /// takes it away again. assets/reader/note_selection.js sees that group
+  /// appear and clears the selection, which also closes the menu over it
+  /// (issue #99). The decoration needs real words to be drawn at all, hence
+  /// [_selected].
+  @override
+  Future<void> clearSelection() async {
+    final selected = _selected;
+    _selected = null;
+    if (selected == null || _closed) return;
+    try {
+      await _readium.applyDecorations(selectionClearGroup, [
+        ReaderDecoration(
+          id: 'clear-${_clearSignals++}',
+          locator: selected,
+          style: selectionClearStyle,
+        ),
+      ]);
+      await _readium.applyDecorations(selectionClearGroup, const []);
+    } on Object catch (error) {
+      debugPrint('Could not clear the selection: $error');
+    }
+  }
+
+  @override
+  Future<void> showNoteHighlights(List<NoteHighlight> highlights) async {
+    // Fills first, then underlines in their own group. Readium draws each
+    // group in a layer of its own, in the order the groups were first used,
+    // so the underlines always sit on top of the fills. In one group, a fill
+    // drawn again after an edit landed on top of its underline (issue #124).
+    await _decorate(
+      noteHighlightGroup,
+      noteDecorations(highlights, _publication.readingOrder, _indexOf),
+    );
+    await _decorate(
+      noteMarkGroup,
+      noteMarkDecorations(highlights, _publication.readingOrder, _indexOf),
+    );
+  }
 
   @override
   Future<void> goForward() => _readium.goForward();
@@ -691,6 +773,8 @@ String? positionLogLine(Locator locator, int? section, {DateTime? now}) {
     'currentPage': properties['currentPage'],
     'totalPages': properties['totalPages'],
     'tUs': (now ?? DateTime.now()).microsecondsSinceEpoch,
+    // Where the page starts, which the Story Map counts from.
+    'cssSelector': ?locations.cssSelector,
   };
   return 'LOREMARK_POSITION ${jsonEncode(fields)}';
 }
@@ -824,7 +908,37 @@ PassageSelection? passageSelectionFrom(
 /// [passageHighlightGroup] so search and notes never clear each other.
 const noteHighlightGroup = 'loremark-notes';
 
-/// The decorations that draw [highlights], each at its text quote. A highlight
+/// The decoration group used only to tell the page script to clear the
+/// selection (see `_ReadiumSession.clearSelection`). Nothing in it is ever
+/// seen. Must match CLEAR_GROUP in assets/reader/note_selection.js.
+const selectionClearGroup = 'loremark-clear-selection';
+
+/// An invisible style for [selectionClearGroup]. The tint is fully
+/// transparent, but must be set, since Android drops a decoration without one
+/// (see [passageHighlightStyle]).
+const selectionClearStyle = ReaderDecorationStyle(
+  style: DecorationStyle.highlight,
+  tint: Color(0x00000000),
+);
+
+/// The decoration group of the underlines that mark notes with text, drawn
+/// above [noteHighlightGroup] so a fill never covers an underline (issue #124).
+const noteMarkGroup = 'loremark-note-marks';
+
+/// Added to a note's id to name its underline decoration (issue #124), so the
+/// fill and the underline of one note never share an id. See
+/// [noteIdOfDecoration].
+const noteMarkSuffix = '#mark';
+
+/// The note a decoration of [noteHighlightGroup] or [noteMarkGroup] belongs
+/// to: [decorationId] itself for a fill, or without [noteMarkSuffix] for a
+/// note's underline.
+String noteIdOfDecoration(String decorationId) =>
+    decorationId.endsWith(noteMarkSuffix)
+    ? decorationId.substring(0, decorationId.length - noteMarkSuffix.length)
+    : decorationId;
+
+/// The fills that draw [highlights], each at its text quote. A highlight
 /// whose section isn't in [readingOrder] is left out.
 ///
 /// Every style has a tint, which Android needs (see [passageHighlightStyle]).
@@ -844,6 +958,29 @@ List<ReaderDecoration> noteDecorations(
           tint: highlight.color,
         ),
       ),
+];
+
+/// The underlines, for [noteMarkGroup], under every highlight in
+/// [highlights] that has a [NoteHighlight.markColor]: the notes with text.
+/// The underline shows a note stands apart from a plain highlight, and that
+/// the words can be tapped to read it (issue #124).
+List<ReaderDecoration> noteMarkDecorations(
+  List<NoteHighlight> highlights,
+  List<Link> readingOrder,
+  int? Function(String href) indexOf,
+) => [
+  for (final highlight in highlights)
+    if (highlight.markColor case final mark?)
+      if (locatorForPassage(highlight.target, readingOrder, indexOf)
+          case final locator?)
+        ReaderDecoration(
+          id: '${highlight.id}$noteMarkSuffix',
+          locator: locator,
+          style: ReaderDecorationStyle(
+            style: DecorationStyle.underline,
+            tint: mark,
+          ),
+        ),
 ];
 
 /// The entry of [entries] the plugin's `tocHref` ("path#fragment") names, or

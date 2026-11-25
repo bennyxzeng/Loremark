@@ -21,7 +21,7 @@ void main() {
     String body, {
     NoteAnchor anchor = const NoteAnchor(7, 0.25),
     String chapter = 'Chapter 8',
-    HighlightColor color = HighlightColor.yellow,
+    HighlightColor color = HighlightColor.green,
     String selectedText = 'You’re my sister, Mara.',
   }) => service.addNote(
     anchor: anchor,
@@ -62,10 +62,10 @@ void main() {
         anchor: const NoteAnchor(2, 0.5),
         chapterLabel: 'Chapter 3',
         selectedText: 'The harbor lights went out.',
-        color: HighlightColor.pink,
       );
 
       expect(highlight.isHighlightOnly, isTrue);
+      expect(highlight.color, HighlightColor.yellow);
       expect(service.notes, [highlight]);
     });
 
@@ -180,7 +180,7 @@ void main() {
         'Mara hides the letter',
         anchor: const NoteAnchor(7, 0.2),
         chapter: 'Chapter 8',
-        color: HighlightColor.yellow,
+        color: HighlightColor.green,
       );
       await addNote(
         'The lighthouse keeper lies',
@@ -249,12 +249,10 @@ void main() {
       String selectedText, {
       NoteAnchor anchor = const NoteAnchor(7, 0.4),
       String chapter = 'Chapter 8',
-      HighlightColor color = HighlightColor.yellow,
     }) => service.addHighlight(
       anchor: anchor,
       chapterLabel: chapter,
       selectedText: selectedText,
-      color: color,
     );
 
     // Returns what the filter keeps, as note bodies or, for highlights, passages.
@@ -277,7 +275,6 @@ void main() {
         'He said the light was never lit.',
         anchor: const NoteAnchor(2, 0.6),
         chapter: 'Chapter 3',
-        color: HighlightColor.blue,
       );
     });
 
@@ -356,6 +353,181 @@ void main() {
         File('${bookDirectory.path}/notes.json').readAsStringSync(),
         '{broken',
       );
+    });
+  });
+
+  // Issue #112: two notes on the same words are drawn on top of each other,
+  // so the reader can only tap one of them.
+  group('notes at the same spot', () {
+    Future<Note> highlightAt(
+      String selectedText, {
+      String before = '',
+      String after = '',
+      NoteAnchor anchor = const NoteAnchor(7, 0.25),
+    }) => service.addHighlight(
+      anchor: anchor,
+      chapterLabel: 'Chapter 8',
+      selectedText: selectedText,
+      textBefore: before,
+      textAfter: after,
+    );
+
+    test('keep the order they were made in, whatever is edited', () async {
+      final first = await highlightAt('the lamp');
+      now = now.add(const Duration(minutes: 1));
+      final second = await highlightAt('the lamp');
+
+      now = now.add(const Duration(minutes: 1));
+      await service.editNote(first.id, body: 'Now a note');
+
+      expect(
+        [for (final note in service.notes) note.id],
+        [first.id, second.id],
+      );
+    });
+
+    test('the same words are found as overlapping', () async {
+      final first = await highlightAt('the lamp', before: 'She lit ');
+      final second = await highlightAt('the lamp', before: 'She lit ');
+
+      expect(service.notesOverlapping(first), [first, second]);
+      expect(service.notesOverlapping(second), [first, second]);
+    });
+
+    test('words that partly overlap are found too', () async {
+      final left = await highlightAt('She lit the', after: ' lamp and waited');
+      final right = await highlightAt(
+        'the lamp',
+        before: 'She lit ',
+        after: ' and waited',
+      );
+
+      expect(service.notesOverlapping(left), [left, right]);
+      expect(service.notesOverlapping(right), [left, right]);
+    });
+
+    test('the same words in another section are not', () async {
+      final here = await highlightAt('the lamp');
+      await highlightAt('the lamp', anchor: const NoteAnchor(9, 0.25));
+
+      expect(service.notesOverlapping(here), [here]);
+    });
+
+    test('different words in the same section are not', () async {
+      final lamp = await highlightAt('the lamp', after: ' and waited');
+      await highlightAt('the door', before: 'Then she opened ');
+
+      expect(service.notesOverlapping(lamp), [lamp]);
+    });
+
+    // Readium keeps a long stretch of text around each selection, so two
+    // notes close together are inside each other's surrounding text. That
+    // alone must not count as the same words.
+    test("nearby words in each other's surrounding text are not", () async {
+      const sentence =
+          'She lit the lamp and then she opened the door to the yard.';
+      final lamp = await highlightAt(
+        'the lamp',
+        before: 'She lit ',
+        after: ' and then she opened the door to the yard.',
+      );
+      final door = await highlightAt(
+        'the door',
+        before: 'She lit the lamp and then she opened ',
+        after: ' to the yard.',
+      );
+      expect(
+        '${lamp.textBefore}${lamp.selectedText}${lamp.textAfter}',
+        sentence,
+      );
+
+      expect(service.notesOverlapping(lamp), [lamp]);
+      expect(service.notesOverlapping(door), [door]);
+    });
+
+    test('the same word in another sentence close by is not', () async {
+      final first = await highlightAt(
+        'the',
+        before: 'She lit ',
+        after: ' lamp. Then the door opened.',
+      );
+      final second = await highlightAt(
+        'the',
+        before: 'She lit the lamp. Then ',
+        after: ' door opened.',
+      );
+
+      expect(service.notesOverlapping(first), [first]);
+      expect(service.notesOverlapping(second), [second]);
+    });
+  });
+
+  // Issue #124: highlights are yellow and notes are green, blue, or pink,
+  // so the two can be told apart on the page.
+  group('colors', () {
+    Future<Note> highlight() => service.addHighlight(
+      anchor: const NoteAnchor(7, 0.4),
+      chapterLabel: 'Chapter 8',
+      selectedText: 'The harbor lights went out.',
+    );
+
+    test('a highlight is always yellow', () async {
+      expect((await highlight()).color, HighlightColor.yellow);
+    });
+
+    test('a note is green unless another color is picked', () async {
+      final note = await service.addNote(
+        anchor: const NoteAnchor(7, 0.4),
+        chapterLabel: 'Chapter 8',
+        selectedText: 'Mara',
+        body: 'Who is she?',
+      );
+
+      expect(note.color, HighlightColor.green);
+    });
+
+    test('a note cannot be yellow', () async {
+      await expectLater(
+        addNote('Yellow?', color: HighlightColor.yellow),
+        throwsArgumentError,
+      );
+      final note = await addNote('Blue');
+      await expectLater(
+        service.editNote(note.id, color: HighlightColor.yellow),
+        throwsArgumentError,
+      );
+      expect(service.notes.single.color, HighlightColor.green);
+    });
+
+    test('writing in a highlight makes it a green note', () async {
+      final saved = await highlight();
+
+      final note = await service.editNote(saved.id, body: 'A blackout?');
+
+      expect(note.isHighlightOnly, isFalse);
+      expect(note.color, HighlightColor.green);
+    });
+
+    test("writing in a highlight can pick the note's color", () async {
+      final saved = await highlight();
+
+      final note = await service.editNote(
+        saved.id,
+        body: 'A blackout?',
+        color: HighlightColor.pink,
+      );
+
+      expect(note.color, HighlightColor.pink);
+    });
+
+    test("a highlight's color cannot change without writing", () async {
+      final saved = await highlight();
+
+      await expectLater(
+        service.editNote(saved.id, color: HighlightColor.blue),
+        throwsArgumentError,
+      );
+      expect(service.notes.single.color, HighlightColor.yellow);
     });
   });
 }

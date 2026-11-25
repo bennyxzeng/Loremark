@@ -786,6 +786,106 @@ void main() {
       );
     });
 
+    testWidgets('lines next to each other in brackets back to back are one '
+        'citation', (tester) async {
+      // Not one bracket, as the prompt asks, but how DeepSeek writes it.
+      await pumpAsk(
+        tester,
+        replies: [(200, answer('Mara waited by it [page/2][page/3].'))],
+      );
+      await askQuestion(tester, 'What did Mara do?');
+      expect(find.text('1'), findsOne);
+      expect(find.text('2'), findsNothing);
+
+      await tester.tap(find.text('1'));
+      await tester.pumpAndSettle();
+      expect(highlighted(tester), ['Second line.', 'Third line.']);
+    });
+
+    testWidgets('the first line shows the one before it, marked as unseen', (
+      tester,
+    ) async {
+      backend.textBefore = 'Earlier line.\n\n';
+      await pumpAsk(
+        tester,
+        replies: [(200, answer('It starts here [page/1].'))],
+      );
+      await askQuestion(tester, 'What did Ask see first?');
+      await tester.tap(find.text('1'));
+      await tester.pumpAndSettle();
+      expect(find.text('Earlier line.'), findsOne);
+      expect(find.text('Ask saw from here'), findsOne);
+      // In that order, above the cited line and the one after it.
+      final y = [
+        for (final text in [
+          'Earlier line.',
+          'Ask saw from here',
+          'First line.',
+          'Second line.',
+        ])
+          tester.getTopLeft(find.text(text)).dy,
+      ];
+      expect(y, [...y]..sort());
+      expect(highlighted(tester), ['First line.']);
+    });
+
+    testWidgets('lines that reach the page end are marked where it ended', (
+      tester,
+    ) async {
+      await pumpAsk(
+        tester,
+        replies: [(200, answer('Last [page/4], and before [page/3].'))],
+      );
+      await askQuestion(tester, 'Where did my page end?');
+      for (final chip in ['1', '2']) {
+        await tester.tap(find.text(chip));
+        await tester.pumpAndSettle();
+        expect(find.text('Your page ended here'), findsOne, reason: chip);
+        // Under the page's last line, with nothing after it.
+        expect(
+          tester.getTopLeft(find.text('Your page ended here')).dy,
+          greaterThan(tester.getTopLeft(find.text('Fourth line.')).dy),
+        );
+        Navigator.of(tester.element(find.text('Fourth line.'))).pop();
+        await tester.pumpAndSettle();
+      }
+    });
+
+    testWidgets('lines before the page end have no mark', (tester) async {
+      await pumpAsk(tester, replies: [(200, answer('Early [page/2].'))]);
+      await askQuestion(tester, 'What came first?');
+      await tester.tap(find.text('1'));
+      await tester.pumpAndSettle();
+      expect(find.text('Third line.'), findsOne);
+      expect(find.text('Fourth line.'), findsNothing);
+      expect(find.text('Your page ended here'), findsNothing);
+    });
+
+    testWidgets('a later line has no unseen line before it', (tester) async {
+      backend.textBefore = 'Earlier line.\n\n';
+      await pumpAsk(tester, replies: [(200, answer('Then [page/2].'))]);
+      await askQuestion(tester, 'And then?');
+      await tester.tap(find.text('1'));
+      await tester.pumpAndSettle();
+      expect(find.text('First line.'), findsOne);
+      expect(find.text('Earlier line.'), findsNothing);
+      expect(find.text('Ask saw from here'), findsNothing);
+    });
+
+    testWidgets('the first line of a section has nothing before it', (
+      tester,
+    ) async {
+      await pumpAsk(
+        tester,
+        replies: [(200, answer('It starts here [page/1].'))],
+      );
+      await askQuestion(tester, 'What did Ask see first?');
+      await tester.tap(find.text('1'));
+      await tester.pumpAndSettle();
+      expect(find.text('First line.'), findsOne);
+      expect(find.text('Ask saw from here'), findsNothing);
+    });
+
     testWidgets('with no line, all of them show, ending at the page', (
       tester,
     ) async {
@@ -809,6 +909,7 @@ void main() {
       for (final line in fourLines.lines) {
         expect(find.text(line), findsOne);
       }
+      expect(find.text('Your page ended here'), findsOne);
       await tester.tap(find.text('Open in book'));
       await tester.pumpAndSettle();
       expect(jumps.single.highlight, 'Fourth line.');

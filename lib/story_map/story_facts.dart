@@ -42,24 +42,83 @@ class FactHeading extends StatelessWidget {
   }
 }
 
+/// A row of chips for picking which kind of fact shows, one kind at a time.
+class FactPageBar<T> extends StatelessWidget {
+  const FactPageBar({
+    super.key,
+    required this.pages,
+    required this.current,
+    required this.label,
+    required this.onSelected,
+    this.padding = EdgeInsets.zero,
+  });
+
+  final List<T> pages;
+  final T current;
+
+  /// A page's chip text, such as "Relationships 8".
+  final String Function(T page) label;
+  final ValueChanged<T> onSelected;
+  final EdgeInsetsGeometry padding;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: padding,
+      child: Row(
+        spacing: 8,
+        children: [
+          for (final page in pages)
+            ChoiceChip(
+              label: Text(label(page)),
+              selected: page == current,
+              showCheckmark: false,
+              // The app's chip theme looks the same selected or not.
+              selectedColor: colors.primary,
+              labelStyle: page == current
+                  ? theme.chipTheme.labelStyle?.copyWith(
+                      color: colors.onPrimary,
+                    )
+                  : null,
+              visualDensity: VisualDensity.compact,
+              onSelected: (_) => onSelected(page),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 /// One fact with optional detail, tags and the quotes that support it.
 class FactTile extends StatelessWidget {
   const FactTile({
     super.key,
+    required String this.text,
     required this.model,
-    required this.text,
     this.detail,
     this.tags = const [],
     this.evidence = const [],
-    this.onTap,
-  });
+  }) : textSpan = null;
+
+  /// A fact whose line mixes plain words with links, such as [factLinkSpan].
+  const FactTile.rich({
+    super.key,
+    required InlineSpan this.textSpan,
+    required this.model,
+    this.detail,
+    this.tags = const [],
+    this.evidence = const [],
+  }) : text = null;
 
   final StoryModel model;
-  final String text;
+  final String? text;
+  final InlineSpan? textSpan;
   final String? detail;
   final List<String> tags;
   final List<Evidence> evidence;
-  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -67,17 +126,16 @@ class FactTile extends StatelessWidget {
     final muted = theme.textTheme.bodySmall?.copyWith(
       color: theme.colorScheme.onSurfaceVariant,
     );
-    final tile = Padding(
+    final style = theme.textTheme.bodyMedium;
+    return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            text,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: onTap == null ? null : theme.colorScheme.primary,
-            ),
-          ),
+          if (textSpan case final span?)
+            Text.rich(span, style: style)
+          else
+            Text(text!, style: style),
           if (tags.isNotEmpty) ...[
             const SizedBox(height: 4),
             Wrap(
@@ -101,7 +159,45 @@ class FactTile extends StatelessWidget {
         ],
       ),
     );
-    return onTap == null ? tile : InkWell(onTap: onTap, child: tile);
+  }
+}
+
+/// [name] as a link inside a fact's line, for [FactTile.rich].
+WidgetSpan factLinkSpan(String name, VoidCallback onTap) => WidgetSpan(
+  alignment: PlaceholderAlignment.baseline,
+  baseline: TextBaseline.alphabetic,
+  child: FactLink(name, onTap: onTap),
+);
+
+/// A name in a fact that opens what it names, styled so it reads as a link
+/// next to the plain words around it.
+class FactLink extends StatelessWidget {
+  const FactLink(this.name, {super.key, required this.onTap});
+
+  final String name;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = theme.colorScheme.primary;
+    return Semantics(
+      link: true,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(4),
+        // A WidgetSpan's child doesn't take the line's style, so the link
+        // sets its own.
+        child: Text(
+          name,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: color,
+            decoration: TextDecoration.underline,
+            decorationColor: color,
+          ),
+        ),
+      ),
+    );
   }
 }
 

@@ -101,6 +101,47 @@ void main() {
     test('says when nothing is cited', () {
       expect(citesAnything(splitAnswer('Just words.')), isFalse);
     });
+
+    test('takes brackets back to back as one citation', () {
+      // As DeepSeek wrote it, rather than [page/1, page/2].
+      final parts = splitAnswer('the title「CHAPTER 2」[page/1][page/2]. Then');
+      expect(parts, hasLength(3));
+      expect((parts[0] as AnswerText).text, 'the title「CHAPTER 2」');
+      expect((parts[1] as AnswerCitation).refs, const [
+        AskRef.page(1),
+        AskRef.page(2),
+      ]);
+      expect((parts[2] as AnswerText).text, '. Then');
+      // So the lines are one passage, one chip.
+      expect(citedPassages((parts[1] as AnswerCitation).refs, (_) => null), [
+        [const AskRef.page(1), const AskRef.page(2)],
+      ]);
+    });
+
+    test('takes brackets with only whitespace between as one citation', () {
+      final parts = splitAnswer('Mara [page/5] [s1/p0001]\n[page/6] left');
+      expect(parts, hasLength(3));
+      expect((parts[1] as AnswerCitation).refs, const [
+        AskRef.page(5),
+        AskRef('s1', 'p0001'),
+        AskRef.page(6),
+      ]);
+      expect((parts[2] as AnswerText).text, ' left');
+    });
+
+    test('keeps citations with words between them apart', () {
+      final parts = splitAnswer('[page/1] and [page/2]');
+      expect(parts, hasLength(3));
+      expect((parts[0] as AnswerCitation).refs.single, const AskRef.page(1));
+      expect((parts[1] as AnswerText).text, ' and ');
+      expect((parts[2] as AnswerCitation).refs.single, const AskRef.page(2));
+    });
+
+    test('holds back the second of two until it has arrived', () {
+      expect(splitAnswer('Mara [page/1][page/', streaming: true), hasLength(2));
+      final parts = splitAnswer('Mara [page/1][page/2', streaming: true);
+      expect((parts[1] as AnswerCitation).refs, const [AskRef.page(1)]);
+    });
   });
 
   group('citedPassages', () {
