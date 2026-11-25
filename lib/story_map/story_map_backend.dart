@@ -252,12 +252,32 @@ class DeviceStoryMapBackend implements StoryMapBackend, AskBackend {
     return json == null ? null : StoryModel.fromJson(json);
   }
 
-  /// The reader's saved position in [book], and the book's spine.
-  Future<(ReaderPosition?, List<SpineItem>)> _readingPlace(Book book) async {
+  /// How far AI features may go in [book], and the book's spine.
+  ///
+  /// [place] is the saved knowledge boundary, or the reader's position in a
+  /// book saved before there was one. [reader] is the reader's position while
+  /// it is at or before [place], so what was measured on their page can be
+  /// used too, and null after a jump past it that wasn't counted as read.
+  Future<
+    ({ReaderPosition? reader, ReaderPosition? place, List<SpineItem> spine})
+  >
+  _readingPlace(Book book) async {
     final store = await ReadingPositionStore.open();
     await store.saved;
     final position = await store.load(book.id);
-    return (position, await spine(book));
+    final boundary = (await store.loadProgress(book.id))?.boundary;
+    final spine = await this.spine(book);
+    if (boundary == null) {
+      return (reader: position, place: position, spine: spine);
+    }
+    final ahead =
+        position != null &&
+        TextPosition(position.sectionIndex, position.progression) > boundary;
+    return (
+      reader: ahead ? null : position,
+      place: ReaderPosition(boundary.sectionIndex, boundary.progression),
+      spine: spine,
+    );
   }
 
   @override
@@ -269,11 +289,12 @@ class DeviceStoryMapBackend implements StoryMapBackend, AskBackend {
     Book book,
     List<StorySection> sections,
   ) async {
-    final (position, spine) = await _readingPlace(book);
-    final finished = finishedStorySections(sections, spine, position);
+    final (:reader, :place, :spine) = await _readingPlace(book);
+    final finished = finishedStorySections(sections, spine, place);
     final store = await ReadingPositionStore.open();
     final start = await store.loadPageStart(book.id);
-    if (start == null || start.sectionIndex != position?.sectionIndex) {
+    // The start is of the reader's page, so past the boundary it isn't used.
+    if (start == null || start.sectionIndex != reader?.sectionIndex) {
       return StoryReadingProgress(finished);
     }
     final onPage = _sectionsIn(sections, spine, finished, start.sectionIndex);
@@ -312,15 +333,18 @@ class DeviceStoryMapBackend implements StoryMapBackend, AskBackend {
 
   @override
   Future<AskReach> askReach(Book book, List<StorySection> sections) async {
-    final (position, spine) = await _readingPlace(book);
-    if (position == null) return AskReach.none;
+    final (:reader, :place, :spine) = await _readingPlace(book);
+    if (place == null) return AskReach.none;
+    // Past the boundary nothing of the reader's page is sent, and the boundary
+    // stands in for it.
+    final at = reader ?? place;
     final store = await ReadingPositionStore.open();
-    final onLastPage = position.progression == 1;
+    final onLastPage = reader?.progression == 1;
     final saved = onLastPage ? null : await store.loadPageEnd(book.id);
     // A page end kept from another section says nothing about this page.
-    final end = saved?.sectionIndex == position.sectionIndex ? saved : null;
+    final end = saved?.sectionIndex == reader?.sectionIndex ? saved : null;
     final through = onLastPage
-        ? TextPosition(position.sectionIndex, 1)
+        ? TextPosition(at.sectionIndex, 1)
         : end == null
         ? null
         : TextPosition(end.sectionIndex, end.textProgression);
@@ -330,7 +354,7 @@ class DeviceStoryMapBackend implements StoryMapBackend, AskBackend {
       final finished = finishedStorySections(
         sections,
         spine,
-        position,
+        place,
         wholePage: true,
       );
       if (onLastPage) {
@@ -373,14 +397,9 @@ class DeviceStoryMapBackend implements StoryMapBackend, AskBackend {
     return AskReach(
       progress: progress,
       // Unmeasured, only the section is sure.
-      limit: through ?? TextPosition(position.sectionIndex, 0),
+      limit: through ?? TextPosition(at.sectionIndex, 0),
       page: page,
-      pastMap: pastStoryMapEnd(
-        sections,
-        spine,
-        progress,
-        position.sectionIndex,
-      ),
+      pastMap: pastStoryMapEnd(sections, spine, progress, at.sectionIndex),
     );
   }
 
